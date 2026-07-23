@@ -2,10 +2,10 @@ import { useEffect, useState, type ReactNode } from 'react'
 import {
   Activity,
   AlertTriangle,
-  ArrowRight,
+  BarChart3,
   Check,
-  ChevronRight,
   CircleCheck,
+  FileCheck,
   FileSearch,
   FileText,
   History,
@@ -14,14 +14,15 @@ import {
   Plus,
   Settings,
   ShieldCheck,
-  Sparkles,
   Stethoscope,
   Sun,
+  Target,
   UploadCloud,
   UserRound,
 } from 'lucide-react'
 
 type Theme = 'light' | 'dark'
+type ReportView = 'Resumo' | 'Parâmetros' | 'Protocolo'
 
 interface MetricCardProps {
   icon: ReactNode
@@ -39,47 +40,132 @@ interface StepProps {
   completed?: boolean
 }
 
-const metrics = [
+const steps = [
   {
-    label: 'Casos analisados',
-    value: '24',
-    detail: '+6 nesta semana',
+    title: 'Enviar exames',
+    description: 'PDF demonstrativo',
   },
   {
-    label: 'Revisões pendentes',
+    title: 'Extrair dados',
+    description: 'Nome, idade e parâmetros',
+  },
+  {
+    title: 'Aplicar protocolo',
+    description: 'RefratIA v0.1',
+  },
+  {
+    title: 'Gerar relatório',
+    description: 'Preliminar automatizado',
+  },
+]
+
+const metrics = [
+  {
+    label: 'Exames processados',
+    value: '24',
+    detail: 'Pentacam demonstrativo',
+  },
+  {
+    label: 'Relatórios gerados',
+    value: '24',
+    detail: 'Geração automatizada',
+    tone: 'success' as const,
+  },
+  {
+    label: 'Aguardando revisão',
     value: '3',
-    detail: 'Requerem confirmação',
+    detail: 'Revisão médica posterior',
     tone: 'warning' as const,
   },
   {
-    label: 'Relatórios concluídos',
-    value: '21',
-    detail: '87,5% dos casos',
-    tone: 'success' as const,
+    label: 'Com alerta de extração',
+    value: '1',
+    detail: 'Dado ausente não impeditivo',
+    tone: 'warning' as const,
   },
 ]
+
+const extractedData = [
+  ['Paciente', 'Maria da Silva', 'Pentacam'],
+  ['Idade', '38 anos', 'Pentacam'],
+  ['Kmax', '44,2 D', 'Pentacam'],
+  ['Paquimetria mínima', '521 µm', 'Pentacam'],
+  ['BAD-D', '1,18', 'Pentacam'],
+  ['ARTmax', 'Não identificado', 'Pentacam'],
+  ['Astigmatismo corneano', '1,31 D', 'Pentacam'],
+]
+
+const protocolRules = [
+  'Faixa etária entre 18 e 40 anos',
+  'Parâmetros corneanos disponíveis sem alerta impeditivo no protocolo',
+  'Astigmatismo corneano exige consideração de abordagem personalizada',
+  'ARTmax ausente limita parte da avaliação',
+]
+
+const reportHighlights = [
+  ['521 µm', 'Paquimetria mínima', 'Dentro da zona demonstrativa'],
+  ['44,2 D', 'Kmax', 'Sem alerta impeditivo'],
+  ['1,18', 'BAD-D', 'Baixo risco no protocolo'],
+  ['1,31 D', 'Astigmatismo', 'Pede avaliação personalizada'],
+]
+
+const parameterBars = [
+  {
+    label: 'Paquimetria mínima',
+    value: '521 µm',
+    percent: 74,
+    detail: 'Boa espessura no caso demonstrativo',
+    tone: 'success',
+  },
+  {
+    label: 'Kmax',
+    value: '44,2 D',
+    percent: 58,
+    detail: 'Curvatura sem gatilho crítico',
+    tone: 'success',
+  },
+  {
+    label: 'BAD-D',
+    value: '1,18',
+    percent: 42,
+    detail: 'Compatível com fluxo preliminar',
+    tone: 'success',
+  },
+  {
+    label: 'ARTmax',
+    value: 'Não identificado',
+    percent: 18,
+    detail: 'Bloqueia conclusões dependentes',
+    tone: 'warning',
+  },
+]
+
+const reportViews: ReportView[] = ['Resumo', 'Parâmetros', 'Protocolo']
 
 const recentCases = [
   {
     initials: 'MS',
-    patient: 'Caso demonstrativo 024',
-    date: 'Hoje, 14:32',
-    status: 'Revisão',
+    patient: 'Maria da Silva',
+    exam: 'Pentacam',
+    report: 'Gerado',
+    review: 'Pendente',
     statusClass: 'warning',
   },
   {
-    initials: 'AR',
-    patient: 'Caso demonstrativo 023',
-    date: 'Hoje, 10:18',
-    status: 'Concluído',
+    initials: 'JL',
+    patient: 'João Lima',
+    exam: 'Pentacam',
+    report: 'Gerado',
+    review: 'Revisado',
     statusClass: 'success',
   },
   {
-    initials: 'LC',
-    patient: 'Caso demonstrativo 022',
-    date: 'Ontem, 16:45',
-    status: 'Concluído',
-    statusClass: 'success',
+    initials: 'AR',
+    patient: 'Ana Rocha',
+    exam: 'Pentacam',
+    report: 'Parcial',
+    review: 'Atenção',
+    statusClass: 'warning',
   },
 ]
 
@@ -147,8 +233,274 @@ function Step({
 function App() {
   const [theme, setTheme] = useState<Theme>(getInitialTheme)
   const [selectedFile, setSelectedFile] = useState<string | null>(null)
-  const [activeSection, setActiveSection] = useState('Nova avaliação')
-  const [showDemoResult, setShowDemoResult] = useState(false)
+  const [activeSection, setActiveSection] = useState('Nova análise')
+  const [processingStep, setProcessingStep] = useState(0)
+  const [isReviewed, setIsReviewed] = useState(false)
+  const [reportView, setReportView] = useState<ReportView>('Resumo')
+
+  const reportGenerated = selectedFile !== null && processingStep === steps.length
+  const reportSection = reportGenerated ? (
+    <section className="panel result-panel">
+      <div className="panel__header">
+        <div>
+          <span className="panel__eyebrow">RESULTADO DEMONSTRATIVO</span>
+          <h2>Relatório clínico interativo</h2>
+        </div>
+
+        <span className="result-status">
+          <AlertTriangle size={16} />
+          ARTmax exige atenção
+        </span>
+      </div>
+
+      <div className="report-dashboard">
+        <div className="report-score">
+          <span className="report-score__ring">74</span>
+          <div>
+            <span className="panel__eyebrow">SCORE PRELIMINAR</span>
+            <h3>Candidato para revisão médica</h3>
+            <p>
+              Parâmetros principais disponíveis, com uma pendência que limita
+              conclusões dependentes de ARTmax.
+            </p>
+          </div>
+        </div>
+
+        <div className="report-highlights">
+          {reportHighlights.map(([value, label, detail]) => (
+            <div className="report-highlight" key={label}>
+              <strong>{value}</strong>
+              <span>{label}</span>
+              <small>{detail}</small>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="report-tabs" role="tablist" aria-label="Visões do relatório">
+        {reportViews.map((view) => (
+          <button
+            aria-selected={reportView === view}
+            className={
+              reportView === view
+                ? 'report-tab report-tab--active'
+                : 'report-tab'
+            }
+            key={view}
+            onClick={() => setReportView(view)}
+            role="tab"
+            type="button"
+          >
+            {view === 'Resumo' && <Target size={15} />}
+            {view === 'Parâmetros' && <BarChart3 size={15} />}
+            {view === 'Protocolo' && <FileCheck size={15} />}
+            {view}
+          </button>
+        ))}
+      </div>
+
+      {reportView === 'Resumo' && (
+        <div className="report-summary-grid">
+          <article className="report-insight report-insight--success">
+            <CircleCheck size={20} />
+            <div>
+              <span>Achado principal</span>
+              <strong>Sem alerta impeditivo nos dados identificados</strong>
+              <p>
+                Idade, Kmax, paquimetria e BAD-D mantêm o caso no fluxo
+                preliminar para revisão.
+              </p>
+            </div>
+          </article>
+
+          <article className="report-insight report-insight--warning">
+            <AlertTriangle size={20} />
+            <div>
+              <span>Pendência</span>
+              <strong>ARTmax não foi extraído do PDF</strong>
+              <p>
+                O relatório omite qualquer conclusão que dependa desse
+                parâmetro.
+              </p>
+            </div>
+          </article>
+
+          <article className="decision-card">
+            <span className="panel__eyebrow">CONDUTA DO SISTEMA</span>
+            <h3>Gerar relatório parcial e exigir revisão</h3>
+            <p>
+              A automação organiza evidências, mostra limitações e mantém a
+              decisão clínica com o médico responsável.
+            </p>
+          </article>
+        </div>
+      )}
+
+      {reportView === 'Parâmetros' && (
+        <div className="parameter-bars">
+          {parameterBars.map((parameter) => (
+            <div className="parameter-bar" key={parameter.label}>
+              <div className="parameter-bar__header">
+                <div>
+                  <strong>{parameter.label}</strong>
+                  <span>{parameter.detail}</span>
+                </div>
+                <b>{parameter.value}</b>
+              </div>
+
+              <div className="parameter-bar__track">
+                <span
+                  className={`parameter-bar__fill parameter-bar__fill--${parameter.tone}`}
+                  style={{ width: `${parameter.percent}%` }}
+                />
+              </div>
+            </div>
+          ))}
+
+          <div className="parameters-table parameters-table--compact">
+            {extractedData.map(([label, value, source]) => (
+              <div className="parameters-table__row" key={label}>
+                <strong>{label}</strong>
+                <span>{value}</span>
+                <span
+                  className={
+                    label === 'ARTmax'
+                      ? 'parameter-status parameter-status--review'
+                      : 'parameter-status parameter-status--confirmed'
+                  }
+                >
+                  {label === 'ARTmax' ? (
+                    <AlertTriangle size={14} />
+                  ) : (
+                    <Check size={14} />
+                  )}
+                  {source}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {reportView === 'Protocolo' && (
+        <div className="decision-timeline">
+          {protocolRules.map((rule, index) => (
+            <div className="decision-step" key={rule}>
+              <span>{index + 1}</span>
+              <div>
+                <strong>{rule}</strong>
+                <p>
+                  {index === 3
+                    ? 'A regra marca o relatório como parcial.'
+                    : 'Critério usado para compor a recomendação preliminar.'}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="report-card">
+        <div className="report-card__header">
+          <div>
+            <span className="panel__eyebrow">RELATÓRIO PRELIMINAR</span>
+            <h2>Síntese final</h2>
+          </div>
+
+          <div className="report-statuses">
+            <span className="case-status case-status--success">
+              Gerado automaticamente
+            </span>
+            <span
+              className={
+                isReviewed
+                  ? 'case-status case-status--success'
+                  : 'case-status case-status--warning'
+              }
+            >
+              {isReviewed ? 'Revisado pelo médico' : 'Aguardando revisão médica'}
+            </span>
+          </div>
+        </div>
+
+        <div className="report-text">
+          <strong>
+            Maria da Silva, 38 anos: fluxo preliminar liberado para revisão.
+          </strong>
+          <span>
+            Sem alerta impeditivo nos parâmetros extraídos. ARTmax ausente;
+            conclusões dependentes desse dado foram omitidas.
+          </span>
+        </div>
+
+        <div className="report-actions">
+          <button
+            className="primary-button"
+            disabled={isReviewed}
+            onClick={() => setIsReviewed(true)}
+            type="button"
+          >
+            <Check size={17} />
+            Revisar relatório
+          </button>
+
+          {isReviewed && (
+            <span className="review-feedback">
+              <CircleCheck size={16} />
+              Revisão registrada neste protótipo.
+            </span>
+          )}
+        </div>
+      </div>
+    </section>
+  ) : (
+    <section className="panel result-panel empty-panel">
+      <div>
+        <span className="panel__eyebrow">RELATÓRIOS</span>
+        <h2>Nenhum relatório carregado nesta sessão</h2>
+        <p>
+          Carregue o caso demonstrativo para gerar o relatório automatizado e
+          enviá-lo para revisão médica posterior.
+        </p>
+      </div>
+
+      <button className="primary-button" onClick={loadDemoCase} type="button">
+        Carregar caso demonstrativo
+      </button>
+    </section>
+  )
+
+  const historySection = (
+    <section className="panel recent-panel">
+      <div className="panel__header">
+        <div>
+          <span className="panel__eyebrow">ATIVIDADE RECENTE</span>
+          <h2>Histórico recente</h2>
+        </div>
+      </div>
+
+      <div className="recent-list">
+        {recentCases.map((item) => (
+          <div className="recent-case" key={item.patient}>
+            <span className="recent-case__avatar">{item.initials}</span>
+
+            <div className="recent-case__identity">
+              <strong>{item.patient}</strong>
+              <span>Exame: {item.exam}</span>
+            </div>
+
+            <span className="case-status case-status--success">
+              Relatório: {item.report}
+            </span>
+
+            <span className={`case-status case-status--${item.statusClass}`}>
+              Revisão: {item.review}
+            </span>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
@@ -162,8 +514,15 @@ function App() {
   }
 
   function loadDemoCase() {
-    setSelectedFile('pentacam-caso-demonstrativo.pdf')
-    setShowDemoResult(true)
+    setSelectedFile('pentacam-maria-silva.pdf')
+    setIsReviewed(false)
+    setProcessingStep(1)
+
+    steps.slice(1).forEach((_, index) => {
+      window.setTimeout(() => {
+        setProcessingStep(index + 2)
+      }, 180 * (index + 1))
+    })
   }
 
   return (
@@ -176,7 +535,7 @@ function App() {
 
           <div>
             <strong>RefratIA</strong>
-            <span>Pré-avaliação refrativa</span>
+            <span>Relatório refrativo preliminar</span>
           </div>
         </div>
 
@@ -189,8 +548,12 @@ function App() {
               icon: <LayoutDashboard size={19} />,
             },
             {
-              label: 'Nova avaliação',
+              label: 'Nova análise',
               icon: <Plus size={19} />,
+            },
+            {
+              label: 'Relatórios',
+              icon: <FileText size={19} />,
             },
             {
               label: 'Histórico',
@@ -230,7 +593,7 @@ function App() {
 
             <div>
               <strong>Dr. Tiago</strong>
-              <span>Cirurgião responsável</span>
+              <span>Responsável clínico</span>
             </div>
           </div>
 
@@ -241,7 +604,7 @@ function App() {
       <main className="main-content">
         <header className="topbar">
           <div>
-            <span className="eyebrow">ASSISTENTE CLÍNICO EXPERIMENTAL</span>
+            <span className="eyebrow">PROTOCOLO DEMONSTRATIVO</span>
             <h1>{activeSection}</h1>
           </div>
 
@@ -270,14 +633,15 @@ function App() {
           <div className="hero">
             <div className="hero__copy">
               <span className="hero__icon">
-                <Sparkles size={20} />
+                <UploadCloud size={20} />
               </span>
 
               <div>
-                <h2>Transforme exames em uma avaliação estruturada</h2>
+                <h2>Envie exames e gere um relatório preliminar</h2>
                 <p>
-                  Envie os dados do caso, confirme os parâmetros identificados
-                  e gere um relatório rastreável para revisão médica.
+                  O protótipo extrai dados automaticamente, aplica o Protocolo
+                  RefratIA v0.1 e disponibiliza o relatório antes da revisão
+                  médica posterior.
                 </p>
               </div>
             </div>
@@ -285,7 +649,8 @@ function App() {
             <div className="hero__notice">
               <ShieldCheck size={18} />
               <span>
-                O sistema apoia a avaliação e não substitui a decisão clínica.
+                Apoio à avaliação clínica. Não constitui diagnóstico, laudo ou
+                indicação cirúrgica.
               </span>
             </div>
           </div>
@@ -300,7 +665,7 @@ function App() {
 
             <MetricCard
               detail={metrics[1].detail}
-              icon={<AlertTriangle size={20} />}
+              icon={<FileCheck size={20} />}
               label={metrics[1].label}
               tone={metrics[1].tone}
               value={metrics[1].value}
@@ -308,298 +673,190 @@ function App() {
 
             <MetricCard
               detail={metrics[2].detail}
-              icon={<CircleCheck size={20} />}
+              icon={<AlertTriangle size={20} />}
               label={metrics[2].label}
               tone={metrics[2].tone}
               value={metrics[2].value}
             />
+
+            <MetricCard
+              detail={metrics[3].detail}
+              icon={<CircleCheck size={20} />}
+              label={metrics[3].label}
+              tone={metrics[3].tone}
+              value={metrics[3].value}
+            />
           </div>
 
-          <div className="workspace-grid">
-            <section className="panel new-analysis-panel">
-              <div className="panel__header">
+          {activeSection === 'Visão geral' && (
+            <>
+              <section className="panel result-panel empty-panel">
                 <div>
-                  <span className="panel__eyebrow">NOVO CASO</span>
-                  <h2>Iniciar pré-avaliação</h2>
-                </div>
-
-                <span className="step-counter">Etapa 1 de 3</span>
-              </div>
-
-              <div className="analysis-steps">
-                <Step
-                  active
-                  description="Identificação e refração"
-                  number="1"
-                  title="Dados do caso"
-                />
-                <Step
-                  description="Pentacam suportado"
-                  number="2"
-                  title="Enviar exame"
-                />
-                <Step
-                  description="Confirmar parâmetros"
-                  number="3"
-                  title="Revisão médica"
-                />
-              </div>
-
-              <div className="form-grid">
-                <label className="field">
-                  <span>Identificação do caso</span>
-                  <input
-                    defaultValue="Caso demonstrativo 025"
-                    placeholder="Ex.: Caso 025"
-                  />
-                </label>
-
-                <label className="field">
-                  <span>Idade</span>
-                  <div className="input-with-suffix">
-                    <input defaultValue="38" type="number" />
-                    <span>anos</span>
-                  </div>
-                </label>
-
-                <label className="field">
-                  <span>Esfera</span>
-                  <div className="input-with-suffix">
-                    <input defaultValue="-4.50" step="0.25" type="number" />
-                    <span>D</span>
-                  </div>
-                </label>
-
-                <label className="field">
-                  <span>Cilindro</span>
-                  <div className="input-with-suffix">
-                    <input defaultValue="-1.25" step="0.25" type="number" />
-                    <span>D</span>
-                  </div>
-                </label>
-              </div>
-
-              <div className="upload-area">
-                <span className="upload-area__icon">
-                  <UploadCloud size={27} />
-                </span>
-
-                <div>
-                  <strong>
-                    {selectedFile ?? 'Envie o relatório do Pentacam'}
-                  </strong>
+                  <span className="panel__eyebrow">RESUMO OPERACIONAL</span>
+                  <h2>Fluxo automatizado ativo</h2>
                   <p>
-                    Modelo demonstrativo suportado em PDF, com tamanho máximo
-                    de 10 MB.
+                    Exames entram no protótipo, geram relatório preliminar e
+                    seguem para revisão médica posterior.
                   </p>
-                </div>
-
-                <button
-                  className="secondary-button"
-                  onClick={loadDemoCase}
-                  type="button"
-                >
-                  {selectedFile ? 'Arquivo carregado' : 'Usar caso demonstrativo'}
-                </button>
-              </div>
-
-              <div className="panel__footer">
-                <div className="privacy-note">
-                  <ShieldCheck size={17} />
-                  Use somente dados fictícios ou anonimizados neste protótipo.
                 </div>
 
                 <button
                   className="primary-button"
-                  disabled={!selectedFile}
-                  onClick={() => setShowDemoResult(true)}
+                  onClick={() => setActiveSection('Nova análise')}
                   type="button"
                 >
-                  Processar exame
-                  <ArrowRight size={18} />
+                  Nova análise
                 </button>
-              </div>
-            </section>
+              </section>
 
-            <aside className="panel protocol-panel">
-              <div className="panel__header">
-                <div>
-                  <span className="panel__eyebrow">PROTOCOLO ATIVO</span>
-                  <h2>Fluxo do protótipo</h2>
-                </div>
-
-                <Stethoscope size={22} />
-              </div>
-
-              <div className="protocol-list">
-                <div className="protocol-item">
-                  <span>01</span>
-                  <div>
-                    <strong>Extração assistida</strong>
-                    <p>
-                      O sistema identifica parâmetros candidatos no exame.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="protocol-item">
-                  <span>02</span>
-                  <div>
-                    <strong>Confirmação humana</strong>
-                    <p>
-                      Nenhum valor é utilizado antes da revisão do médico.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="protocol-item">
-                  <span>03</span>
-                  <div>
-                    <strong>Regras rastreáveis</strong>
-                    <p>
-                      O relatório informa quais critérios foram aplicados.
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="protocol-scope">
-                <span>ESCOPO ATUAL</span>
-
-                <ul>
-                  <li>
-                    <Check size={15} />
-                    Um modelo de Pentacam
-                  </li>
-                  <li>
-                    <Check size={15} />
-                    Cinco parâmetros principais
-                  </li>
-                  <li>
-                    <Check size={15} />
-                    Direcionamento genérico
-                  </li>
-                  <li>
-                    <Check size={15} />
-                    Relatório para revisão
-                  </li>
-                </ul>
-              </div>
-            </aside>
-          </div>
-
-          {showDemoResult && (
-            <section className="panel result-panel">
-              <div className="panel__header">
-                <div>
-                  <span className="panel__eyebrow">RESULTADO DEMONSTRATIVO</span>
-                  <h2>Parâmetros identificados</h2>
-                </div>
-
-                <span className="result-status">
-                  <AlertTriangle size={16} />
-                  Revisão necessária
-                </span>
-              </div>
-
-              <div className="parameters-table">
-                <div className="parameters-table__header">
-                  <span>Parâmetro</span>
-                  <span>Valor identificado</span>
-                  <span>Confirmação</span>
-                </div>
-
-                {[
-                  ['Kmax', '44,2 D', 'Confirmado'],
-                  ['Paquimetria mínima', '521 µm', 'Confirmado'],
-                  ['BAD-D', '1,18', 'Confirmado'],
-                  ['ARTmax', 'Não identificado', 'Revisar'],
-                  ['Astigmatismo corneano', '1,31 D', 'Confirmado'],
-                ].map(([parameter, value, status]) => (
-                  <div className="parameters-table__row" key={parameter}>
-                    <strong>{parameter}</strong>
-                    <span>{value}</span>
-                    <span
-                      className={
-                        status === 'Confirmado'
-                          ? 'parameter-status parameter-status--confirmed'
-                          : 'parameter-status parameter-status--review'
-                      }
-                    >
-                      {status === 'Confirmado' ? (
-                        <Check size={14} />
-                      ) : (
-                        <AlertTriangle size={14} />
-                      )}
-                      {status}
-                    </span>
-                  </div>
-                ))}
-              </div>
-
-              <div className="result-summary">
-                <FileText size={21} />
-
-                <div>
-                  <strong>Prévia do direcionamento</strong>
-                  <p>
-                    O caso encontra-se na faixa etária em que abordagens
-                    corneanas podem ser consideradas, desde que os critérios de
-                    segurança sejam confirmados. O astigmatismo corneano
-                    identificado aciona a regra de avaliação de tratamento
-                    personalizado. O ARTmax precisa ser revisado antes da
-                    emissão do relatório.
-                  </p>
-                </div>
-
-                <button className="text-button" type="button">
-                  Ver regras aplicadas
-                  <ChevronRight size={17} />
-                </button>
-              </div>
-            </section>
+              {historySection}
+            </>
           )}
 
-          <section className="panel recent-panel">
-            <div className="panel__header">
-              <div>
-                <span className="panel__eyebrow">ATIVIDADE RECENTE</span>
-                <h2>Últimos casos</h2>
-              </div>
+          {activeSection === 'Nova análise' && (
+            <>
+              <div className="workspace-grid">
+                <section className="panel new-analysis-panel">
+                  <div className="panel__header">
+                    <div>
+                      <span className="panel__eyebrow">NOVA ANÁLISE</span>
+                      <h2>Enviar exames</h2>
+                    </div>
 
-              <button className="text-button" type="button">
-                Ver histórico
-                <ChevronRight size={17} />
-              </button>
-            </div>
-
-            <div className="recent-list">
-              {recentCases.map((item) => (
-                <div className="recent-case" key={item.patient}>
-                  <span className="recent-case__avatar">{item.initials}</span>
-
-                  <div className="recent-case__identity">
-                    <strong>{item.patient}</strong>
-                    <span>{item.date}</span>
+                    <span className="step-counter">
+                      {reportGenerated
+                        ? 'Relatório disponível'
+                        : 'Aguardando exame'}
+                    </span>
                   </div>
 
-                  <span
-                    className={`case-status case-status--${item.statusClass}`}
-                  >
-                    {item.status}
-                  </span>
+                  <div className="analysis-steps">
+                    {steps.map((step, index) => (
+                      <Step
+                        active={processingStep === index + 1}
+                        completed={processingStep > index + 1}
+                        description={step.description}
+                        key={step.title}
+                        number={String(index + 1)}
+                        title={step.title}
+                      />
+                    ))}
+                  </div>
 
                   <button
-                    aria-label={`Abrir ${item.patient}`}
-                    className="icon-button"
+                    className="upload-area upload-area--button"
+                    onClick={loadDemoCase}
                     type="button"
                   >
-                    <ChevronRight size={18} />
+                    <span className="upload-area__icon">
+                      <UploadCloud size={27} />
+                    </span>
+
+                    <span>
+                      <strong>
+                        {selectedFile ?? 'Arraste os exames do paciente'}
+                      </strong>
+                      <small>
+                        {selectedFile
+                          ? 'Exame demonstrativo recebido para extração automática.'
+                          : 'Protótipo atual: modelo específico de Pentacam em PDF.'}
+                      </small>
+                    </span>
+
+                    <span className="secondary-button">
+                      {selectedFile
+                        ? 'Recarregar caso'
+                        : 'Carregar caso demonstrativo'}
+                    </span>
                   </button>
-                </div>
-              ))}
-            </div>
-          </section>
+
+                  <div className="panel__footer">
+                    <div className="privacy-note">
+                      <ShieldCheck size={17} />
+                      Use somente dados fictícios ou anonimizados neste
+                      protótipo.
+                    </div>
+
+                    {selectedFile && (
+                      <span className="file-chip">
+                        <FileText size={15} />
+                        {selectedFile}
+                      </span>
+                    )}
+                  </div>
+                </section>
+
+                <aside className="panel protocol-panel">
+                  <div className="panel__header">
+                    <div>
+                      <span className="panel__eyebrow">PROTOCOLO ATIVO</span>
+                      <h2>Protocolo RefratIA v0.1</h2>
+                    </div>
+
+                    <Stethoscope size={22} />
+                  </div>
+
+                  <div className="age-bands">
+                    {['18 a 40 anos', '41 a 55 anos', '56 anos ou mais'].map(
+                      (band) => (
+                        <span
+                          className={
+                            band === '18 a 40 anos'
+                              ? 'age-band age-band--selected'
+                              : 'age-band'
+                          }
+                          key={band}
+                        >
+                          {band === '18 a 40 anos' && <Check size={14} />}
+                          {band}
+                        </span>
+                      ),
+                    )}
+                  </div>
+
+                  <div className="protocol-list">
+                    {protocolRules.map((rule, index) => (
+                      <div className="protocol-item" key={rule}>
+                        <span>{String(index + 1).padStart(2, '0')}</span>
+                        <div>
+                          <strong>{rule}</strong>
+                          <p>
+                            Regra demonstrativa acionada para rastreabilidade do
+                            relatório preliminar.
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="protocol-scope">
+                    <span>ESCOPO ATUAL</span>
+
+                    <ul>
+                      <li>
+                        <Check size={15} />
+                        Protocolo estruturado e demonstrativo
+                      </li>
+                      <li>
+                        <Check size={15} />
+                        Relatório automatizado preliminar
+                      </li>
+                      <li>
+                        <Check size={15} />
+                        Revisão médica posterior
+                      </li>
+                    </ul>
+                  </div>
+                </aside>
+              </div>
+
+              {reportGenerated && reportSection}
+            </>
+          )}
+
+          {activeSection === 'Relatórios' && reportSection}
+
+          {activeSection === 'Histórico' && historySection}
         </section>
       </main>
     </div>
