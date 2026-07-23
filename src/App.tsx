@@ -535,7 +535,7 @@ function App() {
       {/* Main */}
       <main className="min-w-0">
         {/* Topbar */}
-        <header className="bg-surface sticky top-0 z-10 flex min-h-[90px] items-center justify-between gap-6 border-b border-border px-[clamp(24px,4vw,56px)] py-5">
+        <header className="sticky top-0 z-50 isolate flex min-h-[90px] items-center justify-between gap-6 border-b border-border bg-[var(--surface)] px-[clamp(24px,4vw,56px)] py-5 shadow-sm">
           <div>
             <Eyebrow>PROTOCOLO DEMONSTRATIVO</Eyebrow>
             <h1 className="mt-1 mb-0 font-display text-2xl tracking-[-0.035em]">{activeSection}</h1>

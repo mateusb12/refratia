@@ -1,0 +1,39 @@
+# Repomix-generated outputs
+codebase*.md
+*.repomix.md
+*.repomix.xml
+*.repomix.txt
+
+# Large visual assets with little value for code analysis
+public/favicon.svg
+public/icons.svg
+
+# Temporary Vite boilerplate
+README.md
+
+# Dependency-resolution files
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Reports and generated artifacts
+coverage/
+.nyc_output/
+playwright-report/
+test-results/
+*.lcov
+
+# Local caches
+.cache/
+.tmp/
+temp/
+tmp/
+*.tsbuildinfo
+
+# Environment files and secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
