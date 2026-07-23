@@ -11,9 +11,13 @@
     "deploy": "bash scripts/deploy-pages.sh"
   },
   "dependencies": {
+    "autoprefixer": "^10.5.4",
+    "clsx": "^2.1.1",
     "lucide-react": "^1.25.0",
+    "postcss": "^8.5.22",
     "react": "^19.2.7",
-    "react-dom": "^19.2.7"
+    "react-dom": "^19.2.7",
+    "tailwindcss": "^3.4.19"
   },
   "devDependencies": {
     "@emnapi/core": "1.11.2",
