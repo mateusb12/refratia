@@ -14,6 +14,7 @@ import {
   History,
   Info,
   LayoutDashboard,
+  Map,
   Moon,
   Plus,
   Settings,
@@ -25,6 +26,7 @@ import {
   UserRound,
   X,
 } from 'lucide-react'
+import RoadmapPage from './components/roadmap/RoadmapPage'
 
 type Theme = 'light' | 'dark'
 type NoticeTone = 'information' | 'warning' | 'blocking'
@@ -237,13 +239,13 @@ function getInitialTheme(): Theme {
 }
 
 function Eyebrow({ children }: { children: ReactNode }) {
-  return <span className="text-primary text-[10px] font-bold tracking-[0.13em]">{children}</span>
+  return <span className="text-primary text-xs font-bold tracking-[0.13em]">{children}</span>
 }
 
 function PrimaryButton({ children, onClick, disabled }: { children: ReactNode; onClick?: () => void; disabled?: boolean }) {
   return (
     <button
-      className="inline-flex items-center justify-center gap-2 rounded-[9px] border-0 bg-primary px-4 py-[11px] text-[11px] font-semibold text-white transition-[background,transform] duration-150 hover:enabled:-translate-y-px hover:enabled:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-45"
+      className="inline-flex items-center justify-center gap-2 rounded-[9px] border-0 bg-primary px-4 py-[11px] text-sm font-semibold text-white transition-[background,transform] duration-150 hover:enabled:-translate-y-px hover:enabled:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-45"
       disabled={disabled}
       onClick={onClick}
       type="button"
@@ -256,7 +258,7 @@ function PrimaryButton({ children, onClick, disabled }: { children: ReactNode; o
 function StatusBadge({ children, tone }: { children: ReactNode; tone: 'success' | 'warning' | 'blocking' | 'neutral' }) {
   return (
     <span className={clsx(
-      'inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-1.5 text-[9px] font-bold',
+      'inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-1.5 text-xs font-bold',
       tone === 'success' && 'bg-success-soft text-success',
       tone === 'warning' && 'bg-warning-soft text-warning',
       tone === 'blocking' && 'bg-danger-soft text-danger',
@@ -275,8 +277,8 @@ function MetricCard({ label, value, detail, tone }: (typeof metrics)[number]) {
         tone === 'warning' ? 'bg-warning-soft' : tone === 'success' ? 'bg-success-soft' : 'bg-primary-soft',
       )} />
       <span className="relative text-xs font-medium text-text-secondary">{label}</span>
-      <strong className="relative mt-4 block font-display text-[25px] leading-none tracking-[-0.04em]">{value}</strong>
-      <span className="relative mt-1.5 block text-[10px] text-text-muted">{detail}</span>
+      <strong className="relative mt-4 block font-display text-2xl leading-none tracking-[-0.04em]">{value}</strong>
+      <span className="relative mt-1.5 block text-xs text-text-muted">{detail}</span>
     </article>
   )
 }
@@ -300,7 +302,7 @@ function ProcessSteps({ current, reviewed }: { current: number; reviewed: boolea
             )}
           >
             <span className={clsx(
-              'grid h-7 w-7 flex-none place-items-center rounded-full border text-[10px] font-bold',
+              'grid h-7 w-7 flex-none place-items-center rounded-full border text-xs font-bold',
               active && 'border-primary bg-primary text-white',
               completed && 'border-success bg-success text-white',
               !active && !completed && 'border-border-strong bg-surface text-text-secondary',
@@ -308,8 +310,8 @@ function ProcessSteps({ current, reviewed }: { current: number; reviewed: boolea
               {completed ? <Check size={14} strokeWidth={3} /> : number}
             </span>
             <span className="min-w-0">
-              <strong className="block truncate text-[10px]">{step.title}</strong>
-              <small className="mt-0.5 block truncate text-[8px] text-text-muted">{step.description}</small>
+              <strong className="block truncate text-xs">{step.title}</strong>
+              <small className="mt-0.5 block truncate text-xs text-text-muted">{step.description}</small>
             </span>
           </li>
         )
@@ -322,7 +324,7 @@ function ClinicalNotice({ children, tone }: { children: ReactNode; tone: NoticeT
   const Icon = tone === 'information' ? Info : tone === 'warning' ? AlertTriangle : ShieldAlert
   return (
     <div className={clsx(
-      'flex items-start gap-3 rounded-xl border p-4 text-[11px] leading-relaxed',
+      'flex items-start gap-3 rounded-xl border p-4 text-sm leading-relaxed',
       tone === 'information' && 'border-primary-border bg-primary-soft text-text-secondary',
       tone === 'warning' && 'border-warning/30 bg-warning-soft text-text-secondary',
       tone === 'blocking' && 'border-danger/30 bg-danger-soft text-text-secondary',
@@ -360,8 +362,8 @@ function DocumentsReview({
       <Eyebrow>ETAPA 2 · CONFERÊNCIA</Eyebrow>
       <div className="mt-1 flex items-end justify-between gap-4 max-[580px]:items-start">
         <div>
-          <h2 className="m-0 font-display text-[18px] tracking-[-0.025em]">Documentos recebidos</h2>
-          <p className="mb-0 mt-1.5 text-[11px] leading-relaxed text-text-secondary">
+          <h2 className="m-0 font-display text-xl tracking-[-0.025em]">Documentos recebidos</h2>
+          <p className="mb-0 mt-1.5 text-sm leading-relaxed text-text-secondary">
             Confira se os arquivos pertencem ao mesmo paciente antes de revisar os parâmetros.
           </p>
         </div>
@@ -380,7 +382,7 @@ function DocumentsReview({
                 <StatusBadge tone={tone}>{document.status}</StatusBadge>
               </div>
               <h3 className="mb-0 mt-3 font-display text-sm">{document.name}</h3>
-              <dl className="mt-3 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-2 text-[10px]">
+              <dl className="mt-3 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-2 text-xs">
                 <dt className="text-text-muted">Paciente</dt>
                 <dd className="m-0 text-right font-semibold">{document.patient}</dd>
                 <dt className="text-text-muted">Nascimento</dt>
@@ -395,14 +397,14 @@ function DocumentsReview({
               </dl>
               <button
                 aria-expanded={expanded === document.name}
-                className="mt-4 text-[10px] font-bold text-primary hover:underline"
+                className="mt-4 text-xs font-bold text-primary hover:underline"
                 onClick={() => onToggle(document.name)}
                 type="button"
               >
                 {expanded === document.name ? 'Ocultar detalhes' : 'Ver detalhes'}
               </button>
               {expanded === document.name && (
-                <p className="mb-0 mt-2 border-t border-border pt-3 text-[10px] leading-relaxed text-text-secondary">
+                <p className="mb-0 mt-2 border-t border-border pt-3 text-xs leading-relaxed text-text-secondary">
                   {document.detail}
                 </p>
               )}
@@ -435,8 +437,8 @@ function ExtractedDataReview({ onTrace }: { onTrace: (data: ExtractedDatum) => v
       <Eyebrow>ETAPA 3 · CONFERÊNCIA</Eyebrow>
       <div className="mt-1 flex items-end justify-between gap-4">
         <div>
-          <h2 className="m-0 font-display text-[18px] tracking-[-0.025em]">Dados extraídos</h2>
-          <p className="mb-0 mt-1.5 text-[11px] leading-relaxed text-text-secondary">
+          <h2 className="m-0 font-display text-xl tracking-[-0.025em]">Dados extraídos</h2>
+          <p className="mb-0 mt-1.5 text-sm leading-relaxed text-text-secondary">
             Dado bruto, cálculo e ausência aparecem separados para orientar a revisão.
           </p>
         </div>
@@ -454,14 +456,14 @@ function ExtractedDataReview({ onTrace }: { onTrace: (data: ExtractedDatum) => v
           >
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <h3 className="m-0 text-xs font-bold">{data.name}</h3>
-                {data.fullName && <p className="mb-0 mt-1 text-[9px] leading-snug text-text-muted">{data.fullName}</p>}
+                <h3 className="m-0 text-base font-bold">{data.name}</h3>
+                {data.fullName && <p className="mb-0 mt-1 text-xs leading-snug text-text-muted">{data.fullName}</p>}
               </div>
               <strong className={clsx(
                 'whitespace-nowrap font-display text-lg',
                 data.kind === 'Dado ausente' && 'text-warning text-xs',
               )}>
-                {data.value}{data.unit && <small className="ml-1 text-[10px] text-text-secondary">{data.unit}</small>}
+                {data.value}{data.unit && <small className="ml-1 text-xs text-text-secondary">{data.unit}</small>}
               </strong>
             </div>
 
@@ -473,9 +475,9 @@ function ExtractedDataReview({ onTrace }: { onTrace: (data: ExtractedDatum) => v
               </StatusBadge>
             </div>
 
-            <p className="mb-0 mt-3 text-[9px] text-text-muted">Origem: <span className="font-semibold text-text-secondary">{data.source}</span></p>
+            <p className="mb-0 mt-3 text-xs text-text-muted">Origem: <span className="font-semibold text-text-secondary">{data.source}</span></p>
             <button
-              className="mt-auto self-start pt-4 text-[10px] font-bold text-primary hover:underline"
+              className="mt-auto self-start pt-4 text-xs font-bold text-primary hover:underline"
               onClick={() => onTrace(data)}
               type="button"
             >
@@ -500,22 +502,22 @@ function RecommendationSummary({ reviewed, onReview }: { reviewed: boolean; onRe
       <div className="flex items-start justify-between gap-4 max-[580px]:flex-col">
         <div>
           <Eyebrow>ETAPAS 4 E 5 · RECOMENDAÇÃO PRELIMINAR</Eyebrow>
-          <h2 className="mb-0 mt-1 font-display text-[22px] tracking-[-0.03em]">LASIK topo-guiado</h2>
-          <p className="mb-0 mt-2 max-w-[660px] text-[11px] leading-relaxed text-text-secondary">
+          <h2 className="mb-0 mt-1 font-display text-2xl tracking-[-0.03em]">LASIK topo-guiado</h2>
+          <p className="mb-0 mt-2 max-w-[660px] text-sm leading-relaxed text-text-secondary">
             Sugestão demonstrativa para apoiar a revisão. Não representa diagnóstico ou indicação cirúrgica definitiva.
           </p>
         </div>
-        <span className="rounded-lg border border-border bg-surface-muted px-3 py-2 text-[9px] text-text-muted">
+        <span className="rounded-lg border border-border bg-surface-muted px-3 py-2 text-xs text-text-muted">
           Score de apoio <strong className="ml-1 text-text-secondary">74/100</strong>
         </span>
       </div>
 
       <div className="mt-5 grid grid-cols-[minmax(0,1.25fr)_minmax(280px,.75fr)] gap-4 max-[820px]:grid-cols-1">
         <article className="rounded-xl border border-border bg-surface-muted p-5">
-          <h3 className="m-0 text-xs">Por que esta recomendação foi gerada</h3>
+          <h3 className="m-0 font-display text-base">Por que esta recomendação foi gerada</h3>
           <ul className="mb-0 mt-4 grid list-none gap-3 p-0">
             {recommendationReasons.map((reason, index) => (
-              <li key={reason} className="flex items-center gap-2.5 text-[11px] text-text-secondary">
+              <li key={reason} className="flex items-center gap-2.5 text-sm text-text-secondary">
                 {index === recommendationReasons.length - 1
                   ? <AlertTriangle className="flex-none text-warning" size={16} />
                   : <CircleCheck className="flex-none text-success" size={16} />}
@@ -527,9 +529,9 @@ function RecommendationSummary({ reviewed, onReview }: { reviewed: boolean; onRe
 
         <aside className="rounded-xl border border-primary-border bg-primary-soft p-5">
           <Stethoscope className="text-primary" size={21} />
-          <span className="mt-4 block text-[9px] font-bold tracking-[0.12em] text-primary">NÍVEL DE CONCLUSÃO</span>
+          <span className="mt-4 block text-xs font-bold tracking-[0.12em] text-primary">NÍVEL DE CONCLUSÃO</span>
           <strong className="mt-1.5 block font-display text-base">Parcial — requer revisão médica</strong>
-          <p className="mb-0 mt-2 text-[10px] leading-relaxed text-text-secondary">
+          <p className="mb-0 mt-2 text-xs leading-relaxed text-text-secondary">
             A recomendação permanece válida para análise, mas a ausência de ARTmax limita a conclusão.
           </p>
           <div className="mt-5">
@@ -542,7 +544,7 @@ function RecommendationSummary({ reviewed, onReview }: { reviewed: boolean; onRe
       </div>
 
       {reviewed && (
-        <p className="mb-0 mt-4 flex items-center gap-2 text-[10px] font-semibold text-success">
+        <p className="mb-0 mt-4 flex items-center gap-2 text-xs font-semibold text-success">
           <CircleCheck size={16} /> Revisão registrada somente neste protótipo.
         </p>
       )}
@@ -550,8 +552,8 @@ function RecommendationSummary({ reviewed, onReview }: { reviewed: boolean; onRe
       <div className="mt-5 rounded-xl border border-border bg-surface-muted p-4">
         <div className="mb-3 flex items-center justify-between gap-3">
           <div>
-            <span className="text-[9px] font-bold tracking-[0.12em] text-text-muted">PRÉVIA DE OUTRO CASO</span>
-            <h3 className="mb-0 mt-1 text-xs">Exemplo de bloqueio</h3>
+            <span className="text-xs font-bold tracking-[0.12em] text-text-muted">PRÉVIA DE OUTRO CASO</span>
+            <h3 className="mb-0 mt-1 font-display text-base">Exemplo de bloqueio</h3>
           </div>
           <StatusBadge tone="blocking">Caso não liberado</StatusBadge>
         </div>
@@ -590,7 +592,7 @@ function TraceabilityDrawer({ data, onClose }: { data: ExtractedDatum | null; on
           <div>
             <Eyebrow>RASTREABILIDADE</Eyebrow>
             <h2 className="mb-0 mt-1 font-display text-xl" id="traceability-title">{data.name}</h2>
-            {data.fullName && <p className="mb-0 mt-1 text-[11px] text-text-secondary">{data.fullName}</p>}
+            {data.fullName && <p className="mb-0 mt-1 text-sm text-text-secondary">{data.fullName}</p>}
           </div>
           <button
             autoFocus
@@ -606,12 +608,12 @@ function TraceabilityDrawer({ data, onClose }: { data: ExtractedDatum | null; on
         <div className="mt-6 grid min-h-[190px] place-items-center rounded-xl border border-dashed border-border-strong bg-surface-muted text-center">
           <span>
             <FileSearch className="mx-auto text-text-muted" size={25} />
-            <strong className="mt-2 block text-[11px]">Recorte do exame</strong>
-            <small className="mt-1 block text-[9px] text-text-muted">Placeholder demonstrativo</small>
+            <strong className="mt-2 block text-sm">Recorte do exame</strong>
+            <small className="mt-1 block text-xs text-text-muted">Placeholder demonstrativo</small>
           </span>
         </div>
 
-        <dl className="mt-6 grid grid-cols-[minmax(110px,.7fr)_minmax(0,1.3fr)] gap-x-4 gap-y-3 text-[11px]">
+        <dl className="mt-6 grid grid-cols-[minmax(110px,.7fr)_minmax(0,1.3fr)] gap-x-4 gap-y-3 text-sm">
           {[
             ['Parâmetro', data.name],
             ['Nome completo', data.fullName ?? data.name],
@@ -631,14 +633,14 @@ function TraceabilityDrawer({ data, onClose }: { data: ExtractedDatum | null; on
 
         {data.formula && (
           <div className="mt-5 rounded-xl border border-success/30 bg-success-soft p-4">
-            <span className="text-[9px] font-bold tracking-[0.12em] text-success">FÓRMULA</span>
-            <p className="mb-0 mt-2 font-mono text-[11px] leading-relaxed">{data.formula}</p>
+            <span className="text-xs font-bold tracking-[0.12em] text-success">FÓRMULA</span>
+            <p className="mb-0 mt-2 font-mono text-sm leading-relaxed">{data.formula}</p>
           </div>
         )}
         {data.crossCheck && (
           <div className="mt-5 rounded-xl border border-primary-border bg-primary-soft p-4">
-            <span className="text-[9px] font-bold tracking-[0.12em] text-primary">CHECAGEM CRUZADA</span>
-            <p className="mb-0 mt-2 text-[11px] leading-relaxed text-text-secondary">{data.crossCheck}</p>
+            <span className="text-xs font-bold tracking-[0.12em] text-primary">CHECAGEM CRUZADA</span>
+            <p className="mb-0 mt-2 text-sm leading-relaxed text-text-secondary">{data.crossCheck}</p>
           </div>
         )}
       </aside>
@@ -688,8 +690,8 @@ function App() {
     <section className="mt-5 flex items-center justify-between gap-5 rounded-2xl border border-border bg-surface p-6 shadow-sm max-[580px]:flex-col max-[580px]:items-stretch">
       <div>
         <Eyebrow>REVISÃO CLÍNICA</Eyebrow>
-        <h2 className="mb-0 mt-1 font-display text-[17px]">Nenhum caso carregado nesta sessão</h2>
-        <p className="mb-0 mt-1.5 text-[11px] leading-relaxed text-text-secondary">
+        <h2 className="mb-0 mt-1 font-display text-xl">Nenhum caso carregado nesta sessão</h2>
+        <p className="mb-0 mt-1.5 text-sm leading-relaxed text-text-secondary">
           Carregue os dados fictícios para percorrer a experiência completa.
         </p>
       </div>
@@ -700,17 +702,17 @@ function App() {
   const historySection = (
     <section className="mt-5 rounded-2xl border border-border bg-surface p-6 shadow-sm">
       <Eyebrow>ATIVIDADE RECENTE</Eyebrow>
-      <h2 className="mb-0 mt-1 font-display text-[17px]">Histórico recente</h2>
+      <h2 className="mb-0 mt-1 font-display text-xl">Histórico recente</h2>
       <div className="mt-4">
         {recentCases.map((item) => (
           <div
             key={item.patient}
             className="grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-3 border-t border-border py-3 first:border-t-0 max-[580px]:grid-cols-[auto_minmax(0,1fr)]"
           >
-            <span className="grid h-9 w-9 place-items-center rounded-[10px] bg-surface-muted text-[10px] font-bold text-primary">{item.initials}</span>
+            <span className="grid h-9 w-9 place-items-center rounded-[10px] bg-surface-muted text-xs font-bold text-primary">{item.initials}</span>
             <span className="min-w-0">
-              <strong className="block truncate text-[11px]">{item.patient}</strong>
-              <small className="text-[9px] text-text-muted">Caso demonstrativo</small>
+              <strong className="block truncate text-sm">{item.patient}</strong>
+              <small className="text-xs text-text-muted">Caso demonstrativo</small>
             </span>
             <StatusBadge tone={item.report === 'Bloqueado' ? 'blocking' : item.tone}>Relatório: {item.report}</StatusBadge>
             <StatusBadge tone={item.tone}>Revisão: {item.review}</StatusBadge>
@@ -728,13 +730,13 @@ function App() {
             <Activity size={23} />
           </span>
           <span>
-            <strong className="block font-display text-[19px] tracking-[-0.02em]">RefratIA</strong>
-            <small className="text-[11px] text-sidebar-muted">Revisão clínica preliminar</small>
+            <strong className="block font-display text-xl tracking-[-0.02em]">RefratIA</strong>
+            <small className="text-sm text-sidebar-muted">Revisão clínica preliminar</small>
           </span>
         </div>
 
         <nav className="flex flex-col gap-[5px] max-[820px]:hidden" aria-label="Navegação principal">
-          <span className="mx-3 mb-2 mt-1 text-[10px] font-bold tracking-[0.14em] text-sidebar-muted">PLATAFORMA</span>
+          <span className="mx-3 mb-2 mt-1 text-xs font-bold tracking-[0.14em] text-sidebar-muted">PLATAFORMA</span>
           {[
             { label: 'Visão geral', icon: <LayoutDashboard size={19} /> },
             { label: 'Nova análise', icon: <Plus size={19} /> },
@@ -753,9 +755,20 @@ function App() {
               {item.icon}{item.label}
             </button>
           ))}
-          <span className="mx-3 mb-2 mt-6 text-[10px] font-bold tracking-[0.14em] text-sidebar-muted">SISTEMA</span>
+          <span className="mx-3 mb-2 mt-6 text-xs font-bold tracking-[0.14em] text-sidebar-muted">SISTEMA</span>
           <button className="flex items-center gap-3 rounded-[10px] px-[13px] py-[11px] text-sm text-sidebar-muted hover:bg-white/[0.05]" type="button">
             <Settings size={19} /> Configurações
+          </button>
+          <button
+            aria-current={activeSection === 'Roadmap' ? 'page' : undefined}
+            className={clsx(
+              'flex w-full items-center gap-3 rounded-[10px] border-0 px-[13px] py-[11px] text-left text-sm font-medium',
+              activeSection === 'Roadmap' ? 'bg-[rgb(103_205_171_/_14%)] text-[#9be0c9]' : 'bg-transparent text-sidebar-muted hover:bg-white/[0.05] hover:text-sidebar-text',
+            )}
+            onClick={() => setActiveSection('Roadmap')}
+            type="button"
+          >
+            <Map size={19} /> Roadmap
           </button>
         </nav>
 
@@ -763,8 +776,8 @@ function App() {
           <div className="flex items-center gap-2.5 rounded-xl border border-white/[0.08] bg-white/[0.04] p-3">
             <span className="grid h-[35px] w-[35px] place-items-center rounded-full bg-sidebar-secondary text-[#86d8bd]"><UserRound size={19} /></span>
             <span>
-              <strong className="block text-[13px]">Dr. Tiago</strong>
-              <small className="text-[10px] text-sidebar-muted">Responsável clínico</small>
+              <strong className="block text-sm">Dr. Tiago</strong>
+              <small className="text-xs text-sidebar-muted">Responsável clínico</small>
             </span>
           </div>
         </div>
@@ -777,7 +790,7 @@ function App() {
             <h1 className="mb-0 mt-1 font-display text-2xl tracking-[-0.035em]">{activeSection}</h1>
           </div>
           <div className="flex items-center gap-3">
-            <span className="hidden items-center gap-2 rounded-full border border-border bg-surface px-3 py-2 text-[11px] text-text-secondary sm:flex">
+            <span className="hidden items-center gap-2 rounded-full border border-border bg-surface px-3 py-2 text-sm text-text-secondary sm:flex">
               <span className="h-[7px] w-[7px] rounded-full bg-warning" /> Ambiente demonstrativo
             </span>
             <button
@@ -792,17 +805,18 @@ function App() {
         </header>
 
         <section className="mx-auto w-full max-w-[1320px] overflow-x-hidden px-[clamp(16px,4vw,56px)] pb-14 pt-8">
+          {activeSection === 'Roadmap' ? <RoadmapPage /> : <>
           <div className="hero-bg flex items-center justify-between gap-6 rounded-2xl border border-primary-border p-6 max-[820px]:flex-col max-[820px]:items-start max-[580px]:p-4">
             <div className="flex items-start gap-4">
               <span className="grid h-10 w-10 flex-none place-items-center rounded-xl bg-surface text-primary shadow-sm"><UploadCloud size={20} /></span>
               <div>
-                <h2 className="m-0 font-display text-[18px]">Revise evidências antes da conclusão clínica</h2>
-                <p className="mb-0 mt-1.5 max-w-[690px] text-[12px] leading-relaxed text-text-secondary">
+                <h2 className="m-0 font-display text-xl">Revise evidências antes da conclusão clínica</h2>
+                <p className="mb-0 mt-1.5 max-w-[690px] text-sm leading-relaxed text-text-secondary">
                   Confira documentos, dados extraídos, cálculos e a justificativa da recomendação preliminar.
                 </p>
               </div>
             </div>
-            <div className="flex max-w-[300px] items-center gap-2.5 rounded-[10px] border border-primary-border bg-surface/80 p-3 text-[10px] leading-relaxed text-text-secondary max-[820px]:max-w-none">
+            <div className="flex max-w-[300px] items-center gap-2.5 rounded-[10px] border border-primary-border bg-surface/80 p-3 text-xs leading-relaxed text-text-secondary max-[820px]:max-w-none">
               <ShieldCheck className="flex-none" size={18} />
               Apoio à avaliação clínica. Não constitui diagnóstico, laudo ou indicação cirúrgica.
             </div>
@@ -817,7 +831,7 @@ function App() {
               <section className="mt-5 flex items-center justify-between gap-5 rounded-2xl border border-border bg-surface p-6 shadow-sm max-[580px]:flex-col max-[580px]:items-stretch">
                 <div>
                   <Eyebrow>RESUMO OPERACIONAL</Eyebrow>
-                  <h2 className="mb-0 mt-1 font-display text-[17px]">Fluxo demonstrativo pronto para revisão</h2>
+                  <h2 className="mb-0 mt-1 font-display text-xl">Fluxo demonstrativo pronto para revisão</h2>
                 </div>
                 <PrimaryButton onClick={() => setActiveSection('Nova análise')}>Nova análise</PrimaryButton>
               </section>
@@ -831,7 +845,7 @@ function App() {
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <Eyebrow>FLUXO DA ANÁLISE</Eyebrow>
-                    <h2 className="mb-0 mt-1 font-display text-[17px]">Revisão do caso demonstrativo</h2>
+                    <h2 className="mb-0 mt-1 font-display text-xl">Revisão do caso demonstrativo</h2>
                   </div>
                   <StatusBadge tone={reportGenerated ? 'success' : 'neutral'}>
                     {reportGenerated ? 'Pronto para revisar' : 'Aguardando caso'}
@@ -845,10 +859,10 @@ function App() {
                 >
                   <span className="grid h-[45px] w-[45px] place-items-center rounded-xl bg-primary-soft text-primary"><UploadCloud size={25} /></span>
                   <span className="mx-3.5 min-w-0">
-                    <strong className="block truncate text-xs">{selectedFile ?? 'Caso demonstrativo ainda não carregado'}</strong>
-                    <small className="mt-1 block text-[10px] leading-relaxed text-text-muted">Dados fictícios; nenhum upload real será realizado.</small>
+                    <strong className="block truncate text-sm">{selectedFile ?? 'Caso demonstrativo ainda não carregado'}</strong>
+                    <small className="mt-1 block text-xs leading-relaxed text-text-muted">Dados fictícios; nenhum upload real será realizado.</small>
                   </span>
-                  <span className="rounded-[9px] border border-border bg-surface px-3 py-2 text-center text-[10px] font-semibold text-text-secondary max-[580px]:col-span-2 max-[580px]:mt-3">
+                  <span className="rounded-[9px] border border-border bg-surface px-3 py-2 text-center text-xs font-semibold text-text-secondary max-[580px]:col-span-2 max-[580px]:mt-3">
                     {selectedFile ? 'Recarregar caso' : 'Carregar caso demonstrativo'}
                   </span>
                 </button>
@@ -859,6 +873,7 @@ function App() {
 
           {activeSection === 'Relatórios' && reviewContent}
           {activeSection === 'Histórico' && historySection}
+          </>}
         </section>
       </main>
 
