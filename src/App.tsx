@@ -699,6 +699,11 @@ function App() {
     </section>
   )
 
+  const showCaseMetrics =
+    activeSection === 'Visão geral' ||
+    activeSection === 'Relatórios' ||
+    (activeSection === 'Nova análise' && reportGenerated)
+
   const historySection = (
     <section className="mt-5 rounded-2xl border border-border bg-surface p-6 shadow-sm">
       <Eyebrow>ATIVIDADE RECENTE</Eyebrow>
@@ -822,9 +827,11 @@ function App() {
             </div>
           </div>
 
-          <div className="mt-5 grid grid-cols-4 gap-4 max-[1100px]:grid-cols-2 max-[580px]:grid-cols-1">
-            {metrics.map((metric) => <MetricCard key={metric.label} {...metric} />)}
-          </div>
+          {showCaseMetrics && (
+            <div className="mt-5 grid grid-cols-4 gap-4 max-[1100px]:grid-cols-2 max-[580px]:grid-cols-1">
+              {metrics.map((metric) => <MetricCard key={metric.label} {...metric} />)}
+            </div>
+          )}
 
           {activeSection === 'Visão geral' && (
             <>
