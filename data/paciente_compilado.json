@@ -1,0 +1,698 @@
+{
+  "schema_version": "1.0",
+  "generated_on": "2026-07-30",
+  "language": "pt-BR",
+  "patient": {
+    "full_name": "Rolmey Arantes Silva",
+    "birth_date": "1967-05-12",
+    "birth_date_source_formats": [
+      "12/05/1967",
+      "05/12/1967"
+    ]
+  },
+  "facility": {
+    "name": "HC Olhos",
+    "description": "Consultas - Exames - Cirurgias",
+    "address": "Av. JK Qd 106 Sul Lt 21, Palmas/TO",
+    "phone": "(63) 3217-1850"
+  },
+  "conventions": {
+    "OD": "olho direito",
+    "OS": "olho esquerdo",
+    "AO": "ambos os olhos",
+    "null": "não informado no documento",
+    "decimal_separator_normalized": "ponto"
+  },
+  "source_files": [
+    {
+      "path": "data/ARANTES SILVA_ROLMEY_OD_30072026_115226.pdf",
+      "sha256": "1472d3c5f5c5f37aaa8cfa2b04eb41673ddc34472754ff1aa50dd477396f0e66",
+      "type": "application/pdf",
+      "pages": 9,
+      "exam": "tomografia corneana Pentacam",
+      "eye": "OD",
+      "page_contents": {
+        "1": "Geral",
+        "2": "Imagens Scheimpflug",
+        "3": "Mapas",
+        "4": "4 Mapas Refrativos",
+        "5": "Paquimétrico",
+        "6": "Topométrico / Estadiamento KC",
+        "7": "Cataract Pre-OP",
+        "8": "Ectasia Reforçada Belin / Ambrósio",
+        "9": "Anéis Corneanos"
+      }
+    },
+    {
+      "path": "data/ARANTES SILVA_ROLMEY_OS_30072026_115345.pdf",
+      "sha256": "656e90a015429535d7b957c3b5ccf706a65859390ebaeef0384a4292e9a2fbcb",
+      "type": "application/pdf",
+      "pages": 9,
+      "exam": "tomografia corneana Pentacam",
+      "eye": "OS",
+      "page_contents": {
+        "1": "Geral",
+        "2": "Imagens Scheimpflug",
+        "3": "Mapas",
+        "4": "4 Mapas Refrativos",
+        "5": "Paquimétrico",
+        "6": "Topométrico / Estadiamento KC",
+        "7": "Cataract Pre-OP",
+        "8": "Ectasia Reforçada Belin / Ambrósio",
+        "9": "Anéis Corneanos"
+      }
+    },
+    {
+      "path": "data/BIO SRK-T AO.pdf",
+      "sha256": "76bde1307350ddf09b18c2273f116362bce2d5f947cea0996abf4ef57840e9e7",
+      "type": "application/pdf",
+      "pages": 4,
+      "exam": "biometria e cálculo de lente intraocular SRK/T",
+      "eye": "AO"
+    },
+    {
+      "path": "data/9e903625-ef7e-4b6e-b545-b77778d3b517.jpeg",
+      "sha256": "170ad7601e2a3104d227b0e5634cce0e97b8c1ce2e0fa096e3b76d7d5191ec12",
+      "type": "image/jpeg",
+      "dimensions_px": [1600, 1200],
+      "exam": "retinografia",
+      "eye": "OD"
+    },
+    {
+      "path": "data/c748c418-0589-4faa-9513-5ba9d25634e4.jpeg",
+      "sha256": "5efe8401311c15d037e7436e89dcdf8136138a676a44ed16e14790d0ba87357e",
+      "type": "image/jpeg",
+      "dimensions_px": [1600, 1200],
+      "exam": "retinografia",
+      "eye": "OS"
+    },
+    {
+      "path": "data/fa8ae102-8b94-4bcf-a109-e528b7afe846.jpeg",
+      "sha256": "f329ac4b86e93d14688afe9eaed6e2da9febaa373ddcf6ed4a1e11ce3769aab7",
+      "type": "image/jpeg",
+      "dimensions_px": [800, 1050],
+      "exam": "microscopia especular de córnea",
+      "eye": "AO"
+    }
+  ],
+  "exams": {
+    "biometry_iol": {
+      "source": {
+        "file": "data/BIO SRK-T AO.pdf",
+        "pages": [1, 2, 3, 4]
+      },
+      "device": "Haag-Streit EyeSuite IOL V4.12.0 / LS900",
+      "calculation_id": 1917,
+      "calculated_at": "2026-07-30T12:03:00-03:00",
+      "formula": "SRK/T",
+      "target_refraction_d": 0.0,
+      "warning": "Significant difference between OD and OS",
+      "eyes": {
+        "OD": {
+          "status": "phakic",
+          "axial_length_mm": 24.6,
+          "central_corneal_thickness_um": 529,
+          "aqueous_depth_mm": 3.31,
+          "anterior_chamber_depth_mm": 3.84,
+          "lens_thickness_mm": 4.52,
+          "white_to_white_mm": 12.24,
+          "keratometry": {
+            "refractive_index": 1.3375,
+            "k1_d": 43.68,
+            "k1_radius_mm": 7.731,
+            "k1_axis_deg": 54,
+            "k2_d": 43.95,
+            "k2_radius_mm": 7.68,
+            "k2_axis_deg": 144,
+            "mean_k_d": 43.82,
+            "mean_radius_mm": 7.7,
+            "astigmatism_d": -0.28,
+            "astigmatism_axis_deg": 54
+          }
+        },
+        "OS": {
+          "status": "phakic",
+          "axial_length_mm": 24.74,
+          "central_corneal_thickness_um": 527,
+          "aqueous_depth_mm": 3.31,
+          "anterior_chamber_depth_mm": 3.84,
+          "lens_thickness_mm": 4.64,
+          "white_to_white_mm": 12.4,
+          "keratometry": {
+            "refractive_index": 1.3375,
+            "k1_d": 41.11,
+            "k1_radius_mm": 8.21,
+            "k1_axis_deg": 3,
+            "k2_d": 44.28,
+            "k2_radius_mm": 7.62,
+            "k2_axis_deg": 93,
+            "mean_k_d": 42.64,
+            "mean_radius_mm": 7.92,
+            "astigmatism_d": -3.17,
+            "astigmatism_axis_deg": 3
+          }
+        }
+      },
+      "iol_calculations": {
+        "columns": ["iol_power_d", "predicted_refraction_d"],
+        "highlighted_row": "Em cada olho, o documento destaca a linha cuja refração prevista tem o menor valor absoluto.",
+        "models": [
+          {
+            "model": "PanOptix",
+            "manufacturer": "Alcon",
+            "a_constant": 119.1,
+            "source_page": 1,
+            "OD": [[16.5, 0.69], [17.0, 0.38], [17.5, 0.05], [18.0, -0.27], [18.5, -0.6]],
+            "OS": [[17.5, 0.62], [18.0, 0.29], [18.5, -0.04], [19.0, -0.38], [19.5, -0.72]]
+          },
+          {
+            "model": "TECNIS SYNERGY",
+            "manufacturer": "AMO",
+            "a_constant": 119.3,
+            "source_page": 1,
+            "OD": [[17.0, 0.5], [17.5, 0.19], [18.0, -0.14], [18.5, -0.46], [19.0, -0.79]],
+            "OS": [[17.5, 0.75], [18.0, 0.43], [18.5, 0.1], [19.0, -0.24], [19.5, -0.57]]
+          },
+          {
+            "model": "Vivity *Ext",
+            "manufacturer": "Alcon",
+            "a_constant": 119.2,
+            "source_page": 1,
+            "OD": [[16.5, 0.76], [17.0, 0.44], [17.5, 0.12], [18.0, -0.2], [18.5, -0.53]],
+            "OS": [[17.5, 0.69], [18.0, 0.36], [18.5, 0.03], [19.0, -0.31], [19.5, -0.65]]
+          },
+          {
+            "model": "Tecnis ZMB00 +4",
+            "manufacturer": "AMO",
+            "a_constant": 119.5,
+            "source_page": 1,
+            "OD": [[17.0, 0.63], [17.5, 0.32], [18.0, 0.0], [18.5, -0.32], [19.0, -0.64]],
+            "OS": [[18.0, 0.56], [18.5, 0.24], [19.0, -0.09], [19.5, -0.42], [20.0, -0.76]]
+          },
+          {
+            "model": "Clareon",
+            "manufacturer": "Alcon",
+            "a_constant": 119.1,
+            "source_page": 1,
+            "OD": [[16.5, 0.69], [17.0, 0.38], [17.5, 0.05], [18.0, -0.27], [18.5, -0.6]],
+            "OS": [[17.5, 0.62], [18.0, 0.29], [18.5, -0.04], [19.0, -0.38], [19.5, -0.72]]
+          },
+          {
+            "model": "A Monofocal",
+            "manufacturer": "LEEDSLAY",
+            "a_constant": 118.4,
+            "source_page": 1,
+            "OD": [[16.0, 0.59], [16.5, 0.26], [17.0, -0.08], [17.5, -0.42], [18.0, -0.76]],
+            "OS": [[16.5, 0.84], [17.0, 0.5], [17.5, 0.16], [18.0, -0.19], [18.5, -0.54]]
+          },
+          {
+            "model": "AMF Bifocal",
+            "manufacturer": "LEEDSLAY",
+            "a_constant": 118.4,
+            "source_page": 2,
+            "OD": [[16.0, 0.59], [16.5, 0.26], [17.0, -0.08], [17.5, -0.42], [18.0, -0.76]],
+            "OS": [[16.5, 0.84], [17.0, 0.5], [17.5, 0.16], [18.0, -0.19], [18.5, -0.54]]
+          },
+          {
+            "model": "AMF Trifocal",
+            "manufacturer": "LEEDSLAY",
+            "a_constant": 118.4,
+            "source_page": 2,
+            "OD": [[16.0, 0.59], [16.5, 0.26], [17.0, -0.08], [17.5, -0.42], [18.0, -0.76]],
+            "OS": [[16.5, 0.84], [17.0, 0.5], [17.5, 0.16], [18.0, -0.19], [18.5, -0.54]]
+          },
+          {
+            "model": "ASPHERIC - QUAD LOOP",
+            "manufacturer": "LEEDSLAY",
+            "a_constant": 118.4,
+            "source_page": 2,
+            "OD": [[16.0, 0.59], [16.5, 0.26], [17.0, -0.08], [17.5, -0.42], [18.0, -0.76]],
+            "OS": [[16.5, 0.84], [17.0, 0.5], [17.5, 0.16], [18.0, -0.19], [18.5, -0.54]]
+          },
+          {
+            "model": "AcrySof MA60AC",
+            "manufacturer": "Alcon",
+            "a_constant": 119.2,
+            "source_page": 2,
+            "OD": [[16.5, 0.76], [17.0, 0.44], [17.5, 0.12], [18.0, -0.2], [18.5, -0.53]],
+            "OS": [[17.5, 0.69], [18.0, 0.36], [18.5, 0.03], [19.0, -0.31], [19.5, -0.65]]
+          },
+          {
+            "model": "Tecnis ZA9003",
+            "manufacturer": "AMO",
+            "a_constant": 119.1,
+            "source_page": 2,
+            "OD": [[16.5, 0.69], [17.0, 0.38], [17.5, 0.05], [18.0, -0.27], [18.5, -0.6]],
+            "OS": [[17.5, 0.62], [18.0, 0.29], [18.5, -0.04], [19.0, -0.38], [19.5, -0.72]]
+          },
+          {
+            "model": "LOOP ASPHERIC",
+            "manufacturer": "Biotech",
+            "a_constant": 118.3,
+            "source_pages": [2, 3],
+            "OD": [[16.0, 0.53], [16.5, 0.19], [17.0, -0.14], [17.5, -0.48], [18.0, -0.83]],
+            "OS": [[16.5, 0.78], [17.0, 0.43], [17.5, 0.09], [18.0, -0.26], [18.5, -0.61]]
+          },
+          {
+            "model": "OPTFLEX TRIFOCAL",
+            "manufacturer": "Biotech",
+            "a_constant": 118.37,
+            "source_page": 3,
+            "OD": [[16.0, 0.57], [16.5, 0.24], [17.0, -0.1], [17.5, -0.44], [18.0, -0.78]],
+            "OS": [[16.5, 0.82], [17.0, 0.48], [17.5, 0.14], [18.0, -0.21], [18.5, -0.56]]
+          },
+          {
+            "model": "TECNIS EYHANCE",
+            "manufacturer": "AMO",
+            "a_constant": 119.3,
+            "source_page": 3,
+            "OD": [[17.0, 0.5], [17.5, 0.19], [18.0, -0.14], [18.5, -0.46], [19.0, -0.79]],
+            "OS": [[17.5, 0.75], [18.0, 0.43], [18.5, 0.1], [19.0, -0.24], [19.5, -0.57]]
+          },
+          {
+            "model": "Medical Optics Liteflex",
+            "manufacturer": "Visiontech",
+            "a_constant": 118.6,
+            "source_page": 3,
+            "OD": [[16.0, 0.71], [16.5, 0.38], [17.0, 0.05], [17.5, -0.28], [18.0, -0.62]],
+            "OS": [[17.0, 0.63], [17.5, 0.29], [18.0, -0.05], [18.5, -0.4], [19.0, -0.75]]
+          },
+          {
+            "model": "Vision Eyecryl plus ASHFY600",
+            "manufacturer": "Biotech",
+            "a_constant": 118.6,
+            "source_page": 3,
+            "OD": [[16.0, 0.71], [16.5, 0.38], [17.0, 0.05], [17.5, -0.28], [18.0, -0.62]],
+            "OS": [[17.0, 0.63], [17.5, 0.29], [18.0, -0.05], [18.5, -0.4], [19.0, -0.75]]
+          },
+          {
+            "model": "LuxSmart",
+            "manufacturer": "Bausch & Lomb",
+            "a_constant": 118.5,
+            "source_page": 3,
+            "OD": [[16.0, 0.65], [16.5, 0.32], [17.0, -0.01], [17.5, -0.35], [18.0, -0.69]],
+            "OS": [[17.0, 0.56], [17.5, 0.22], [18.0, -0.12], [18.5, -0.47], [19.0, -0.82]]
+          },
+          {
+            "model": "LuxSmart Toric",
+            "manufacturer": "Bausch & Lomb",
+            "a_constant": 118.5,
+            "source_page": 4,
+            "OD": [[16.0, 0.65], [16.5, 0.32], [17.0, -0.01], [17.5, -0.35], [18.0, -0.69]],
+            "OS": [[17.0, 0.56], [17.5, 0.22], [18.0, -0.12], [18.5, -0.47], [19.0, -0.82]]
+          },
+          {
+            "model": "SN60WF",
+            "manufacturer": "Alcon",
+            "a_constant": 119.0,
+            "source_page": 4,
+            "OD": [[16.5, 0.63], [17.0, 0.31], [17.5, -0.01], [18.0, -0.34], [18.5, -0.67]],
+            "OS": [[17.5, 0.56], [18.0, 0.22], [18.5, -0.11], [19.0, -0.45], [19.5, -0.8]]
+          },
+          {
+            "model": "AT LISA TRI TORIC 939M MP",
+            "manufacturer": "Zeiss",
+            "a_constant": 118.5,
+            "source_page": 4,
+            "OD": [[16.0, 0.65], [16.5, 0.32], [17.0, -0.01], [17.5, -0.35], [18.0, -0.69]],
+            "OS": [[17.0, 0.56], [17.5, 0.22], [18.0, -0.12], [18.5, -0.47], [19.0, -0.82]]
+          },
+          {
+            "model": "MONO TORICA*",
+            "manufacturer": "Biotech",
+            "a_constant": 118.7,
+            "source_page": 4,
+            "OD": [[16.0, 0.77], [16.5, 0.45], [17.0, 0.12], [17.5, -0.21], [18.0, -0.55]],
+            "OS": [[17.0, 0.69], [17.5, 0.36], [18.0, 0.02], [18.5, -0.33], [19.0, -0.67]]
+          },
+          {
+            "model": "GEMETRIC TRIFOCAL",
+            "manufacturer": "Hoya",
+            "a_constant": 118.9,
+            "source_page": 4,
+            "OD": [[16.5, 0.57], [17.0, 0.25], [17.5, -0.08], [18.0, -0.41], [18.5, -0.75]],
+            "OS": [[17.0, 0.82], [17.5, 0.49], [18.0, 0.15], [18.5, -0.18], [19.0, -0.53]]
+          }
+        ]
+      }
+    },
+    "pentacam": {
+      "device": "OCULUS Pentacam",
+      "software_version": "1.32r04",
+      "eyes": {
+        "OD": {
+          "source_file": "data/ARANTES SILVA_ROLMEY_OD_30072026_115226.pdf",
+          "exam_at": "2026-07-30T11:52:26-03:00",
+          "quality": "OK",
+          "anterior_cornea": {
+            "rp_mm": 7.75,
+            "rc_mm": 7.71,
+            "rm_mm": 7.73,
+            "rper_mm": 7.91,
+            "rmin_mm": 7.63,
+            "k1_d": 43.5,
+            "k2_d": 43.8,
+            "km_d": 43.6,
+            "astigmatism_d": 0.2,
+            "axis_deg": 47.6,
+            "q_6mm": -0.14,
+            "kmax_d": 44.2
+          },
+          "posterior_cornea": {
+            "rp_mm": 6.51,
+            "rc_mm": 6.29,
+            "rm_mm": 6.4,
+            "rper_mm": 6.61,
+            "rmin_mm": 6.2,
+            "k1_d": -6.1,
+            "k2_d": -6.4,
+            "km_d": -6.3,
+            "astigmatism_d": 0.2,
+            "axis_deg": 18.5,
+            "q_6mm": -0.16
+          },
+          "total_corneal_refractive_power": {
+            "k1_d": 42.3,
+            "k2_d": 42.5,
+            "km_d": 42.4,
+            "astigmatism_d": 0.2,
+            "axis_deg": 70.6,
+            "pmax_d": 42.9
+          },
+          "pachymetry": {
+            "pupil_center_um": 534,
+            "pupil_center_xy_mm": [0.02, -0.08],
+            "vertex_normal_um": 534,
+            "thinnest_um": 529,
+            "thinnest_xy_mm": [-0.72, -0.5],
+            "thinnest_distance_from_vertex_mm": 0.87,
+            "thinnest_location": "IT"
+          },
+          "anterior_segment": {
+            "corneal_volume_mm3": 59.2,
+            "chamber_volume_mm3": 218,
+            "external_anterior_chamber_depth_mm": 3.9,
+            "internal_anterior_chamber_depth_mm": 3.36,
+            "chamber_angle_deg": 32.3,
+            "corneal_diameter_mm": 12.0,
+            "pupil_diameter_3d_mm": 2.8,
+            "pupil_diameter_virtual_mm": 3.57,
+            "iop_correction_mmHg": 0.6,
+            "pns": 1
+          },
+          "cataract_preop": {
+            "sim_k": {
+              "k1_d": 43.5,
+              "k1_radius_mm": 7.8,
+              "k1_axis_deg": 47.6,
+              "k2_d": 43.8,
+              "k2_radius_mm": 7.7,
+              "k2_axis_deg": 137.6,
+              "km_d": 43.6,
+              "astigmatism_d": 0.2
+            },
+            "tcrp_3mm_pupil_zone": {
+              "k1_d": 42.7,
+              "k1_axis_deg": 80.5,
+              "k2_d": 43.1,
+              "k2_axis_deg": 170.5,
+              "km_d": 42.9,
+              "astigmatism_d": 0.4
+            },
+            "simk_minus_tcrp": {
+              "axis_deg": -32.9,
+              "km_d": 0.7,
+              "astigmatism_d": -0.2
+            },
+            "chord_mu": "0.08 mm @ 286°",
+            "chord_alpha": "0.33 mm @ 181°",
+            "total_corneal_hoa_4mm_um": 0.134,
+            "total_corneal_z40_6mm_um": 0.287,
+            "axial_sagittal_ap_ratio_percent": 82.8,
+            "posterior_corneal_cdd_60um_annulus_0_2mm_percent": 11.5
+          },
+          "belin_ambrosio": {
+            "database": "Míope/Normal",
+            "k1_d": 43.5,
+            "k2_d": 43.8,
+            "kmax_d": 44.2,
+            "axis_deg": 47.6,
+            "anterior_elevation_um": 2,
+            "posterior_elevation_um": 5,
+            "progression_index_min": 0.67,
+            "progression_index_mean": 0.96,
+            "progression_index_max": 1.27,
+            "art_max": 416,
+            "df": -1.11,
+            "db": -1.04,
+            "dp": 0.34,
+            "dt": 0.24,
+            "da": 0.65,
+            "d": 0.65
+          },
+          "abcd_keratoconus_staging": {
+            "arc_3mm_mm": 7.7,
+            "prc_3mm_mm": 6.29,
+            "a": 0.0,
+            "b": 0.0,
+            "c": 0.5,
+            "d": null
+          },
+          "topometric_indices_8mm": {
+            "isv": 10,
+            "iva": 0.09,
+            "ki": 1.01,
+            "cki": 1.0,
+            "kisa": 26.367,
+            "iha": 4.2,
+            "ihd": 0.006,
+            "rmin": 7.63,
+            "tkc": null,
+            "is": -0.01
+          },
+          "corneal_rings": {
+            "smallest_pachymetry_in_ring": {
+              "3mm": "533 µm @ 215°",
+              "5mm": "552 µm @ 214°",
+              "6mm": "570 µm @ 213°",
+              "7mm": "594 µm @ 210°"
+            },
+            "eighty_percent_thickness": {
+              "3mm": "443 µm @ 305°",
+              "5mm": "470 µm @ 308°",
+              "6mm": "486 µm @ 135°",
+              "7mm": "511 µm @ 313°"
+            },
+            "zernike": {
+              "5mm": {"z31_coma": "0.097 µm @ 151°", "z51_secondary_coma": "0.017 µm @ 55°"},
+              "6mm": {"z31_coma": "0.143 µm @ 157°", "z51_secondary_coma": "0.017 µm @ 305°"}
+            }
+          }
+        },
+        "OS": {
+          "source_file": "data/ARANTES SILVA_ROLMEY_OS_30072026_115345.pdf",
+          "exam_at": "2026-07-30T11:53:45-03:00",
+          "quality": "OK",
+          "anterior_cornea": {
+            "rp_mm": 8.02,
+            "rc_mm": 7.65,
+            "rm_mm": 7.84,
+            "rper_mm": 7.84,
+            "rmin_mm": 7.41,
+            "k1_d": 42.1,
+            "k2_d": 44.1,
+            "km_d": 43.1,
+            "astigmatism_d": 2.0,
+            "axis_deg": 177.9,
+            "q_6mm": 0.09,
+            "kmax_d": 45.5
+          },
+          "posterior_cornea": {
+            "rp_mm": 6.66,
+            "rc_mm": 6.23,
+            "rm_mm": 6.45,
+            "rper_mm": 6.64,
+            "rmin_mm": 6.11,
+            "k1_d": -6.0,
+            "k2_d": -6.4,
+            "km_d": -6.2,
+            "astigmatism_d": 0.4,
+            "axis_deg": 167.9,
+            "q_6mm": -0.13
+          },
+          "total_corneal_refractive_power": {
+            "k1_d": 40.6,
+            "k2_d": 42.6,
+            "km_d": 41.6,
+            "astigmatism_d": 2.0,
+            "axis_deg": 177.7,
+            "pmax_d": 44.6
+          },
+          "pachymetry": {
+            "pupil_center_um": 537,
+            "pupil_center_xy_mm": [-0.1, 0.04],
+            "vertex_normal_um": 538,
+            "thinnest_um": 526,
+            "thinnest_xy_mm": [0.84, -0.63],
+            "thinnest_distance_from_vertex_mm": 1.06
+          },
+          "anterior_segment": {
+            "corneal_volume_mm3": 59.1,
+            "chamber_volume_mm3": 216,
+            "external_anterior_chamber_depth_mm": 4.0,
+            "internal_anterior_chamber_depth_mm": 3.37,
+            "chamber_angle_deg": 27.7,
+            "corneal_diameter_mm": 12.1,
+            "pupil_diameter_3d_mm": 2.53,
+            "pupil_diameter_virtual_mm": 3.0,
+            "iop_correction_mmHg": -0.5
+          },
+          "cataract_preop": {
+            "sim_k": {
+              "k1_d": 42.1,
+              "k1_radius_mm": 8.0,
+              "k1_axis_deg": 177.9,
+              "k2_d": 44.1,
+              "k2_radius_mm": 7.7,
+              "k2_axis_deg": 87.9,
+              "km_d": 43.1,
+              "astigmatism_d": 2.0
+            },
+            "tcrp_3mm_pupil_zone": {
+              "k1_d": 40.8,
+              "k1_axis_deg": 1.0,
+              "k2_d": 43.1,
+              "k2_axis_deg": 91.0,
+              "km_d": 42.0,
+              "astigmatism_d": 2.3
+            },
+            "simk_minus_tcrp": {
+              "axis_deg": -3.1,
+              "km_d": 1.1,
+              "astigmatism_d": -0.3
+            },
+            "chord_mu": "0.10 mm @ 23°",
+            "chord_alpha": "0.48 mm @ 353°",
+            "total_corneal_hoa_4mm_um": 0.309,
+            "total_corneal_z40_6mm_um": 0.602,
+            "axial_sagittal_ap_ratio_percent": 82.2,
+            "posterior_corneal_cdd_60um_annulus_0_2mm_percent": 13.2
+          },
+          "belin_ambrosio": {
+            "database": "Míope/Normal",
+            "k1_d": 42.1,
+            "k2_d": 44.1,
+            "kmax_d": 45.5,
+            "axis_deg": 177.9,
+            "anterior_elevation_um": -2,
+            "posterior_elevation_um": 15,
+            "progression_index_min": 0.94,
+            "progression_index_mean": 1.19,
+            "progression_index_max": 1.43,
+            "art_max": 368,
+            "df": 1.34,
+            "db": 1.35,
+            "dp": 1.64,
+            "dt": 0.36,
+            "da": 1.11,
+            "d": 2.27
+          },
+          "abcd_keratoconus_staging": {
+            "arc_3mm_mm": 7.86,
+            "prc_3mm_mm": 6.23,
+            "a": 0.0,
+            "b": 0.0,
+            "c": 0.6,
+            "d": null
+          },
+          "topometric_indices_8mm": {
+            "isv": 20,
+            "iva": 0.18,
+            "ki": 1.01,
+            "cki": 0.98,
+            "kisa": 39.241,
+            "iha": 12.8,
+            "ihd": 0.017,
+            "rmin": 7.41,
+            "tkc": null,
+            "is": 0.23
+          },
+          "corneal_rings": {
+            "smallest_pachymetry_in_ring": {
+              "3mm": "528 µm @ 319°",
+              "5mm": "554 µm @ 317°",
+              "6mm": "574 µm @ 319°",
+              "7mm": "599 µm @ 321°"
+            },
+            "eighty_percent_thickness": {
+              "3mm": "436 µm @ 265°",
+              "5mm": "469 µm @ 251°",
+              "6mm": "491 µm @ 243°",
+              "7mm": "512 µm @ 237°"
+            },
+            "zernike": {
+              "5mm": {"z31_coma": "0.299 µm @ 180°", "z51_secondary_coma": "0.022 µm @ 186°"},
+              "6mm": {"z31_coma": "0.568 µm @ 181°", "z51_secondary_coma": "0.036 µm @ 197°"}
+            }
+          }
+        }
+      }
+    },
+    "specular_microscopy": {
+      "source": {
+        "file": "data/fa8ae102-8b94-4bcf-a109-e528b7afe846.jpeg"
+      },
+      "device": "NIDEK",
+      "exam_at": "2026-07-30T11:57:27-03:00",
+      "report_number": "0618",
+      "eyes": {
+        "OD": {
+          "number_of_cells": 234,
+          "cell_density_cells_per_mm2": 2403,
+          "average_cell_area_um2": 394,
+          "standard_deviation_um2": 133,
+          "coefficient_of_variation_percent": 34,
+          "maximum_cell_area_um2": 933,
+          "minimum_cell_area_um2": 137,
+          "hexagonal_cells_percent": 64,
+          "corneal_thickness_um": 532
+        },
+        "OS": {
+          "number_of_cells": 206,
+          "cell_density_cells_per_mm2": 2184,
+          "average_cell_area_um2": 432,
+          "standard_deviation_um2": 146,
+          "coefficient_of_variation_percent": 34,
+          "maximum_cell_area_um2": 1034,
+          "minimum_cell_area_um2": 156,
+          "hexagonal_cells_percent": 65,
+          "corneal_thickness_um": 542
+        }
+      }
+    },
+    "retinography": {
+      "device_or_mode": "Retina",
+      "images": [
+        {
+          "file": "data/9e903625-ef7e-4b6e-b545-b77778d3b517.jpeg",
+          "eye": "OD",
+          "captured_at": "2026-07-30T12:08:21-03:00",
+          "structured_findings": null
+        },
+        {
+          "file": "data/c748c418-0589-4faa-9513-5ba9d25634e4.jpeg",
+          "eye": "OS",
+          "captured_at": "2026-07-30T16:10:03-03:00",
+          "structured_findings": null
+        }
+      ],
+      "note": "As imagens foram catalogadas sem inferência diagnóstica."
+    }
+  },
+  "extraction_notes": {
+    "method": "Transcrição local e conferência visual dos seis arquivos; os PDFs não possuem camada de texto.",
+    "scope": "Foram estruturados os dados alfanuméricos legíveis, tabelas de cálculo de LIO, metadados e a referência de cada mapa/imagem à página-fonte.",
+    "not_encoded": "Valores representados apenas por posição ou cor nos mapas e pixels das imagens clínicas permanecem nos arquivos-fonte.",
+    "clinical_use_warning": "Conferir os valores nos documentos originais antes de decisão clínica; este JSON organiza os dados e não constitui laudo ou diagnóstico."
+  }
+}
