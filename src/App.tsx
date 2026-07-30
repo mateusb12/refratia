@@ -679,6 +679,26 @@ function App() {
 
   const reviewContent = reportGenerated ? (
     <>
+      <div className="hero-bg mt-5 flex items-center justify-between gap-6 rounded-2xl border border-primary-border p-6 max-[820px]:flex-col max-[820px]:items-start max-[580px]:p-4">
+        <div className="flex items-start gap-4">
+          <span className="grid h-10 w-10 flex-none place-items-center rounded-xl bg-surface text-primary shadow-sm"><FileSearch size={20} /></span>
+          <div>
+            <h2 className="m-0 font-display text-xl">Revise evidências antes da conclusão clínica</h2>
+            <p className="mb-0 mt-1.5 max-w-[690px] text-sm leading-relaxed text-text-secondary">
+              Confira documentos, dados extraídos, cálculos e a justificativa da recomendação preliminar.
+            </p>
+          </div>
+        </div>
+        <div className="flex max-w-[300px] items-center gap-2.5 rounded-[10px] border border-primary-border bg-surface/80 p-3 text-xs leading-relaxed text-text-secondary max-[820px]:max-w-none">
+          <ShieldCheck className="flex-none" size={18} />
+          Apoio à avaliação clínica. Não constitui diagnóstico, laudo ou indicação cirúrgica.
+        </div>
+      </div>
+
+      <div className="mt-5 grid grid-cols-4 gap-4 max-[1100px]:grid-cols-2 max-[580px]:grid-cols-1">
+        {metrics.map((metric) => <MetricCard key={metric.label} {...metric} />)}
+      </div>
+
       <DocumentsReview
         expanded={expandedDocument}
         onToggle={(name) => setExpandedDocument((current) => current === name ? null : name)}
@@ -698,11 +718,6 @@ function App() {
       <PrimaryButton onClick={loadDemoCase}>Carregar caso demonstrativo</PrimaryButton>
     </section>
   )
-
-  const showCaseMetrics =
-    activeSection === 'Visão geral' ||
-    activeSection === 'Relatórios' ||
-    (activeSection === 'Nova análise' && reportGenerated)
 
   const historySection = (
     <section className="mt-5 rounded-2xl border border-border bg-surface p-6 shadow-sm">
@@ -811,31 +826,9 @@ function App() {
 
         <section className="mx-auto w-full max-w-[1320px] overflow-x-hidden px-[clamp(16px,4vw,56px)] pb-14 pt-8">
           {activeSection === 'Roadmap' ? <RoadmapPage /> : <>
-          <div className="hero-bg flex items-center justify-between gap-6 rounded-2xl border border-primary-border p-6 max-[820px]:flex-col max-[820px]:items-start max-[580px]:p-4">
-            <div className="flex items-start gap-4">
-              <span className="grid h-10 w-10 flex-none place-items-center rounded-xl bg-surface text-primary shadow-sm"><UploadCloud size={20} /></span>
-              <div>
-                <h2 className="m-0 font-display text-xl">Revise evidências antes da conclusão clínica</h2>
-                <p className="mb-0 mt-1.5 max-w-[690px] text-sm leading-relaxed text-text-secondary">
-                  Confira documentos, dados extraídos, cálculos e a justificativa da recomendação preliminar.
-                </p>
-              </div>
-            </div>
-            <div className="flex max-w-[300px] items-center gap-2.5 rounded-[10px] border border-primary-border bg-surface/80 p-3 text-xs leading-relaxed text-text-secondary max-[820px]:max-w-none">
-              <ShieldCheck className="flex-none" size={18} />
-              Apoio à avaliação clínica. Não constitui diagnóstico, laudo ou indicação cirúrgica.
-            </div>
-          </div>
-
-          {showCaseMetrics && (
-            <div className="mt-5 grid grid-cols-4 gap-4 max-[1100px]:grid-cols-2 max-[580px]:grid-cols-1">
-              {metrics.map((metric) => <MetricCard key={metric.label} {...metric} />)}
-            </div>
-          )}
-
           {activeSection === 'Visão geral' && (
             <>
-              <section className="mt-5 flex items-center justify-between gap-5 rounded-2xl border border-border bg-surface p-6 shadow-sm max-[580px]:flex-col max-[580px]:items-stretch">
+              <section className="flex items-center justify-between gap-5 rounded-2xl border border-border bg-surface p-6 shadow-sm max-[580px]:flex-col max-[580px]:items-stretch">
                 <div>
                   <Eyebrow>RESUMO OPERACIONAL</Eyebrow>
                   <h2 className="mb-0 mt-1 font-display text-xl">Fluxo demonstrativo pronto para revisão</h2>
