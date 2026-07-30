@@ -26,12 +26,30 @@ import {
   UserRound,
   X,
 } from 'lucide-react'
+import patientData from '../data/paciente_compilado.json'
 import RoadmapPage from './components/roadmap/RoadmapPage'
 
 type Theme = 'light' | 'dark'
+type CaseKind = 'demo' | 'real'
 type NoticeTone = 'information' | 'warning' | 'blocking'
 type DataKind = 'Dado bruto' | 'Dado calculado' | 'Dado ausente'
 type Confidence = 'Consistente' | 'Suspeita — revisar'
+
+interface Metric {
+  label: string
+  value: string
+  detail: string
+  tone: 'default' | 'success' | 'warning'
+}
+
+interface DocumentReview {
+  name: string
+  status: 'Processado' | 'Atenção' | 'Não enviado'
+  patient: string
+  birthDate: string
+  confidence: 'Alta' | 'Moderada' | 'Não confirmada'
+  detail: string
+}
 
 interface ExtractedDatum {
   name: string
@@ -56,14 +74,14 @@ const steps = [
   { title: 'Revisar relatório', description: 'Decisão médica' },
 ]
 
-const metrics = [
+const metrics: Metric[] = [
   { label: 'Documentos recebidos', value: '4 de 5', detail: 'Um documento não enviado', tone: 'default' as const },
   { label: 'Dados disponíveis', value: '8 de 9', detail: 'Um parâmetro ausente', tone: 'success' as const },
   { label: 'Pontos de atenção', value: '2', detail: 'Sem bloqueio no caso principal', tone: 'warning' as const },
   { label: 'Revisão médica', value: 'Pendente', detail: 'Conclusão parcial', tone: 'warning' as const },
 ]
 
-const documents = [
+const documents: DocumentReview[] = [
   {
     name: 'Pentacam OD',
     status: 'Processado',
@@ -217,6 +235,109 @@ const extractedData: ExtractedDatum[] = [
   },
 ]
 
+const realPatientName = 'Gerinaldo Alfregildo'
+const realPatientBirthDate = new Date(`${patientData.patient.birth_date}T00:00:00`).toLocaleDateString('pt-BR')
+const realDocuments: DocumentReview[] = patientData.source_files.map((file) => ({
+  name: `${file.exam.charAt(0).toUpperCase()}${file.exam.slice(1)} · ${file.eye}`,
+  status: 'Processado',
+  patient: realPatientName,
+  birthDate: realPatientBirthDate,
+  confidence: 'Alta',
+  detail: `${file.type === 'application/pdf' ? `${file.pages} páginas` : 'Imagem'} · ${file.path.split('/').pop()}`,
+}))
+
+const realExtractedData: ExtractedDatum[] = (['OD', 'OS'] as const).flatMap((eye) => {
+  const pentacam = patientData.exams.pentacam.eyes[eye]
+  const biometry = patientData.exams.biometry_iol.eyes[eye]
+  const source = `Pentacam ${eye}`
+
+  return [
+    {
+      name: `Paquimetria mínima · ${eye}`,
+      value: pentacam.pachymetry.thinnest_um.toLocaleString('pt-BR'),
+      unit: 'µm',
+      source,
+      kind: 'Dado bruto',
+      confidence: 'Consistente',
+      document: pentacam.source_file.split('/').pop() ?? source,
+      screen: 'Pachymetry',
+      field: 'Thinnest',
+    },
+    {
+      name: `Kmax · ${eye}`,
+      fullName: 'Ceratometria máxima',
+      value: pentacam.anterior_cornea.kmax_d.toLocaleString('pt-BR'),
+      unit: 'D',
+      source,
+      kind: 'Dado bruto',
+      confidence: 'Consistente',
+      document: pentacam.source_file.split('/').pop() ?? source,
+      screen: 'Topometric',
+      field: 'Kmax',
+    },
+    {
+      name: `BAD-D · ${eye}`,
+      fullName: 'Belin/Ambrósio Enhanced Ectasia Display',
+      value: pentacam.belin_ambrosio.d.toLocaleString('pt-BR'),
+      source,
+      kind: 'Dado bruto',
+      confidence: 'Consistente',
+      document: pentacam.source_file.split('/').pop() ?? source,
+      screen: 'Belin/Ambrósio',
+      field: 'Final D',
+    },
+    {
+      name: `ARTmax · ${eye}`,
+      fullName: 'Ambrósio Relational Thickness máximo',
+      value: pentacam.belin_ambrosio.art_max.toLocaleString('pt-BR'),
+      source,
+      kind: 'Dado bruto',
+      confidence: 'Consistente',
+      document: pentacam.source_file.split('/').pop() ?? source,
+      screen: 'Belin/Ambrósio',
+      field: 'ARTmax',
+    },
+    {
+      name: `Comprimento axial · ${eye}`,
+      value: biometry.axial_length_mm.toLocaleString('pt-BR'),
+      unit: 'mm',
+      source: `Biometria ${eye}`,
+      kind: 'Dado bruto',
+      confidence: 'Consistente',
+      document: 'BIO SRK-T AO.pdf',
+      screen: 'EyeSuite IOL',
+      field: 'Axial length',
+    },
+  ] satisfies ExtractedDatum[]
+})
+
+const realMetrics: Metric[] = [
+  {
+    label: 'Arquivos recebidos',
+    value: String(patientData.source_files.length),
+    detail: 'Todos disponíveis para revisão',
+    tone: 'success',
+  },
+  {
+    label: 'Dados em destaque',
+    value: String(realExtractedData.length),
+    detail: 'Parâmetros reais de OD e OS',
+    tone: 'success',
+  },
+  {
+    label: 'Qualidade Pentacam',
+    value: `${patientData.exams.pentacam.eyes.OD.quality} / ${patientData.exams.pentacam.eyes.OS.quality}`,
+    detail: 'OD / OS',
+    tone: 'success',
+  },
+  {
+    label: 'Revisão médica',
+    value: 'Pendente',
+    detail: 'Sem recomendação automatizada',
+    tone: 'warning',
+  },
+]
+
 const recommendationReasons = [
   'Faixa refracional compatível',
   'LER dentro do limite',
@@ -227,9 +348,10 @@ const recommendationReasons = [
 ]
 
 const recentCases = [
-  { initials: 'MS', patient: 'Maria S.', report: 'Parcial', review: 'Pendente', tone: 'warning' as const },
-  { initials: 'JL', patient: 'João L.', report: 'Gerado', review: 'Revisado', tone: 'success' as const },
-  { initials: 'AR', patient: 'Ana R.', report: 'Bloqueado', review: 'Identidade', tone: 'blocking' as const },
+  { initials: 'RA', patient: realPatientName, report: 'Dados importados', review: 'Pendente', tone: 'warning' as const, real: true },
+  { initials: 'MS', patient: 'Maria S.', report: 'Parcial', review: 'Pendente', tone: 'warning' as const, real: false },
+  { initials: 'JL', patient: 'João L.', report: 'Gerado', review: 'Revisado', tone: 'success' as const, real: false },
+  { initials: 'AR', patient: 'Ana R.', report: 'Bloqueado', review: 'Identidade', tone: 'blocking' as const, real: false },
 ]
 
 function getInitialTheme(): Theme {
@@ -269,7 +391,7 @@ function StatusBadge({ children, tone }: { children: ReactNode; tone: 'success' 
   )
 }
 
-function MetricCard({ label, value, detail, tone }: (typeof metrics)[number]) {
+function MetricCard({ label, value, detail, tone }: Metric) {
   return (
     <article className="relative overflow-hidden rounded-[14px] border border-border bg-surface p-5 shadow-sm">
       <div className={clsx(
@@ -351,12 +473,18 @@ function BlockingNotice({ children }: { children: ReactNode }) {
 }
 
 function DocumentsReview({
+  items,
+  isReal,
   expanded,
   onToggle,
 }: {
+  items: DocumentReview[]
+  isReal: boolean
   expanded: string | null
   onToggle: (name: string) => void
 }) {
+  const processed = items.filter((document) => document.status === 'Processado').length
+
   return (
     <section className="mt-5 rounded-2xl border border-border bg-surface p-6 shadow-sm max-[580px]:p-4">
       <Eyebrow>ETAPA 2 · CONFERÊNCIA</Eyebrow>
@@ -367,11 +495,11 @@ function DocumentsReview({
             Confira se os arquivos pertencem ao mesmo paciente antes de revisar os parâmetros.
           </p>
         </div>
-        <StatusBadge tone="warning">4 de 5 recebidos</StatusBadge>
+        <StatusBadge tone={processed === items.length ? 'success' : 'warning'}>{processed} de {items.length} recebidos</StatusBadge>
       </div>
 
       <div className="mt-5 grid grid-cols-3 gap-3 max-[1100px]:grid-cols-2 max-[580px]:grid-cols-1">
-        {documents.map((document) => {
+        {items.map((document) => {
           const tone = document.status === 'Processado' ? 'success' : document.status === 'Atenção' ? 'warning' : 'neutral'
           return (
             <article key={document.name} className="rounded-xl border border-border bg-surface-muted p-4">
@@ -414,9 +542,15 @@ function DocumentsReview({
       </div>
 
       <div className="mt-4">
-        <InformationNotice>
-          OCT de retina não enviado. A ausência deste dado não altera a recomendação atual.
-        </InformationNotice>
+        {isReal ? (
+          <InformationNotice>
+            Arquivos e identidade disponíveis para conferência.
+          </InformationNotice>
+        ) : (
+          <InformationNotice>
+            OCT de retina não enviado. A ausência deste dado não altera a recomendação atual.
+          </InformationNotice>
+        )}
       </div>
     </section>
   )
@@ -431,7 +565,17 @@ function DataKindBadge({ kind }: { kind: DataKind }) {
   )
 }
 
-function ExtractedDataReview({ onTrace }: { onTrace: (data: ExtractedDatum) => void }) {
+function ExtractedDataReview({
+  items,
+  isReal,
+  onTrace,
+}: {
+  items: ExtractedDatum[]
+  isReal: boolean
+  onTrace: (data: ExtractedDatum) => void
+}) {
+  const consistent = items.filter((data) => data.confidence === 'Consistente').length
+
   return (
     <section className="mt-5 rounded-2xl border border-border bg-surface p-6 shadow-sm max-[580px]:p-4">
       <Eyebrow>ETAPA 3 · CONFERÊNCIA</Eyebrow>
@@ -442,11 +586,11 @@ function ExtractedDataReview({ onTrace }: { onTrace: (data: ExtractedDatum) => v
             Dado bruto, cálculo e ausência aparecem separados para orientar a revisão.
           </p>
         </div>
-        <StatusBadge tone="success">8 consistentes</StatusBadge>
+        <StatusBadge tone="success">{consistent} consistentes</StatusBadge>
       </div>
 
       <div className="mt-5 grid grid-cols-3 gap-3 max-[1100px]:grid-cols-2 max-[580px]:grid-cols-1">
-        {extractedData.map((data) => (
+        {items.map((data) => (
           <article
             key={data.name}
             className={clsx(
@@ -488,10 +632,28 @@ function ExtractedDataReview({ onTrace }: { onTrace: (data: ExtractedDatum) => v
       </div>
 
       <div className="mt-4">
-        <WarningNotice>
-          ARTmax não identificado. Parte da avaliação de ectasia não pôde ser concluída.
-        </WarningNotice>
+        {isReal ? (
+          <InformationNotice>
+            Este primeiro recorte mostra paquimetria, Kmax, BAD-D, ARTmax e comprimento axial dos dois olhos.
+          </InformationNotice>
+        ) : (
+          <WarningNotice>
+            ARTmax não identificado. Parte da avaliação de ectasia não pôde ser concluída.
+          </WarningNotice>
+        )}
       </div>
+    </section>
+  )
+}
+
+function RealCaseSummary() {
+  return (
+    <section className="mt-5 rounded-2xl border border-warning/40 bg-surface p-6 shadow-sm max-[580px]:p-4">
+      <Eyebrow>PRÓXIMO PASSO CLÍNICO</Eyebrow>
+      <h2 className="mb-0 mt-1 font-display text-xl">Dados reais importados; recomendação ainda não calculada</h2>
+      <p className="mb-0 mt-2 max-w-[760px] text-sm leading-relaxed text-text-secondary">
+        O caso já apresenta identidade, documentos e parâmetros dos dois olhos. As regras de recomendação continuam exclusivas do caso fictício até serem validadas para dados reais.
+      </p>
     </section>
   )
 }
@@ -651,13 +813,17 @@ function TraceabilityDrawer({ data, onClose }: { data: ExtractedDatum | null; on
 function App() {
   const [theme, setTheme] = useState<Theme>(getInitialTheme)
   const [activeSection, setActiveSection] = useState('Nova análise')
-  const [selectedFile, setSelectedFile] = useState<string | null>(null)
+  const [selectedCase, setSelectedCase] = useState<CaseKind | null>(null)
   const [processingStep, setProcessingStep] = useState(0)
   const [expandedDocument, setExpandedDocument] = useState<string | null>(null)
   const [traceData, setTraceData] = useState<ExtractedDatum | null>(null)
   const [isReviewed, setIsReviewed] = useState(false)
 
   const reportGenerated = processingStep === steps.length
+  const isRealCase = selectedCase === 'real'
+  const activeMetrics = isRealCase ? realMetrics : metrics
+  const activeDocuments = isRealCase ? realDocuments : documents
+  const activeExtractedData = isRealCase ? realExtractedData : extractedData
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
@@ -665,46 +831,68 @@ function App() {
   }, [theme])
 
   useEffect(() => {
-    if (!selectedFile || processingStep === steps.length) return
+    if (!selectedCase || processingStep === steps.length) return
     const timer = window.setTimeout(() => setProcessingStep((step) => step + 1), 220)
     return () => window.clearTimeout(timer)
-  }, [processingStep, selectedFile])
+  }, [processingStep, selectedCase])
 
-  function loadDemoCase() {
-    setSelectedFile('caso-demonstrativo-maria-s.zip')
+  function loadCase(kind: CaseKind) {
+    setSelectedCase(kind)
     setProcessingStep(1)
     setIsReviewed(false)
     setExpandedDocument(null)
+    setTraceData(null)
   }
 
   const reviewContent = reportGenerated ? (
     <>
-      <div className="hero-bg mt-5 flex items-center justify-between gap-6 rounded-2xl border border-primary-border p-6 max-[820px]:flex-col max-[820px]:items-start max-[580px]:p-4">
+      <div className={clsx(
+        'mt-5 flex items-center justify-between gap-6 rounded-2xl border p-6 max-[820px]:flex-col max-[820px]:items-start max-[580px]:p-4',
+        isRealCase ? 'border-warning/50 bg-warning-soft' : 'hero-bg border-primary-border',
+      )}>
         <div className="flex items-start gap-4">
-          <span className="grid h-10 w-10 flex-none place-items-center rounded-xl bg-surface text-primary shadow-sm"><FileSearch size={20} /></span>
+          <span className={clsx(
+            'grid h-10 w-10 flex-none place-items-center rounded-xl bg-surface shadow-sm',
+            isRealCase ? 'text-warning' : 'text-primary',
+          )}>
+            {isRealCase ? <Database size={20} /> : <FileSearch size={20} />}
+          </span>
           <div>
-            <h2 className="m-0 font-display text-xl">Revise evidências antes da conclusão clínica</h2>
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="m-0 font-display text-xl">
+                {isRealCase ? realPatientName : 'Revise evidências antes da conclusão clínica'}
+              </h2>
+              {isRealCase && <StatusBadge tone="warning">CASO REAL</StatusBadge>}
+            </div>
             <p className="mb-0 mt-1.5 max-w-[690px] text-sm leading-relaxed text-text-secondary">
-              Confira documentos, dados extraídos, cálculos e a justificativa da recomendação preliminar.
+              {isRealCase
+                ? `Nascimento: ${realPatientBirthDate} · Dados clínicos importados`
+                : 'Confira documentos, dados extraídos, cálculos e a justificativa da recomendação preliminar.'}
             </p>
           </div>
         </div>
-        <div className="flex max-w-[300px] items-center gap-2.5 rounded-[10px] border border-primary-border bg-surface/80 p-3 text-xs leading-relaxed text-text-secondary max-[820px]:max-w-none">
-          <ShieldCheck className="flex-none" size={18} />
-          Apoio à avaliação clínica. Não constitui diagnóstico, laudo ou indicação cirúrgica.
-        </div>
+        {!isRealCase && (
+          <div className="flex max-w-[330px] items-center gap-2.5 rounded-[10px] border border-primary-border bg-surface/80 p-3 text-xs leading-relaxed text-text-secondary max-[820px]:max-w-none">
+            <ShieldCheck className="flex-none" size={18} />
+            Apoio à avaliação clínica. Não constitui diagnóstico, laudo ou indicação cirúrgica.
+          </div>
+        )}
       </div>
 
       <div className="mt-5 grid grid-cols-4 gap-4 max-[1100px]:grid-cols-2 max-[580px]:grid-cols-1">
-        {metrics.map((metric) => <MetricCard key={metric.label} {...metric} />)}
+        {activeMetrics.map((metric) => <MetricCard key={metric.label} {...metric} />)}
       </div>
 
       <DocumentsReview
+        isReal={isRealCase}
+        items={activeDocuments}
         expanded={expandedDocument}
         onToggle={(name) => setExpandedDocument((current) => current === name ? null : name)}
       />
-      <ExtractedDataReview onTrace={setTraceData} />
-      <RecommendationSummary reviewed={isReviewed} onReview={() => setIsReviewed(true)} />
+      <ExtractedDataReview isReal={isRealCase} items={activeExtractedData} onTrace={setTraceData} />
+      {isRealCase
+        ? <RealCaseSummary />
+        : <RecommendationSummary reviewed={isReviewed} onReview={() => setIsReviewed(true)} />}
     </>
   ) : (
     <section className="mt-5 flex items-center justify-between gap-5 rounded-2xl border border-border bg-surface p-6 shadow-sm max-[580px]:flex-col max-[580px]:items-stretch">
@@ -712,10 +900,10 @@ function App() {
         <Eyebrow>REVISÃO CLÍNICA</Eyebrow>
         <h2 className="mb-0 mt-1 font-display text-xl">Nenhum caso carregado nesta sessão</h2>
         <p className="mb-0 mt-1.5 text-sm leading-relaxed text-text-secondary">
-          Carregue os dados fictícios para percorrer a experiência completa.
+          Escolha o caso fictício ou o caso real.
         </p>
       </div>
-      <PrimaryButton onClick={loadDemoCase}>Carregar caso demonstrativo</PrimaryButton>
+      <PrimaryButton onClick={() => loadCase('real')}>Carregar caso real</PrimaryButton>
     </section>
   )
 
@@ -727,12 +915,21 @@ function App() {
         {recentCases.map((item) => (
           <div
             key={item.patient}
-            className="grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-3 border-t border-border py-3 first:border-t-0 max-[580px]:grid-cols-[auto_minmax(0,1fr)]"
+            className={clsx(
+              'grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-3 border-t border-border px-3 py-3 first:border-t-0 max-[580px]:grid-cols-[auto_minmax(0,1fr)]',
+              item.real && 'rounded-xl border border-warning/40 bg-warning-soft',
+            )}
           >
-            <span className="grid h-9 w-9 place-items-center rounded-[10px] bg-surface-muted text-xs font-bold text-primary">{item.initials}</span>
+            <span className={clsx(
+              'grid h-9 w-9 place-items-center rounded-[10px] bg-surface-muted text-xs font-bold',
+              item.real ? 'text-warning' : 'text-primary',
+            )}>{item.initials}</span>
             <span className="min-w-0">
-              <strong className="block truncate text-sm">{item.patient}</strong>
-              <small className="text-xs text-text-muted">Caso demonstrativo</small>
+              <span className="flex items-center gap-2">
+                <strong className="block truncate text-sm">{item.patient}</strong>
+                {item.real && <StatusBadge tone="warning">REAL</StatusBadge>}
+              </span>
+              <small className="text-xs text-text-muted">{item.real ? 'Caso real' : 'Caso demonstrativo'}</small>
             </span>
             <StatusBadge tone={item.report === 'Bloqueado' ? 'blocking' : item.tone}>Relatório: {item.report}</StatusBadge>
             <StatusBadge tone={item.tone}>Revisão: {item.review}</StatusBadge>
@@ -811,7 +1008,8 @@ function App() {
           </div>
           <div className="flex items-center gap-3">
             <span className="hidden items-center gap-2 rounded-full border border-border bg-surface px-3 py-2 text-sm text-text-secondary sm:flex">
-              <span className="h-[7px] w-[7px] rounded-full bg-warning" /> Ambiente demonstrativo
+              <span className={clsx('h-[7px] w-[7px] rounded-full', isRealCase ? 'bg-danger' : 'bg-warning')} />
+              {isRealCase ? 'Caso real' : 'Ambiente demonstrativo'}
             </span>
             <button
               aria-label={theme === 'dark' ? 'Ativar tema claro' : 'Ativar tema escuro'}
@@ -845,27 +1043,49 @@ function App() {
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <Eyebrow>FLUXO DA ANÁLISE</Eyebrow>
-                    <h2 className="mb-0 mt-1 font-display text-xl">Revisão do caso demonstrativo</h2>
+                    <h2 className="mb-0 mt-1 font-display text-xl">Escolha um caso para revisar</h2>
                   </div>
                   <StatusBadge tone={reportGenerated ? 'success' : 'neutral'}>
                     {reportGenerated ? 'Pronto para revisar' : 'Aguardando caso'}
                   </StatusBadge>
                 </div>
                 <ProcessSteps current={processingStep} reviewed={isReviewed} />
-                <button
-                  className="mt-5 grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center rounded-xl border border-dashed border-border-strong bg-surface-muted p-[18px] text-left hover:border-primary hover:bg-primary-soft/80 max-[580px]:grid-cols-[auto_minmax(0,1fr)]"
-                  onClick={loadDemoCase}
-                  type="button"
-                >
-                  <span className="grid h-[45px] w-[45px] place-items-center rounded-xl bg-primary-soft text-primary"><UploadCloud size={25} /></span>
-                  <span className="mx-3.5 min-w-0">
-                    <strong className="block truncate text-sm">{selectedFile ?? 'Caso demonstrativo ainda não carregado'}</strong>
-                    <small className="mt-1 block text-xs leading-relaxed text-text-muted">Dados fictícios; nenhum upload real será realizado.</small>
-                  </span>
-                  <span className="rounded-[9px] border border-border bg-surface px-3 py-2 text-center text-xs font-semibold text-text-secondary max-[580px]:col-span-2 max-[580px]:mt-3">
-                    {selectedFile ? 'Recarregar caso' : 'Carregar caso demonstrativo'}
-                  </span>
-                </button>
+                <div className="mt-5 grid grid-cols-2 gap-4 max-[820px]:grid-cols-1">
+                  <button
+                    aria-pressed={selectedCase === 'demo'}
+                    className={clsx(
+                      'grid grid-cols-[auto_minmax(0,1fr)] items-center rounded-xl border bg-surface-muted p-[18px] text-left hover:border-primary hover:bg-primary-soft/80',
+                      selectedCase === 'demo' ? 'border-primary ring-2 ring-primary/15' : 'border-border-strong',
+                    )}
+                    onClick={() => loadCase('demo')}
+                    type="button"
+                  >
+                    <span className="grid h-[45px] w-[45px] place-items-center rounded-xl bg-primary-soft text-primary"><UploadCloud size={25} /></span>
+                    <span className="mx-3.5 min-w-0">
+                      <strong className="block truncate text-sm">Maria S.</strong>
+                      <small className="mt-1 block text-xs leading-relaxed text-text-muted">Caso fictício completo</small>
+                    </span>
+                  </button>
+
+                  <button
+                    aria-pressed={selectedCase === 'real'}
+                    className={clsx(
+                      'relative grid grid-cols-[auto_minmax(0,1fr)] items-center overflow-hidden rounded-xl border bg-warning-soft p-[18px] text-left hover:border-warning',
+                      selectedCase === 'real' ? 'border-warning ring-2 ring-warning/20' : 'border-warning/40',
+                    )}
+                    onClick={() => loadCase('real')}
+                    type="button"
+                  >
+                    <span className="grid h-[45px] w-[45px] place-items-center rounded-xl bg-surface text-warning shadow-sm"><Database size={24} /></span>
+                    <span className="mx-3.5 min-w-0">
+                      <span className="flex items-center gap-2">
+                        <strong className="block truncate text-sm">{realPatientName}</strong>
+                        <StatusBadge tone="warning">REAL</StatusBadge>
+                      </span>
+                      <small className="mt-1 block text-xs leading-relaxed text-text-muted">Caso real completo</small>
+                    </span>
+                  </button>
+                </div>
               </section>
               {reportGenerated && reviewContent}
             </>
