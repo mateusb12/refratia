@@ -44,10 +44,8 @@ interface Metric {
 
 interface DocumentReview {
   name: string
+  filename: string
   status: 'Processado' | 'Atenção' | 'Não enviado'
-  patient: string
-  birthDate: string
-  confidence: 'Alta' | 'Moderada' | 'Não confirmada'
   detail: string
 }
 
@@ -84,42 +82,32 @@ const metrics: Metric[] = [
 const documents: DocumentReview[] = [
   {
     name: 'Pentacam OD',
+    filename: 'pentacam-od.pdf',
     status: 'Processado',
-    patient: 'Maria S.',
-    birthDate: '17/08/1987',
-    confidence: 'Alta',
     detail: 'Arquivo demonstrativo legível • 6 páginas',
   },
   {
     name: 'Pentacam OE',
-    status: 'Atenção',
-    patient: 'Maria S',
-    birthDate: '17/08/1987',
-    confidence: 'Moderada',
-    detail: 'Sobrenome abreviado; compatível com os demais documentos.',
+    filename: 'pentacam-os.pdf',
+    status: 'Processado',
+    detail: 'Arquivo demonstrativo legível • 6 páginas',
   },
   {
     name: 'Biometria',
+    filename: 'biometria.pdf',
     status: 'Processado',
-    patient: 'Maria S.',
-    birthDate: '17/08/1987',
-    confidence: 'Alta',
     detail: 'Arquivo demonstrativo legível • 2 páginas',
   },
   {
     name: 'Microscopia especular',
+    filename: 'microscopia.pdf',
     status: 'Processado',
-    patient: 'Maria S.',
-    birthDate: 'Não disponível',
-    confidence: 'Alta',
-    detail: 'Identidade confirmada pelo nome e identificador do caso.',
+    detail: 'Arquivo demonstrativo legível.',
   },
   {
     name: 'OCT de retina',
+    filename: 'oct-retina.pdf',
     status: 'Não enviado',
-    patient: 'Não lido',
-    birthDate: 'Não disponível',
-    confidence: 'Não confirmada',
     detail: 'Nenhum arquivo associado ao caso demonstrativo.',
   },
 ]
@@ -236,15 +224,14 @@ const extractedData: ExtractedDatum[] = [
 ]
 
 const realPatientName = 'Gerinaldo Alfregildo'
-const realPatientBirthDate = new Date(`${patientData.patient.birth_date}T00:00:00`).toLocaleDateString('pt-BR')
-const realDocuments: DocumentReview[] = patientData.source_files.map((file) => ({
-  name: `${file.exam.charAt(0).toUpperCase()}${file.exam.slice(1)} · ${file.eye}`,
-  status: 'Processado',
-  patient: realPatientName,
-  birthDate: realPatientBirthDate,
-  confidence: 'Alta',
-  detail: `${file.type === 'application/pdf' ? `${file.pages} páginas` : 'Imagem'} · ${file.path.split('/').pop()}`,
-}))
+const realDocuments: DocumentReview[] = patientData.source_files.map((file) => {
+  return {
+    name: `${file.exam.charAt(0).toUpperCase()}${file.exam.slice(1)} · ${file.eye}`,
+    filename: file.path.split('/').pop() ?? file.path,
+    status: 'Processado',
+    detail: `${file.type === 'application/pdf' ? `${file.pages} páginas` : 'Imagem'} disponível no caso.`,
+  }
+})
 
 const realExtractedData: ExtractedDatum[] = (['OD', 'OS'] as const).flatMap((eye) => {
   const pentacam = patientData.exams.pentacam.eyes[eye]
@@ -331,10 +318,10 @@ const realMetrics: Metric[] = [
     tone: 'success',
   },
   {
-    label: 'Revisão médica',
-    value: 'Pendente',
-    detail: 'Sem recomendação automatizada',
-    tone: 'warning',
+    label: 'Consolidação',
+    value: 'Compatível',
+    detail: 'Datas normalizadas',
+    tone: 'success',
   },
 ]
 
@@ -348,7 +335,7 @@ const recommendationReasons = [
 ]
 
 const recentCases = [
-  { initials: 'RA', patient: realPatientName, report: 'Dados importados', review: 'Pendente', tone: 'warning' as const, real: true },
+  { initials: 'RA', patient: realPatientName, report: 'Gerado', review: 'Pendente', tone: 'warning' as const, real: true },
   { initials: 'MS', patient: 'Maria S.', report: 'Parcial', review: 'Pendente', tone: 'warning' as const, real: false },
   { initials: 'JL', patient: 'João L.', report: 'Gerado', review: 'Revisado', tone: 'success' as const, real: false },
   { initials: 'AR', patient: 'Ana R.', report: 'Bloqueado', review: 'Identidade', tone: 'blocking' as const, real: false },
@@ -483,7 +470,7 @@ function DocumentsReview({
   expanded: string | null
   onToggle: (name: string) => void
 }) {
-  const processed = items.filter((document) => document.status === 'Processado').length
+  const received = items.filter((document) => document.status !== 'Não enviado').length
 
   return (
     <section className="mt-5 rounded-2xl border border-border bg-surface p-6 shadow-sm max-[580px]:p-4">
@@ -492,10 +479,10 @@ function DocumentsReview({
         <div>
           <h2 className="m-0 font-display text-xl tracking-[-0.025em]">Documentos recebidos</h2>
           <p className="mb-0 mt-1.5 text-sm leading-relaxed text-text-secondary">
-            Confira se os arquivos pertencem ao mesmo paciente antes de revisar os parâmetros.
+            Arquivos disponíveis no sistema para a revisão deste caso.
           </p>
         </div>
-        <StatusBadge tone={processed === items.length ? 'success' : 'warning'}>{processed} de {items.length} recebidos</StatusBadge>
+        <StatusBadge tone={received === items.length ? 'success' : 'warning'}>{received} de {items.length} recebidos</StatusBadge>
       </div>
 
       <div className="mt-5 grid grid-cols-3 gap-3 max-[1100px]:grid-cols-2 max-[580px]:grid-cols-1">
@@ -510,19 +497,9 @@ function DocumentsReview({
                 <StatusBadge tone={tone}>{document.status}</StatusBadge>
               </div>
               <h3 className="mb-0 mt-3 font-display text-sm">{document.name}</h3>
-              <dl className="mt-3 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-2 text-xs">
-                <dt className="text-text-muted">Paciente</dt>
-                <dd className="m-0 text-right font-semibold">{document.patient}</dd>
-                <dt className="text-text-muted">Nascimento</dt>
-                <dd className="m-0 text-right font-semibold">{document.birthDate}</dd>
-                <dt className="text-text-muted">Identidade</dt>
-                <dd className={clsx(
-                  'm-0 text-right font-semibold',
-                  document.confidence === 'Alta' ? 'text-success' : document.confidence === 'Moderada' ? 'text-warning' : 'text-text-muted',
-                )}>
-                  {document.confidence}
-                </dd>
-              </dl>
+              <p className="mb-0 mt-3 truncate text-xs text-text-muted" title={document.filename}>
+                Arquivo: <span className="font-semibold text-text-secondary">{document.filename}</span>
+              </p>
               <button
                 aria-expanded={expanded === document.name}
                 className="mt-4 text-xs font-bold text-primary hover:underline"
@@ -544,7 +521,7 @@ function DocumentsReview({
       <div className="mt-4">
         {isReal ? (
           <InformationNotice>
-            Arquivos e identidade disponíveis para conferência.
+            Arquivos processados e disponíveis para revisão.
           </InformationNotice>
         ) : (
           <InformationNotice>
@@ -647,13 +624,181 @@ function ExtractedDataReview({
 }
 
 function RealCaseSummary() {
+  const eyes = (['OD', 'OS'] as const).map((eye) => {
+    const pentacam = patientData.exams.pentacam.eyes[eye]
+    const biometry = patientData.exams.biometry_iol.eyes[eye]
+    const endothelium = patientData.exams.specular_microscopy.eyes[eye]
+    const astigmatism = Math.abs(biometry.keratometry.astigmatism_d)
+    const coma = Number.parseFloat(pentacam.corneal_rings.zernike['5mm'].z31_coma)
+
+    return {
+      eye,
+      astigmatism,
+      coma,
+      endothelialDensity: endothelium.cell_density_cells_per_mm2,
+      badD: pentacam.belin_ambrosio.d,
+      artMax: pentacam.belin_ambrosio.art_max,
+      tkc: pentacam.topometric_indices_8mm.tkc,
+      z40: pentacam.cataract_preop.total_corneal_z40_6mm_um,
+      recommendation: astigmatism >= 0.75
+        ? 'LIO multifocal tórica ou EDOF tórica'
+        : 'LIO multifocal ou EDOF não tórica',
+    }
+  })
+
   return (
-    <section className="mt-5 rounded-2xl border border-warning/40 bg-surface p-6 shadow-sm max-[580px]:p-4">
-      <Eyebrow>PRÓXIMO PASSO CLÍNICO</Eyebrow>
-      <h2 className="mb-0 mt-1 font-display text-xl">Dados reais importados; recomendação ainda não calculada</h2>
-      <p className="mb-0 mt-2 max-w-[760px] text-sm leading-relaxed text-text-secondary">
-        O caso já apresenta identidade, documentos e parâmetros dos dois olhos. As regras de recomendação continuam exclusivas do caso fictício até serem validadas para dados reais.
-      </p>
+    <section className="mt-5 rounded-2xl border border-border bg-surface p-6 shadow-sm max-[580px]:p-4">
+      <Eyebrow>ETAPA 4 · COMO O PROTOCOLO CHEGOU À INDICAÇÃO</Eyebrow>
+      <div className="mt-1 flex items-start justify-between gap-4 max-[820px]:flex-col">
+        <div>
+          <h2 className="m-0 font-display text-2xl tracking-[-0.03em]">Acompanhe a decisão, passo a passo</h2>
+          <p className="mb-0 mt-2 max-w-[760px] text-sm leading-relaxed text-text-secondary">
+            Cada etapa mostra a pergunta do protocolo, o dado usado e o efeito na recomendação.
+          </p>
+        </div>
+        <StatusBadge tone="warning">Revisão médica pendente</StatusBadge>
+      </div>
+
+      <div className="mt-5 rounded-xl border border-primary-border bg-primary-soft p-5">
+        <span className="text-xs font-bold tracking-[0.12em] text-primary">RESULTADO EM UMA FRASE</span>
+        <p className="mb-0 mt-2 font-display text-lg leading-snug">
+          A idade direciona o caso para implante de lente; a biometria indica lente <strong>{eyes[0].astigmatism >= 0.75 ? 'tórica' : 'não tórica'} no OD</strong> e <strong>{eyes[1].astigmatism >= 0.75 ? 'tórica' : 'não tórica'} no OS</strong>.
+        </p>
+        <p className="mb-0 mt-2 text-xs leading-relaxed text-text-secondary">
+          Multifocal ou EDOF permanece uma escolha do cirurgião, conforme o perfil visual do paciente.
+        </p>
+      </div>
+
+      <div className="mt-4">
+        <InformationNotice>
+          <strong>Pré-checagem concluída:</strong> nome e nascimento são compatíveis após normalizar a data americana do Pentacam. Os exames podem ser avaliados como um único caso.
+        </InformationNotice>
+      </div>
+
+      <ol className="mt-6 list-none p-0">
+        <li className="relative grid grid-cols-[36px_minmax(0,1fr)] gap-3 pb-4 before:absolute before:bottom-0 before:left-[17px] before:top-9 before:w-px before:bg-border-strong">
+          <span className="relative z-10 grid h-9 w-9 place-items-center rounded-full bg-primary text-sm font-bold text-white">1</span>
+          <article className="rounded-xl border border-border bg-surface-muted p-4">
+            <div className="flex items-center justify-between gap-3 max-[580px]:items-start">
+              <div>
+                <span className="text-xs font-bold text-text-muted">PERGUNTA</span>
+                <h3 className="mb-0 mt-1 text-base font-bold">O paciente tem mais de 55 anos?</h3>
+              </div>
+              <StatusBadge tone="success"><Check size={12} /> Sim</StatusBadge>
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-3 text-sm max-[580px]:grid-cols-1">
+              <div className="rounded-lg border border-border bg-surface p-3">
+                <span className="block text-xs text-text-muted">Dado encontrado</span>
+                <strong className="mt-1 block">59 anos na data dos exames</strong>
+              </div>
+              <div className="rounded-lg border border-success/30 bg-success-soft p-3">
+                <span className="block text-xs text-success">Decisão</span>
+                <strong className="mt-1 block">Seguir pelo Fluxo C</strong>
+              </div>
+            </div>
+            <p className="mb-0 mt-3 text-xs text-text-secondary"><strong>Por quê?</strong> Regra do protocolo: idade &gt; 55 anos direciona para implante de LIO e retira LASIK/PRK das opções.</p>
+          </article>
+        </li>
+
+        <li className="relative grid grid-cols-[36px_minmax(0,1fr)] gap-3 pb-4 before:absolute before:bottom-0 before:left-[17px] before:top-9 before:w-px before:bg-border-strong">
+          <span className="relative z-10 grid h-9 w-9 place-items-center rounded-full bg-primary text-sm font-bold text-white">2</span>
+          <article className="rounded-xl border border-border bg-surface-muted p-4">
+            <div className="flex items-center justify-between gap-3 max-[580px]:items-start">
+              <div>
+                <span className="text-xs font-bold text-text-muted">PERGUNTA</span>
+                <h3 className="mb-0 mt-1 text-base font-bold">Há ceratocone confirmado?</h3>
+              </div>
+              <StatusBadge tone="success"><Check size={12} /> Não</StatusBadge>
+            </div>
+            <div className="mt-4 overflow-x-auto rounded-lg border border-border bg-surface">
+              <table className="w-full min-w-[520px] border-collapse text-left text-xs">
+                <thead className="text-text-muted">
+                  <tr><th className="p-3">Olho</th><th className="p-3">BAD-D</th><th className="p-3">ARTmax</th><th className="p-3">TKC</th><th className="p-3">Leitura</th></tr>
+                </thead>
+                <tbody>
+                  {eyes.map(({ eye, badD, artMax, tkc }) => (
+                    <tr className="border-t border-border" key={eye}>
+                      <th className="p-3">{eye}</th>
+                      <td className="p-3">{badD.toLocaleString('pt-BR')}</td>
+                      <td className="p-3">{artMax} µm</td>
+                      <td className="p-3">{tkc ?? 'Em branco'}</td>
+                      <td className="p-3 font-semibold">{eye === 'OS' ? 'Suspeito; acompanhar' : 'Sem confirmação'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="mb-0 mt-3 text-xs text-text-secondary"><strong>Efeito:</strong> o OS exige acompanhamento tomográfico, mas TKC em branco não confirma ceratocone. O caso continua no Fluxo C.</p>
+          </article>
+        </li>
+
+        <li className="relative grid grid-cols-[36px_minmax(0,1fr)] gap-3 pb-4 before:absolute before:bottom-0 before:left-[17px] before:top-9 before:w-px before:bg-border-strong">
+          <span className="relative z-10 grid h-9 w-9 place-items-center rounded-full bg-primary text-sm font-bold text-white">3</span>
+          <article className="rounded-xl border border-border bg-surface-muted p-4">
+            <div>
+              <span className="text-xs font-bold text-text-muted">PERGUNTA</span>
+              <h3 className="mb-0 mt-1 text-base font-bold">A lente precisa corrigir astigmatismo?</h3>
+              <p className="mb-0 mt-1 text-xs text-text-muted">Regra: biometria ≥ 0,75 D → lente tórica.</p>
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-3 max-[580px]:grid-cols-1">
+              {eyes.map(({ eye, astigmatism }) => {
+                const isToric = astigmatism >= 0.75
+                return (
+                  <div className="rounded-lg border border-border bg-surface p-4" key={eye}>
+                    <div className="flex items-center justify-between gap-2">
+                      <strong>{eye}</strong>
+                      <StatusBadge tone={isToric ? 'warning' : 'success'}>{isToric ? 'Sim' : 'Não'}</StatusBadge>
+                    </div>
+                    <strong className="mt-3 block font-display text-xl">{astigmatism.toLocaleString('pt-BR')} D</strong>
+                    <span className="mt-1 block text-xs text-text-muted">{isToric ? 'Acima' : 'Abaixo'} do limite de 0,75 D</span>
+                    <strong className="mt-3 block border-t border-border pt-3 text-sm text-primary">LIO {isToric ? 'tórica' : 'não tórica'}</strong>
+                  </div>
+                )
+              })}
+            </div>
+          </article>
+        </li>
+
+        <li className="grid grid-cols-[36px_minmax(0,1fr)] gap-3">
+          <span className="relative z-10 grid h-9 w-9 place-items-center rounded-full bg-primary text-sm font-bold text-white">4</span>
+          <article className="rounded-xl border border-border bg-surface-muted p-4">
+            <div className="flex items-center justify-between gap-3 max-[580px]:items-start">
+              <div>
+                <span className="text-xs font-bold text-text-muted">CHECAGEM FINAL</span>
+                <h3 className="mb-0 mt-1 text-base font-bold">Algum alerta muda a indicação?</h3>
+              </div>
+              <StatusBadge tone="success"><Check size={12} /> Não</StatusBadge>
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-3 max-[720px]:grid-cols-1">
+                {eyes.map(({ eye, coma, endothelialDensity, z40 }) => (
+                  <ul className="m-0 grid list-none gap-2 rounded-lg border border-border bg-surface p-3 text-xs text-text-secondary" key={eye}>
+                    <li className="font-bold text-text-primary">{eye}</li>
+                    <li className="flex gap-2"><Check className="flex-none text-success" size={14} /> Coma {coma.toLocaleString('pt-BR', { minimumFractionDigits: 3 })} µm: sem alerta</li>
+                    <li className="flex gap-2"><Check className="flex-none text-success" size={14} /> Endotélio {endothelialDensity.toLocaleString('pt-BR')} células/mm²: adequado</li>
+                    <li className="flex gap-2"><Info className="flex-none text-primary" size={14} /> Z40 {z40.toLocaleString('pt-BR', { minimumFractionDigits: 3 })} µm: informativo</li>
+                  </ul>
+                ))}
+            </div>
+            <p className="mb-0 mt-3 text-xs leading-relaxed text-text-muted">O OCT de retina não foi enviado, mas é informativo neste fluxo. Sua ausência não altera o resultado do protocolo.</p>
+          </article>
+        </li>
+      </ol>
+
+      <div className="mt-6 rounded-xl bg-sidebar px-5 py-5 text-sidebar-text">
+        <div className="flex items-center gap-2 text-[#79d4b7]">
+          <CircleCheck size={18} />
+          <span className="text-xs font-bold tracking-[0.12em]">FIM DO FLUXO · RECOMENDAÇÃO PRELIMINAR</span>
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-3 max-[720px]:grid-cols-1">
+          {eyes.map(({ eye, recommendation }) => (
+            <div className="rounded-lg border border-white/10 bg-white/[0.07] p-3" key={eye}>
+              <span className="text-xs text-sidebar-muted">{eye}</span>
+              <strong className="mt-1 block text-sm">{recommendation}</strong>
+            </div>
+          ))}
+        </div>
+        <p className="mb-0 mt-3 text-xs text-sidebar-muted">Esta trilha explica a saída do protocolo. A conduta clínica depende da revisão do Dr. Tiago.</p>
+      </div>
     </section>
   )
 }
@@ -866,7 +1011,7 @@ function App() {
             </div>
             <p className="mb-0 mt-1.5 max-w-[690px] text-sm leading-relaxed text-text-secondary">
               {isRealCase
-                ? `Nascimento: ${realPatientBirthDate} · Dados clínicos importados`
+                ? 'Nascimento: 12/05/1967 · Dados clínicos importados'
                 : 'Confira documentos, dados extraídos, cálculos e a justificativa da recomendação preliminar.'}
             </p>
           </div>
