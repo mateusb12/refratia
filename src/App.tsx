@@ -3,6 +3,7 @@ import clsx from 'clsx'
 import {
   Activity,
   AlertTriangle,
+  ArrowDown,
   Calculator,
   Check,
   CircleCheck,
@@ -11,6 +12,7 @@ import {
   FileQuestion,
   FileSearch,
   FileText,
+  GitBranch,
   History,
   Info,
   LayoutDashboard,
@@ -675,114 +677,95 @@ function RealCaseSummary() {
         </InformationNotice>
       </div>
 
-      <ol className="mt-6 list-none p-0">
-        <li className="relative grid grid-cols-[36px_minmax(0,1fr)] gap-3 pb-4 before:absolute before:bottom-0 before:left-[17px] before:top-9 before:w-px before:bg-border-strong">
-          <span className="relative z-10 grid h-9 w-9 place-items-center rounded-full bg-primary text-sm font-bold text-white">1</span>
-          <article className="rounded-xl border border-border bg-surface-muted p-4">
-            <div className="flex items-center justify-between gap-3 max-[580px]:items-start">
-              <div>
-                <span className="text-xs font-bold text-text-muted">PERGUNTA</span>
-                <h3 className="mb-0 mt-1 text-base font-bold">O paciente tem mais de 55 anos?</h3>
-              </div>
-              <StatusBadge tone="success"><Check size={12} /> Sim</StatusBadge>
-            </div>
-            <div className="mt-4 grid grid-cols-2 gap-3 text-sm max-[580px]:grid-cols-1">
-              <div className="rounded-lg border border-border bg-surface p-3">
-                <span className="block text-xs text-text-muted">Dado encontrado</span>
-                <strong className="mt-1 block">59 anos na data dos exames</strong>
-              </div>
-              <div className="rounded-lg border border-success/30 bg-success-soft p-3">
-                <span className="block text-xs text-success">Decisão</span>
-                <strong className="mt-1 block">Seguir pelo Fluxo C</strong>
-              </div>
-            </div>
-            <p className="mb-0 mt-3 text-xs text-text-secondary"><strong>Por quê?</strong> Regra do protocolo: idade &gt; 55 anos direciona para implante de LIO e retira LASIK/PRK das opções.</p>
-          </article>
-        </li>
+      <div aria-label="Fluxograma da decisão do protocolo" className="mt-6">
+        <div className="mx-auto max-w-[760px] rounded-xl border border-primary bg-primary-soft p-4">
+          <span className="text-xs font-bold tracking-[0.12em] text-primary">INÍCIO</span>
+          <strong className="mt-1 block text-base">Idade: 59 anos → o protocolo escolhe o Fluxo C</strong>
+          <span className="mt-1 block text-xs text-text-secondary">Regra: acima de 55 anos, LASIK e PRK não entram na cascata.</span>
+        </div>
 
-        <li className="relative grid grid-cols-[36px_minmax(0,1fr)] gap-3 pb-4 before:absolute before:bottom-0 before:left-[17px] before:top-9 before:w-px before:bg-border-strong">
-          <span className="relative z-10 grid h-9 w-9 place-items-center rounded-full bg-primary text-sm font-bold text-white">2</span>
-          <article className="rounded-xl border border-border bg-surface-muted p-4">
-            <div className="flex items-center justify-between gap-3 max-[580px]:items-start">
-              <div>
-                <span className="text-xs font-bold text-text-muted">PERGUNTA</span>
-                <h3 className="mb-0 mt-1 text-base font-bold">Há ceratocone confirmado?</h3>
-              </div>
-              <StatusBadge tone="success"><Check size={12} /> Não</StatusBadge>
-            </div>
-            <div className="mt-4 overflow-x-auto rounded-lg border border-border bg-surface">
-              <table className="w-full min-w-[520px] border-collapse text-left text-xs">
-                <thead className="text-text-muted">
-                  <tr><th className="p-3">Olho</th><th className="p-3">BAD-D</th><th className="p-3">ARTmax</th><th className="p-3">TKC</th><th className="p-3">Leitura</th></tr>
-                </thead>
-                <tbody>
-                  {eyes.map(({ eye, badD, artMax, tkc }) => (
-                    <tr className="border-t border-border" key={eye}>
-                      <th className="p-3">{eye}</th>
-                      <td className="p-3">{badD.toLocaleString('pt-BR')}</td>
-                      <td className="p-3">{artMax} µm</td>
-                      <td className="p-3">{tkc ?? 'Em branco'}</td>
-                      <td className="p-3 font-semibold">{eye === 'OS' ? 'Suspeito; acompanhar' : 'Sem confirmação'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <p className="mb-0 mt-3 text-xs text-text-secondary"><strong>Efeito:</strong> o OS exige acompanhamento tomográfico, mas TKC em branco não confirma ceratocone. O caso continua no Fluxo C.</p>
-          </article>
-        </li>
+        <ArrowDown aria-hidden="true" className="mx-auto my-2 text-primary" size={24} />
 
-        <li className="relative grid grid-cols-[36px_minmax(0,1fr)] gap-3 pb-4 before:absolute before:bottom-0 before:left-[17px] before:top-9 before:w-px before:bg-border-strong">
-          <span className="relative z-10 grid h-9 w-9 place-items-center rounded-full bg-primary text-sm font-bold text-white">3</span>
-          <article className="rounded-xl border border-border bg-surface-muted p-4">
+        <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)] gap-3 max-[700px]:grid-cols-1">
+          <details className="rounded-xl border border-border bg-surface-muted p-4 text-text-muted">
+            <summary className="cursor-pointer list-none text-sm font-bold marker:hidden"><GitBranch className="mr-2 inline" size={16} />Outros fluxos não aplicáveis</summary>
+            <p className="mb-0 mt-3 text-xs leading-relaxed">Fluxo A: idade menor que 40 anos. Fluxo B: entre 40 e 55 anos. Eles existem no protocolo, mas não foram avaliados para este caso.</p>
+          </details>
+
+          <article className="rounded-xl border border-success/40 bg-success-soft p-4 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <span className="text-xs font-bold tracking-[0.12em] text-success">ROTA ATIVA · FLUXO C</span>
+                <h3 className="mb-0 mt-1 text-base font-bold">LIO multifocal ou EDOF</h3>
+              </div>
+              <StatusBadge tone="success"><Check size={12} /> Selecionado</StatusBadge>
+            </div>
+            <p className="mb-0 mt-2 text-xs leading-relaxed text-text-secondary">A idade define a categoria da indicação. A escolha entre multifocal e EDOF fica com o cirurgião.</p>
+          </article>
+        </div>
+
+        <ArrowDown aria-hidden="true" className="mx-auto my-2 text-primary" size={24} />
+
+        <article className="mx-auto max-w-[760px] rounded-xl border border-primary-border bg-surface p-4 shadow-sm">
+          <div className="flex items-start justify-between gap-3">
             <div>
-              <span className="text-xs font-bold text-text-muted">PERGUNTA</span>
-              <h3 className="mb-0 mt-1 text-base font-bold">A lente precisa corrigir astigmatismo?</h3>
-              <p className="mb-0 mt-1 text-xs text-text-muted">Regra: biometria ≥ 0,75 D → lente tórica.</p>
+              <span className="text-xs font-bold tracking-[0.12em] text-primary">DECISÃO AVALIADA</span>
+              <h3 className="mb-0 mt-1 text-base font-bold">Há ceratocone confirmado?</h3>
             </div>
-            <div className="mt-4 grid grid-cols-2 gap-3 max-[580px]:grid-cols-1">
-              {eyes.map(({ eye, astigmatism }) => {
-                const isToric = astigmatism >= 0.75
-                return (
-                  <div className="rounded-lg border border-border bg-surface p-4" key={eye}>
-                    <div className="flex items-center justify-between gap-2">
-                      <strong>{eye}</strong>
-                      <StatusBadge tone={isToric ? 'warning' : 'success'}>{isToric ? 'Sim' : 'Não'}</StatusBadge>
-                    </div>
-                    <strong className="mt-3 block font-display text-xl">{astigmatism.toLocaleString('pt-BR')} D</strong>
-                    <span className="mt-1 block text-xs text-text-muted">{isToric ? 'Acima' : 'Abaixo'} do limite de 0,75 D</span>
-                    <strong className="mt-3 block border-t border-border pt-3 text-sm text-primary">LIO {isToric ? 'tórica' : 'não tórica'}</strong>
-                  </div>
-                )
-              })}
-            </div>
-          </article>
-        </li>
-
-        <li className="grid grid-cols-[36px_minmax(0,1fr)] gap-3">
-          <span className="relative z-10 grid h-9 w-9 place-items-center rounded-full bg-primary text-sm font-bold text-white">4</span>
-          <article className="rounded-xl border border-border bg-surface-muted p-4">
-            <div className="flex items-center justify-between gap-3 max-[580px]:items-start">
-              <div>
-                <span className="text-xs font-bold text-text-muted">CHECAGEM FINAL</span>
-                <h3 className="mb-0 mt-1 text-base font-bold">Algum alerta muda a indicação?</h3>
+            <StatusBadge tone="success"><Check size={12} /> Não</StatusBadge>
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-3 max-[580px]:grid-cols-1">
+            {eyes.map(({ eye, badD, artMax, tkc }) => (
+              <div className="rounded-lg border border-border bg-surface-muted p-3 text-xs" key={eye}>
+                <strong>{eye}</strong>
+                <span className="mt-1 block text-text-secondary">BAD-D {badD.toLocaleString('pt-BR')} · ARTmax {artMax} µm · TKC {tkc ?? 'em branco'}</span>
+                <span className="mt-2 block font-semibold text-text-primary">{eye === 'OS' ? 'Índices suspeitos; acompanhar' : 'Sem confirmação'}</span>
               </div>
-              <StatusBadge tone="success"><Check size={12} /> Não</StatusBadge>
-            </div>
-            <div className="mt-4 grid grid-cols-2 gap-3 max-[720px]:grid-cols-1">
-                {eyes.map(({ eye, coma, endothelialDensity, z40 }) => (
-                  <ul className="m-0 grid list-none gap-2 rounded-lg border border-border bg-surface p-3 text-xs text-text-secondary" key={eye}>
-                    <li className="font-bold text-text-primary">{eye}</li>
-                    <li className="flex gap-2"><Check className="flex-none text-success" size={14} /> Coma {coma.toLocaleString('pt-BR', { minimumFractionDigits: 3 })} µm: sem alerta</li>
-                    <li className="flex gap-2"><Check className="flex-none text-success" size={14} /> Endotélio {endothelialDensity.toLocaleString('pt-BR')} células/mm²: adequado</li>
-                    <li className="flex gap-2"><Info className="flex-none text-primary" size={14} /> Z40 {z40.toLocaleString('pt-BR', { minimumFractionDigits: 3 })} µm: informativo</li>
-                  </ul>
-                ))}
-            </div>
-            <p className="mb-0 mt-3 text-xs leading-relaxed text-text-muted">O OCT de retina não foi enviado, mas é informativo neste fluxo. Sua ausência não altera o resultado do protocolo.</p>
-          </article>
-        </li>
-      </ol>
+            ))}
+          </div>
+          <p className="mb-0 mt-3 text-xs text-text-secondary">Sem TKC positivo, a regra global não exclui a indicação. O alerta do OS segue registrado, mas não muda a rota.</p>
+        </article>
+
+        <ArrowDown aria-hidden="true" className="mx-auto my-2 text-primary" size={24} />
+
+        <article className="mx-auto max-w-[760px] rounded-xl border border-primary-border bg-surface p-4 shadow-sm">
+          <span className="text-xs font-bold tracking-[0.12em] text-primary">DECISÃO AVALIADA</span>
+          <h3 className="mb-0 mt-1 text-base font-bold">O astigmatismo pede lente tórica?</h3>
+          <p className="mb-0 mt-1 text-xs text-text-muted">Regra: biometria óptica ≥ 0,75 D → versão tórica.</p>
+          <div className="mt-3 grid grid-cols-2 gap-3 max-[580px]:grid-cols-1">
+            {eyes.map(({ eye, astigmatism }) => {
+              const isToric = astigmatism >= 0.75
+              return (
+                <div className={clsx('rounded-lg border p-3', isToric ? 'border-success/40 bg-success-soft' : 'border-border bg-surface-muted')} key={eye}>
+                  <div className="flex items-center justify-between gap-2">
+                    <strong>{eye}</strong>
+                    <StatusBadge tone={isToric ? 'success' : 'neutral'}>{isToric ? 'Sim' : 'Não'}</StatusBadge>
+                  </div>
+                  <strong className="mt-2 block font-display text-xl">{astigmatism.toLocaleString('pt-BR')} D</strong>
+                  <span className="mt-1 block text-xs text-text-secondary">{isToric ? 'LIO tórica' : 'LIO não tórica'}</span>
+                </div>
+              )
+            })}
+          </div>
+        </article>
+
+        <ArrowDown aria-hidden="true" className="mx-auto my-2 text-primary" size={24} />
+
+        <details className="mx-auto max-w-[760px] rounded-xl border border-border bg-surface-muted p-4">
+          <summary className="cursor-pointer list-none text-sm font-bold marker:hidden">Checagens que não alteraram a rota</summary>
+          <div className="mt-3 grid grid-cols-2 gap-3 max-[580px]:grid-cols-1">
+            {eyes.map(({ eye, coma, endothelialDensity, z40 }) => (
+              <ul className="m-0 grid list-none gap-2 rounded-lg border border-border bg-surface p-3 text-xs text-text-secondary" key={eye}>
+                <li className="font-bold text-text-primary">{eye}</li>
+                <li>Coma {coma.toLocaleString('pt-BR', { minimumFractionDigits: 3 })} µm: sem alerta</li>
+                <li>Endotélio {endothelialDensity.toLocaleString('pt-BR')} células/mm²: adequado</li>
+                <li>Z40 {z40.toLocaleString('pt-BR', { minimumFractionDigits: 3 })} µm: informativo</li>
+              </ul>
+            ))}
+          </div>
+          <p className="mb-0 mt-3 text-xs text-text-muted">O OCT de retina não foi enviado, mas é informativo neste fluxo e não altera a indicação.</p>
+        </details>
+      </div>
 
       <div className="mt-6 rounded-xl bg-sidebar px-5 py-5 text-sidebar-text">
         <div className="flex items-center gap-2 text-[#79d4b7]">
