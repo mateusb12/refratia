@@ -12,7 +12,6 @@ import {
   FileQuestion,
   FileSearch,
   FileText,
-  GitBranch,
   History,
   Info,
   LayoutDashboard,
@@ -658,7 +657,6 @@ function RealCaseSummary() {
             Cada etapa mostra a pergunta do protocolo, o dado usado e o efeito na recomendação.
           </p>
         </div>
-        <StatusBadge tone="warning">Revisão médica pendente</StatusBadge>
       </div>
 
       <div className="mt-5 rounded-xl border border-primary-border bg-primary-soft p-5">
@@ -671,12 +669,6 @@ function RealCaseSummary() {
         </p>
       </div>
 
-      <div className="mt-4">
-        <InformationNotice>
-          <strong>Pré-checagem concluída:</strong> nome e nascimento são compatíveis após normalizar a data americana do Pentacam. Os exames podem ser avaliados como um único caso.
-        </InformationNotice>
-      </div>
-
       <div aria-label="Fluxograma da decisão do protocolo" className="mt-6">
         <div className="mx-auto max-w-[760px] rounded-xl border border-primary bg-primary-soft p-4">
           <span className="text-xs font-bold tracking-[0.12em] text-primary">INÍCIO</span>
@@ -686,11 +678,18 @@ function RealCaseSummary() {
 
         <ArrowDown aria-hidden="true" className="mx-auto my-2 text-primary" size={24} />
 
-        <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)] gap-3 max-[700px]:grid-cols-1">
-          <details className="rounded-xl border border-border bg-surface-muted p-4 text-text-muted">
-            <summary className="cursor-pointer list-none text-sm font-bold marker:hidden"><GitBranch className="mr-2 inline" size={16} />Outros fluxos não aplicáveis</summary>
-            <p className="mb-0 mt-3 text-xs leading-relaxed">Fluxo A: idade menor que 40 anos. Fluxo B: entre 40 e 55 anos. Eles existem no protocolo, mas não foram avaliados para este caso.</p>
-          </details>
+        <div className="grid grid-cols-3 gap-3 max-[820px]:grid-cols-1">
+          <article className="rounded-xl border border-border bg-surface-muted p-4 text-text-muted" title="Aplicável apenas a pacientes com menos de 40 anos.">
+            <span className="text-xs font-bold tracking-[0.12em]">FLUXO A</span>
+            <h3 className="mb-0 mt-1 text-base font-bold">Córnea ou lente fácica</h3>
+            <p className="mb-0 mt-2 text-xs">Idade &lt; 40 anos · não escolhido: 59 anos</p>
+          </article>
+
+          <article className="rounded-xl border border-border bg-surface-muted p-4 text-text-muted" title="Aplicável a pacientes entre 40 e 55 anos.">
+            <span className="text-xs font-bold tracking-[0.12em]">FLUXO B</span>
+            <h3 className="mb-0 mt-1 text-base font-bold">Presbiopia</h3>
+            <p className="mb-0 mt-2 text-xs">40 a 55 anos · não escolhido: 59 anos</p>
+          </article>
 
           <article className="rounded-xl border border-success/40 bg-success-soft p-4 shadow-sm">
             <div className="flex items-start justify-between gap-3">
@@ -704,7 +703,9 @@ function RealCaseSummary() {
           </article>
         </div>
 
-        <ArrowDown aria-hidden="true" className="mx-auto my-2 text-primary" size={24} />
+        <div className="grid grid-cols-3 max-[820px]:grid-cols-1">
+          <ArrowDown aria-hidden="true" className="col-start-3 mx-auto my-2 text-primary max-[820px]:col-start-auto" size={24} />
+        </div>
 
         <article className="mx-auto max-w-[760px] rounded-xl border border-primary-border bg-surface p-4 shadow-sm">
           <div className="flex items-start justify-between gap-3">
@@ -723,10 +724,22 @@ function RealCaseSummary() {
               </div>
             ))}
           </div>
+          <div className="mt-3 grid grid-cols-2 gap-3 max-[580px]:grid-cols-1">
+            <div className="rounded-lg border border-border bg-surface-muted p-3 text-xs text-text-muted" title="Com ceratocone confirmado, o Fluxo C mantém a indicação de LIO e registra a observação.">
+              <strong className="block text-text-secondary">Sim</strong>
+              <span className="mt-1 block">Registrar ceratocone; LIO permanece indicada no Fluxo C.</span>
+            </div>
+            <div className="rounded-lg border border-success/40 bg-success-soft p-3 text-xs">
+              <span className="flex items-center gap-1 font-bold text-success"><Check size={13} /> Não · rota escolhida</span>
+              <strong className="mt-1 block">Seguir para a escolha da lente</strong>
+            </div>
+          </div>
           <p className="mb-0 mt-3 text-xs text-text-secondary">Sem TKC positivo, a regra global não exclui a indicação. O alerta do OS segue registrado, mas não muda a rota.</p>
         </article>
 
-        <ArrowDown aria-hidden="true" className="mx-auto my-2 text-primary" size={24} />
+        <div className="mx-auto grid max-w-[760px] grid-cols-2 max-[580px]:grid-cols-1">
+          <ArrowDown aria-hidden="true" className="col-start-2 mx-auto my-2 text-primary max-[580px]:col-start-auto" size={24} />
+        </div>
 
         <article className="mx-auto max-w-[760px] rounded-xl border border-primary-border bg-surface p-4 shadow-sm">
           <span className="text-xs font-bold tracking-[0.12em] text-primary">DECISÃO AVALIADA</span>
