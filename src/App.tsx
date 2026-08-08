@@ -3,7 +3,6 @@ import clsx from 'clsx'
 import {
   Activity,
   AlertTriangle,
-  ArrowDown,
   Calculator,
   Check,
   CircleCheck,
@@ -642,6 +641,43 @@ function ExtractedDataReview({
   )
 }
 
+function FlowConnector({
+  variant,
+  className,
+}: {
+  variant: 'straight' | 'to-active' | 'to-center'
+  className?: string
+}) {
+  const paths = {
+    straight: 'M50 0 V48',
+    'to-active': 'M50 0 V16 C50 21 52 24 56 24 H77 C81 24 83 27 83 32 V48',
+    'to-center': 'M83 0 V16 C83 21 81 24 77 24 H56 C52 24 50 27 50 32 V48',
+  }
+  const arrowheads = {
+    straight: 'M49.25 39 L50 48 L50.75 39 L50 41 Z',
+    'to-active': 'M82.25 39 L83 48 L83.75 39 L83 41 Z',
+    'to-center': 'M49.25 39 L50 48 L50.75 39 L50 41 Z',
+  }
+
+  const renderSvg = (path: string, arrowhead: string, svgClassName?: string) => (
+    <svg className={clsx('h-full w-full', svgClassName)} preserveAspectRatio="none" viewBox="0 0 100 48">
+      <path d={path} fill="none" shapeRendering="geometricPrecision" stroke="currentColor" strokeLinecap="round" strokeWidth="1.7" vectorEffect="non-scaling-stroke" />
+      <path d={arrowhead} fill="currentColor" />
+    </svg>
+  )
+
+  return (
+    <div aria-hidden="true" className={clsx('h-14 w-full text-primary', className)}>
+      {variant === 'to-active' ? (
+        <>
+          {renderSvg(paths[variant], arrowheads[variant], 'max-[820px]:hidden')}
+          {renderSvg(paths.straight, arrowheads.straight, 'hidden max-[820px]:block')}
+        </>
+      ) : renderSvg(paths[variant], arrowheads[variant])}
+    </div>
+  )
+}
+
 function RealCaseSummary() {
   const eyes = (['OD', 'OS'] as const).map((eye) => {
     const pentacam = patientData.exams.pentacam.eyes[eye]
@@ -694,7 +730,7 @@ function RealCaseSummary() {
           <span className="mt-1 block text-xs text-text-secondary">Regra: acima de 55 anos, LASIK e PRK não entram na cascata.</span>
         </div>
 
-        <ArrowDown aria-hidden="true" className="mx-auto my-2 text-primary" size={24} />
+        <FlowConnector variant="to-active" />
 
         <div className="grid grid-cols-3 gap-3 max-[820px]:grid-cols-1">
           <article className="min-h-[134px] rounded-xl border border-border bg-surface-muted p-4 text-text-muted" title="Aplicável apenas a pacientes com menos de 40 anos.">
@@ -721,9 +757,8 @@ function RealCaseSummary() {
           </article>
         </div>
 
-        <div className="grid grid-cols-3 max-[820px]:grid-cols-1">
-          <ArrowDown aria-hidden="true" className="col-start-3 mx-auto my-2 text-primary max-[820px]:col-start-auto" size={24} />
-        </div>
+        <FlowConnector variant="to-center" className="max-[820px]:hidden" />
+        <FlowConnector variant="straight" className="hidden max-[820px]:block" />
 
         <article className="mx-auto max-w-[760px] rounded-xl border border-primary-border bg-surface p-4 shadow-sm">
           <div className="flex items-start justify-between gap-3">
@@ -789,9 +824,7 @@ function RealCaseSummary() {
           </div>
         </div>
 
-        <div className="mx-auto grid max-w-[760px] grid-cols-2 max-[580px]:grid-cols-1">
-          <ArrowDown aria-hidden="true" className="col-start-2 mx-auto my-2 text-primary max-[580px]:col-start-auto" size={24} />
-        </div>
+        <FlowConnector variant="straight" />
 
         <article className="mx-auto max-w-[760px] rounded-xl border border-primary-border bg-surface p-4 shadow-sm">
           <span className="text-xs font-bold tracking-[0.12em] text-primary">DECISÃO AVALIADA</span>
@@ -814,7 +847,7 @@ function RealCaseSummary() {
           </div>
         </article>
 
-        <ArrowDown aria-hidden="true" className="mx-auto my-2 text-primary" size={24} />
+        <FlowConnector variant="straight" />
 
         <details className="mx-auto max-w-[760px] rounded-xl border border-border bg-surface-muted p-4">
           <summary className="cursor-pointer list-none text-sm font-bold marker:hidden">Checagens que não alteraram a rota</summary>
