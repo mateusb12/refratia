@@ -3,6 +3,7 @@ import clsx from 'clsx'
 import {
   Activity,
   AlertTriangle,
+  ArrowLeft,
   Calculator,
   Check,
   CircleCheck,
@@ -11,7 +12,6 @@ import {
   FileQuestion,
   FileSearch,
   FileText,
-  History,
   Info,
   LayoutDashboard,
   Map,
@@ -1064,7 +1064,15 @@ function App() {
 
   function loadCase(kind: CaseKind) {
     setSelectedCase(kind)
-    setProcessingStep(1)
+    setProcessingStep(kind === 'real' ? steps.length : 1)
+    setIsReviewed(false)
+    setExpandedDocument(null)
+    setTraceData(null)
+  }
+
+  function backToReports() {
+    setSelectedCase(null)
+    setProcessingStep(0)
     setIsReviewed(false)
     setExpandedDocument(null)
     setTraceData(null)
@@ -1072,6 +1080,13 @@ function App() {
 
   const reviewContent = reportGenerated ? (
     <>
+      <button
+        className="mb-4 inline-flex items-center gap-2 border-0 bg-transparent p-0 text-sm font-semibold text-primary hover:text-primary-hover"
+        onClick={backToReports}
+        type="button"
+      >
+        <ArrowLeft size={16} /> Voltar para casos
+      </button>
       <div className={clsx(
         'mt-5 flex items-center justify-between gap-6 rounded-2xl border p-6 max-[820px]:flex-col max-[820px]:items-start max-[580px]:p-4',
         isRealCase ? 'border-warning/50 bg-warning-soft' : 'hero-bg border-primary-border',
@@ -1126,25 +1141,34 @@ function App() {
         <Eyebrow>REVISÃO CLÍNICA</Eyebrow>
         <h2 className="mb-0 mt-1 font-display text-xl">Nenhum caso carregado nesta sessão</h2>
         <p className="mb-0 mt-1.5 text-sm leading-relaxed text-text-secondary">
-          Escolha o caso fictício ou o caso real.
+          Escolha o caso fictício para iniciar uma nova análise.
         </p>
       </div>
-      <PrimaryButton onClick={() => loadCase('real')}>Carregar caso real</PrimaryButton>
     </section>
   )
 
-  const historySection = (
+  const reportsSection = (
     <section className="mt-5 rounded-2xl border border-border bg-surface p-6 shadow-sm">
-      <Eyebrow>ATIVIDADE RECENTE</Eyebrow>
-      <h2 className="mb-0 mt-1 font-display text-xl">Histórico recente</h2>
+      <Eyebrow>CASOS DISPONÍVEIS</Eyebrow>
+      <h2 className="mb-0 mt-1 font-display text-xl">Escolha um caso para analisar</h2>
       <div className="mt-4">
         {recentCases.map((item) => (
-          <div
+          <button
             key={item.patient}
+            disabled={!item.real && item.patient !== 'Maria S.'}
             className={clsx(
-              'grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-3 border-t border-border px-3 py-3 first:border-t-0 max-[580px]:grid-cols-[auto_minmax(0,1fr)]',
+              'grid w-full grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-3 rounded-xl border border-border bg-transparent px-3 py-3 text-left max-[580px]:grid-cols-[auto_minmax(0,1fr)]',
               item.real && 'rounded-xl border border-warning/40 bg-warning-soft',
+              item.real ? 'hover:border-warning' : item.patient === 'Maria S.' && 'hover:border-primary',
             )}
+            onClick={() => {
+              if (item.real) loadCase('real')
+              if (item.patient === 'Maria S.') {
+                setActiveSection('Nova análise')
+                loadCase('demo')
+              }
+            }}
+            type="button"
           >
             <span className={clsx(
               'grid h-9 w-9 place-items-center rounded-[10px] bg-surface-muted text-xs font-bold',
@@ -1159,7 +1183,7 @@ function App() {
             </span>
             <StatusBadge tone={item.report === 'Bloqueado' ? 'blocking' : item.tone}>Relatório: {item.report}</StatusBadge>
             <StatusBadge tone={item.tone}>Revisão: {item.review}</StatusBadge>
-          </div>
+          </button>
         ))}
       </div>
     </section>
@@ -1184,7 +1208,6 @@ function App() {
             { label: 'Visão geral', icon: <LayoutDashboard size={19} /> },
             { label: 'Nova análise', icon: <Plus size={19} /> },
             { label: 'Relatórios', icon: <FileText size={19} /> },
-            { label: 'Histórico', icon: <History size={19} /> },
           ].map((item) => (
             <button
               key={item.label}
@@ -1259,12 +1282,20 @@ function App() {
                 </div>
                 <PrimaryButton onClick={() => setActiveSection('Nova análise')}>Nova análise</PrimaryButton>
               </section>
-              {historySection}
             </>
           )}
 
           {activeSection === 'Nova análise' && (
             <>
+              {selectedCase && (
+                <button
+                  className="mb-4 inline-flex items-center gap-2 border-0 bg-transparent p-0 text-sm font-semibold text-primary hover:text-primary-hover"
+                  onClick={backToReports}
+                  type="button"
+                >
+                  <ArrowLeft size={16} /> Voltar para casos
+                </button>
+              )}
               <section className="mt-5 rounded-2xl border border-border bg-surface p-6 shadow-sm max-[580px]:p-4">
                 <div className="flex items-start justify-between gap-4">
                   <div>
@@ -1276,7 +1307,7 @@ function App() {
                   </StatusBadge>
                 </div>
                 <ProcessSteps current={processingStep} reviewed={isReviewed} />
-                <div className="mt-5 grid grid-cols-2 gap-4 max-[820px]:grid-cols-1">
+                <div className="mt-5 grid gap-4">
                   <button
                     aria-pressed={selectedCase === 'demo'}
                     className={clsx(
@@ -1293,32 +1324,12 @@ function App() {
                     </span>
                   </button>
 
-                  <button
-                    aria-pressed={selectedCase === 'real'}
-                    className={clsx(
-                      'relative grid grid-cols-[auto_minmax(0,1fr)] items-center overflow-hidden rounded-xl border bg-warning-soft p-[18px] text-left hover:border-warning',
-                      selectedCase === 'real' ? 'border-warning ring-2 ring-warning/20' : 'border-warning/40',
-                    )}
-                    onClick={() => loadCase('real')}
-                    type="button"
-                  >
-                    <span className="grid h-[45px] w-[45px] place-items-center rounded-xl bg-surface text-warning shadow-sm"><Database size={24} /></span>
-                    <span className="mx-3.5 min-w-0">
-                      <span className="flex items-center gap-2">
-                        <strong className="block truncate text-sm">{realPatientName}</strong>
-                        <StatusBadge tone="warning">REAL</StatusBadge>
-                      </span>
-                      <small className="mt-1 block text-xs leading-relaxed text-text-muted">Caso real completo</small>
-                    </span>
-                  </button>
                 </div>
               </section>
-              {reportGenerated && reviewContent}
             </>
           )}
 
-          {activeSection === 'Relatórios' && reviewContent}
-          {activeSection === 'Histórico' && historySection}
+          {activeSection === 'Relatórios' && (selectedCase === 'real' ? reviewContent : reportsSection)}
           </>}
         </section>
       </main>
