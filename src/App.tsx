@@ -35,6 +35,9 @@ type CaseKind = 'demo' | 'real'
 type NoticeTone = 'information' | 'warning' | 'blocking'
 type DataKind = 'Dado bruto' | 'Dado calculado' | 'Dado ausente'
 type Confidence = 'Consistente' | 'Suspeita — revisar'
+type Eye = 'OD' | 'OS'
+
+const eyeLabel = (eye: Eye) => (eye === 'OS' ? 'OE' : eye)
 
 interface Metric {
   label: string
@@ -225,9 +228,10 @@ const extractedData: ExtractedDatum[] = [
 ]
 
 const realPatientName = 'Gerinaldo Alfregildo'
+const endothelialCutoff = 2000
 const realDocuments: DocumentReview[] = patientData.source_files.map((file) => {
   return {
-    name: `${file.exam.charAt(0).toUpperCase()}${file.exam.slice(1)} · ${file.eye}`,
+    name: `${file.exam.charAt(0).toUpperCase()}${file.exam.slice(1)} · ${eyeLabel(file.eye as Eye)}`,
     filename: file.path.split('/').pop() ?? file.path,
     status: 'Processado',
     detail: `${file.type === 'application/pdf' ? `${file.pages} páginas` : 'Imagem'} disponível no caso.`,
@@ -237,11 +241,13 @@ const realDocuments: DocumentReview[] = patientData.source_files.map((file) => {
 const realExtractedData: ExtractedDatum[] = (['OD', 'OS'] as const).flatMap((eye) => {
   const pentacam = patientData.exams.pentacam.eyes[eye]
   const biometry = patientData.exams.biometry_iol.eyes[eye]
-  const source = `Pentacam ${eye}`
+  const microscopy = patientData.exams.specular_microscopy.eyes[eye]
+  const label = eyeLabel(eye)
+  const source = `Pentacam ${label}`
 
   return [
     {
-      name: `Paquimetria mínima · ${eye}`,
+      name: `Paquimetria mínima · ${label}`,
       value: pentacam.pachymetry.thinnest_um.toLocaleString('pt-BR'),
       unit: 'µm',
       source,
@@ -252,7 +258,7 @@ const realExtractedData: ExtractedDatum[] = (['OD', 'OS'] as const).flatMap((eye
       field: 'Thinnest',
     },
     {
-      name: `Kmax · ${eye}`,
+      name: `Kmax · ${label}`,
       fullName: 'Ceratometria máxima',
       value: pentacam.anterior_cornea.kmax_d.toLocaleString('pt-BR'),
       unit: 'D',
@@ -264,7 +270,7 @@ const realExtractedData: ExtractedDatum[] = (['OD', 'OS'] as const).flatMap((eye
       field: 'Kmax',
     },
     {
-      name: `BAD-D · ${eye}`,
+      name: `BAD-D · ${label}`,
       fullName: 'Belin/Ambrósio Enhanced Ectasia Display',
       value: pentacam.belin_ambrosio.d.toLocaleString('pt-BR'),
       source,
@@ -275,7 +281,7 @@ const realExtractedData: ExtractedDatum[] = (['OD', 'OS'] as const).flatMap((eye
       field: 'Final D',
     },
     {
-      name: `ARTmax · ${eye}`,
+      name: `ARTmax · ${label}`,
       fullName: 'Ambrósio Relational Thickness máximo',
       value: pentacam.belin_ambrosio.art_max.toLocaleString('pt-BR'),
       source,
@@ -286,10 +292,22 @@ const realExtractedData: ExtractedDatum[] = (['OD', 'OS'] as const).flatMap((eye
       field: 'ARTmax',
     },
     {
+      name: `Celularidade endotelial · ${label}`,
+      fullName: 'Densidade celular endotelial',
+      value: microscopy.cell_density_cells_per_mm2.toLocaleString('pt-BR'),
+      unit: 'células/mm²',
+      source: `Microscopia especular ${label}`,
+      kind: 'Dado bruto',
+      confidence: 'Consistente',
+      document: patientData.exams.specular_microscopy.source.file.split('/').pop() ?? source,
+      screen: 'NIDEK',
+      field: 'Cell Density (CD)',
+    },
+    {
       name: `Comprimento axial · ${eye}`,
       value: biometry.axial_length_mm.toLocaleString('pt-BR'),
       unit: 'mm',
-      source: `Biometria ${eye}`,
+      source: `Biometria ${label}`,
       kind: 'Dado bruto',
       confidence: 'Consistente',
       document: 'BIO SRK-T AO.pdf',
@@ -309,13 +327,13 @@ const realMetrics: Metric[] = [
   {
     label: 'Dados em destaque',
     value: String(realExtractedData.length),
-    detail: 'Parâmetros reais de OD e OS',
+    detail: 'Parâmetros reais de OD e OE',
     tone: 'success',
   },
   {
     label: 'Qualidade Pentacam',
     value: `${patientData.exams.pentacam.eyes.OD.quality} / ${patientData.exams.pentacam.eyes.OS.quality}`,
-    detail: 'OD / OS',
+    detail: 'OD / OE',
     tone: 'success',
   },
   {
@@ -662,7 +680,7 @@ function RealCaseSummary() {
       <div className="mt-5 rounded-xl border border-primary-border bg-primary-soft p-5">
         <span className="text-xs font-bold tracking-[0.12em] text-primary">RESULTADO EM UMA FRASE</span>
         <p className="mb-0 mt-2 font-display text-lg leading-snug">
-          A idade direciona o caso para implante de lente; a biometria indica lente <strong>{eyes[0].astigmatism >= 0.75 ? 'tórica' : 'não tórica'} no OD</strong> e <strong>{eyes[1].astigmatism >= 0.75 ? 'tórica' : 'não tórica'} no OS</strong>.
+          A idade direciona o caso para implante de lente; a biometria indica lente <strong>{eyes[0].astigmatism >= 0.75 ? 'tórica' : 'não tórica'} no OD</strong> e <strong>{eyes[1].astigmatism >= 0.75 ? 'tórica' : 'não tórica'} no OE</strong>.
         </p>
         <p className="mb-0 mt-2 text-xs leading-relaxed text-text-secondary">
           Multifocal ou EDOF permanece uma escolha do cirurgião, conforme o perfil visual do paciente.
@@ -679,19 +697,19 @@ function RealCaseSummary() {
         <ArrowDown aria-hidden="true" className="mx-auto my-2 text-primary" size={24} />
 
         <div className="grid grid-cols-3 gap-3 max-[820px]:grid-cols-1">
-          <article className="rounded-xl border border-border bg-surface-muted p-4 text-text-muted" title="Aplicável apenas a pacientes com menos de 40 anos.">
+          <article className="min-h-[134px] rounded-xl border border-border bg-surface-muted p-4 text-text-muted" title="Aplicável apenas a pacientes com menos de 40 anos.">
             <span className="text-xs font-bold tracking-[0.12em]">FLUXO A</span>
             <h3 className="mb-0 mt-1 text-base font-bold">Córnea ou lente fácica</h3>
             <p className="mb-0 mt-2 text-xs">Idade &lt; 40 anos · não escolhido: 59 anos</p>
           </article>
 
-          <article className="rounded-xl border border-border bg-surface-muted p-4 text-text-muted" title="Aplicável a pacientes entre 40 e 55 anos.">
+          <article className="min-h-[134px] rounded-xl border border-border bg-surface-muted p-4 text-text-muted" title="Aplicável a pacientes entre 40 e 55 anos.">
             <span className="text-xs font-bold tracking-[0.12em]">FLUXO B</span>
             <h3 className="mb-0 mt-1 text-base font-bold">Presbiopia</h3>
             <p className="mb-0 mt-2 text-xs">40 a 55 anos · não escolhido: 59 anos</p>
           </article>
 
-          <article className="rounded-xl border border-success/40 bg-success-soft p-4 shadow-sm">
+          <article className="min-h-[134px] rounded-xl border border-success/40 bg-success-soft p-4 shadow-sm">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <span className="text-xs font-bold tracking-[0.12em] text-success">ROTA ATIVA · FLUXO C</span>
@@ -718,24 +736,58 @@ function RealCaseSummary() {
           <div className="mt-3 grid grid-cols-2 gap-3 max-[580px]:grid-cols-1">
             {eyes.map(({ eye, badD, artMax, tkc }) => (
               <div className="rounded-lg border border-border bg-surface-muted p-3 text-xs" key={eye}>
-                <strong>{eye}</strong>
+                <strong>{eyeLabel(eye)}</strong>
                 <span className="mt-1 block text-text-secondary">BAD-D {badD.toLocaleString('pt-BR')} · ARTmax {artMax} µm · TKC {tkc ?? 'em branco'}</span>
                 <span className="mt-2 block font-semibold text-text-primary">{eye === 'OS' ? 'Índices suspeitos; acompanhar' : 'Sem confirmação'}</span>
               </div>
             ))}
           </div>
+          <p className="mb-0 mt-3 text-xs text-text-secondary">Sem TKC positivo, a regra global não exclui a indicação. O alerta do OE segue registrado, mas não muda a rota.</p>
           <div className="mt-3 grid grid-cols-2 gap-3 max-[580px]:grid-cols-1">
-            <div className="rounded-lg border border-border bg-surface-muted p-3 text-xs text-text-muted" title="Com ceratocone confirmado, o Fluxo C mantém a indicação de LIO e registra a observação.">
+            <div className="min-h-[134px] rounded-lg border border-border bg-surface-muted p-3 text-xs text-text-muted" title="Com ceratocone confirmado, o Fluxo C mantém a indicação de LIO e registra a observação.">
               <strong className="block text-text-secondary">Sim</strong>
               <span className="mt-1 block">Registrar ceratocone; LIO permanece indicada no Fluxo C.</span>
             </div>
-            <div className="rounded-lg border border-success/40 bg-success-soft p-3 text-xs">
+            <div className="min-h-[134px] rounded-lg border border-success/40 bg-success-soft p-3 text-xs">
               <span className="flex items-center gap-1 font-bold text-success"><Check size={13} /> Não · rota escolhida</span>
               <strong className="mt-1 block">Seguir para a escolha da lente</strong>
             </div>
           </div>
-          <p className="mb-0 mt-3 text-xs text-text-secondary">Sem TKC positivo, a regra global não exclui a indicação. O alerta do OS segue registrado, mas não muda a rota.</p>
         </article>
+
+        <div className="mx-auto mt-3 max-w-[760px] rounded-xl border border-primary-border bg-surface p-4">
+          <span className="text-xs font-bold tracking-[0.12em] text-primary">DECISÃO AVALIADA</span>
+          <h3 className="mb-0 mt-1 text-base font-bold">A celularidade endotelial está abaixo do ponto de corte?</h3>
+          <p className="mb-0 mt-1 text-xs text-text-muted">Regra: densidade celular &lt; {endothelialCutoff.toLocaleString('pt-BR')} células/mm² → ponto de atenção.</p>
+          <div className="mt-3 grid grid-cols-2 gap-3 max-[580px]:grid-cols-1">
+            {eyes.flatMap(({ eye, endothelialDensity }) => {
+              const actualBelowCutoff = endothelialDensity < endothelialCutoff
+              return [true, false].map((belowCutoff) => {
+                const selected = belowCutoff === actualBelowCutoff
+                return (
+                  <div
+                    className={clsx(
+                      'rounded-lg border p-3',
+                      selected && belowCutoff && 'border-warning/50 bg-warning-soft',
+                      selected && !belowCutoff && 'border-success/50 bg-success-soft',
+                      !selected && 'border-border bg-surface-muted text-text-muted',
+                    )}
+                    key={`${eye}-${belowCutoff}`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <strong>{eyeLabel(eye)} · {belowCutoff ? 'Sim' : 'Não'}</strong>
+                      <StatusBadge tone={selected ? (belowCutoff ? 'warning' : 'success') : 'neutral'}>
+                        {selected ? 'Selecionado' : 'Não escolhido'}
+                      </StatusBadge>
+                    </div>
+                    <strong className="mt-2 block font-display text-xl">{endothelialDensity.toLocaleString('pt-BR')} células/mm²</strong>
+                    <span className="mt-1 block text-xs">{belowCutoff ? 'Registrar ponto de atenção' : 'Celularidade adequada'}</span>
+                  </div>
+                )
+              })
+            })}
+          </div>
+        </div>
 
         <div className="mx-auto grid max-w-[760px] grid-cols-2 max-[580px]:grid-cols-1">
           <ArrowDown aria-hidden="true" className="col-start-2 mx-auto my-2 text-primary max-[580px]:col-start-auto" size={24} />
@@ -751,7 +803,7 @@ function RealCaseSummary() {
               return (
                 <div className={clsx('rounded-lg border p-3', isToric ? 'border-success/40 bg-success-soft' : 'border-border bg-surface-muted')} key={eye}>
                   <div className="flex items-center justify-between gap-2">
-                    <strong>{eye}</strong>
+                    <strong>{eyeLabel(eye)}</strong>
                     <StatusBadge tone={isToric ? 'success' : 'neutral'}>{isToric ? 'Sim' : 'Não'}</StatusBadge>
                   </div>
                   <strong className="mt-2 block font-display text-xl">{astigmatism.toLocaleString('pt-BR')} D</strong>
