@@ -85,7 +85,7 @@ jobs:
           NODE
 
           echo "Metadados gerados:"
-          cat dist/version.json
+          cat frontend/dist/version.json
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
