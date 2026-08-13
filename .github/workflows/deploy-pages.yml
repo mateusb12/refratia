@@ -79,7 +79,7 @@ jobs:
           }
 
           writeFileSync(
-            'dist/version.json',
+              'frontend/dist/version.json',
             `${JSON.stringify(metadata, null, 2)}\n`,
           )
           NODE
@@ -93,7 +93,7 @@ jobs:
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ./dist
+          path: ./frontend/dist
 
   deploy:
     name: Deploy
