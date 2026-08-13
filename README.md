@@ -3,7 +3,7 @@
 Monorepo full-stack do RefratIA:
 
 - `frontend/`: aplicação React + Vite.
-- `backend/`: servidor Node.js nativo, atualmente com `GET /health`.
+- `backend/`: servidor Go nativo, atualmente com `GET /health`.
 
 ## Desenvolvimento
 
@@ -18,4 +18,5 @@ npm run dev:backend  # backend, em outro terminal
 ```bash
 npm run build
 npm run lint
+npm run build:backend
 ```
