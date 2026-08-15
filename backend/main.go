@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -18,7 +19,11 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
-const maxFileSize = 20 << 20
+const (
+	maxFileSize     = 20 << 20
+	maxIntakeSize   = 50 << 20
+	maxAnalysisSize = 5 << 20
+)
 
 var allowedTypes = map[string]bool{
 	"application/pdf":    true,
@@ -34,6 +39,7 @@ type intakeFile struct {
 	Filename    string `json:"filename"`
 	ContentType string `json:"contentType"`
 	Size        int64  `json:"size"`
+	SHA256      string `json:"sha256"`
 	Key         string `json:"key,omitempty"`
 }
 
@@ -69,18 +75,29 @@ func analyzeIntakeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	files, err := intakeFiles(w, r)
+	headers, err := intakeHeaders(w, r)
 	if err != nil {
 		writeError(w, err.status, err.message)
+		return
+	}
+	defer r.MultipartForm.RemoveAll()
+	files, readErr := readIntakeFiles(headers)
+	if readErr != nil {
+		writeError(w, http.StatusBadRequest, "não foi possível ler um dos arquivos")
+		return
+	}
+	analysis, extractionErr := extractPatient(r.Context(), files)
+	if extractionErr != nil {
+		writeError(w, http.StatusBadGateway, extractionErr.Error())
 		return
 	}
 
 	// No Tigris write here. The browser keeps the original Files until confirmation.
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{
-		"files":   files,
-		"patient": nil,
-		"message": "Arquivos recebidos. A identificação do paciente e a extração clínica ainda precisam de OCR/processamento.",
+		"files":    intakeMetadata(files),
+		"analysis": analysis,
+		"message":  "Documentos processados. Confira o JSON extraído antes de criar o caso.",
 	})
 }
 
@@ -90,9 +107,20 @@ func confirmIntakeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	files, err := intakeHeaders(w, r)
+	headers, err := intakeHeaders(w, r)
 	if err != nil {
 		writeError(w, err.status, err.message)
+		return
+	}
+	defer r.MultipartForm.RemoveAll()
+	files, readErr := readIntakeFiles(headers)
+	if readErr != nil {
+		writeError(w, http.StatusBadRequest, "não foi possível ler um dos arquivos")
+		return
+	}
+	analysis, analysisErr := confirmedAnalysis(r.FormValue("analysis"), files)
+	if analysisErr != nil {
+		writeError(w, http.StatusBadRequest, analysisErr.Error())
 		return
 	}
 	caseID := fmt.Sprintf("case-%s-%s", time.Now().UTC().Format("20060102T150405Z"), randomToken())
@@ -102,31 +130,41 @@ func confirmIntakeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	result := make([]intakeFile, 0, len(files))
-	keys := make([]string, 0, len(files))
-	for _, header := range files {
-		file, openErr := header.Open()
-		if openErr != nil {
-			cleanupObjects(r.Context(), client, keys)
-			writeError(w, http.StatusBadRequest, "não foi possível ler um dos arquivos")
-			return
-		}
-		contentType := header.Header.Get("Content-Type")
-		key := fmt.Sprintf("cases/%s/%s", caseID, safeName(header.Filename))
+	keys := make([]string, 0, len(files)+1)
+	for _, uploaded := range files {
+		key := fmt.Sprintf("cases/%s/%s", caseID, safeName(uploaded.Metadata.Filename))
 		_, putErr := client.PutObject(r.Context(), &s3.PutObjectInput{
-			Bucket: aws.String(os.Getenv("BUCKET_NAME")), Key: aws.String(key), Body: file, ContentType: aws.String(contentType),
+			Bucket: aws.String(os.Getenv("BUCKET_NAME")), Key: aws.String(key), Body: bytes.NewReader(uploaded.Data), ContentType: aws.String(uploaded.Metadata.ContentType),
 		})
-		file.Close()
 		if putErr != nil {
 			cleanupObjects(r.Context(), client, keys)
 			writeError(w, http.StatusBadGateway, "não foi possível armazenar os arquivos")
 			return
 		}
 		keys = append(keys, key)
-		result = append(result, intakeFile{Filename: header.Filename, ContentType: contentType, Size: header.Size, Key: key})
+		metadata := uploaded.Metadata
+		metadata.Key = key
+		result = append(result, metadata)
+	}
+	setStoredPaths(analysis, result)
+	compiled, marshalErr := json.MarshalIndent(analysis, "", "  ")
+	if marshalErr != nil {
+		cleanupObjects(r.Context(), client, keys)
+		writeError(w, http.StatusInternalServerError, "não foi possível montar o JSON compilado")
+		return
+	}
+	analysisKey := fmt.Sprintf("cases/%s/paciente_compilado.json", caseID)
+	_, putErr := client.PutObject(r.Context(), &s3.PutObjectInput{
+		Bucket: aws.String(os.Getenv("BUCKET_NAME")), Key: aws.String(analysisKey), Body: bytes.NewReader(compiled), ContentType: aws.String("application/json"),
+	})
+	if putErr != nil {
+		cleanupObjects(r.Context(), client, keys)
+		writeError(w, http.StatusBadGateway, "não foi possível armazenar o JSON compilado")
+		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"caseId": caseID, "files": result})
+	json.NewEncoder(w).Encode(map[string]any{"caseId": caseID, "files": result, "analysisKey": analysisKey})
 }
 
 type intakeError struct {
@@ -134,27 +172,16 @@ type intakeError struct {
 	message string
 }
 
-func intakeFiles(w http.ResponseWriter, r *http.Request) ([]intakeFile, *intakeError) {
-	headers, err := intakeHeaders(w, r)
-	if err != nil {
-		return nil, err
-	}
-	files := make([]intakeFile, 0, len(headers))
-	for _, header := range headers {
-		files = append(files, intakeFile{Filename: header.Filename, ContentType: header.Header.Get("Content-Type"), Size: header.Size})
-	}
-	return files, nil
-}
-
 func intakeHeaders(w http.ResponseWriter, r *http.Request) ([]*multipart.FileHeader, *intakeError) {
-	r.Body = http.MaxBytesReader(w, r.Body, maxFileSize*10+(1<<20))
-	if err := r.ParseMultipartForm(maxFileSize * 10); err != nil {
+	r.Body = http.MaxBytesReader(w, r.Body, maxIntakeSize+maxAnalysisSize+(1<<20))
+	if err := r.ParseMultipartForm(maxFileSize); err != nil {
 		return nil, &intakeError{http.StatusBadRequest, "arquivos excedem o limite ou são inválidos"}
 	}
 	headers := r.MultipartForm.File["files"]
 	if len(headers) == 0 {
 		return nil, &intakeError{http.StatusBadRequest, "envie ao menos um arquivo no campo files"}
 	}
+	var totalSize int64
 	for _, header := range headers {
 		contentType := header.Header.Get("Content-Type")
 		if !allowedTypes[contentType] {
@@ -163,6 +190,10 @@ func intakeHeaders(w http.ResponseWriter, r *http.Request) ([]*multipart.FileHea
 		if header.Size > maxFileSize {
 			return nil, &intakeError{http.StatusRequestEntityTooLarge, "arquivo excede o limite de 20 MB: " + header.Filename}
 		}
+		totalSize += header.Size
+	}
+	if totalSize > maxIntakeSize {
+		return nil, &intakeError{http.StatusRequestEntityTooLarge, "o conjunto de arquivos excede o limite de 50 MB"}
 	}
 	return headers, nil
 }

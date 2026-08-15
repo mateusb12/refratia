@@ -16,6 +16,10 @@ services:
 
   backend:
     build: ./backend
+    develop:
+      watch:
+        - action: rebuild
+          path: ./backend
     environment:
       PORT: 3000
       CORS_ORIGINS: http://localhost:5173
@@ -25,6 +29,8 @@ services:
       AWS_SECRET_ACCESS_KEY: minioadmin
       AWS_ENDPOINT_URL_S3: http://minio:9000
       AWS_EC2_METADATA_DISABLED: "true"
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.4-mini}
     ports:
       - "3000:3000"
     depends_on:

@@ -70,6 +70,24 @@ interface ExtractedDatum {
   formula?: string
 }
 
+interface IntakeAnalysis {
+  patient?: { full_name?: string; birth_date?: string }
+  exams?: Record<string, unknown>
+  [key: string]: unknown
+}
+
+interface IntakePreview {
+  files: Array<{ filename: string; contentType: string; size: number; sha256: string }>
+  analysis: IntakeAnalysis
+  message: string
+}
+
+function isIntakePreview(value: unknown): value is IntakePreview {
+  if (!value || typeof value !== 'object') return false
+  const result = value as Partial<IntakePreview>
+  return Array.isArray(result.files) && typeof result.analysis === 'object' && result.analysis !== null && typeof result.message === 'string'
+}
+
 const steps = [
   { title: 'Enviar exames', description: 'Carregar o caso' },
   { title: 'Conferir documentos', description: 'Identidade e arquivos' },
@@ -1040,7 +1058,7 @@ function App() {
   const [traceData, setTraceData] = useState<ExtractedDatum | null>(null)
   const [isReviewed, setIsReviewed] = useState(false)
   const [intakeFiles, setIntakeFiles] = useState<File[]>([])
-  const [intakePreview, setIntakePreview] = useState<{ files: Array<{ filename: string; contentType: string; size: number }>; message: string } | null>(null)
+  const [intakePreview, setIntakePreview] = useState<IntakePreview | null>(null)
   const [intakeBusy, setIntakeBusy] = useState(false)
   const [intakeMessage, setIntakeMessage] = useState('')
 
@@ -1085,8 +1103,10 @@ function App() {
       const body = new FormData()
       intakeFiles.forEach((file) => body.append('files', file))
       const response = await fetch(`${API_URL}/api/intakes/analyze`, { method: 'POST', body })
-      const result = await response.json()
-      if (!response.ok) throw new Error(result.error ?? 'Falha na análise')
+      const result: unknown = await response.json()
+      const errorMessage = result && typeof result === 'object' && 'error' in result && typeof result.error === 'string' ? result.error : 'Falha na análise'
+      if (!response.ok) throw new Error(errorMessage)
+      if (!isIntakePreview(result)) throw new Error('A API de análise está desatualizada. Reinicie o backend e tente novamente.')
       setIntakePreview(result)
     } catch (error) {
       setIntakeMessage(error instanceof Error ? error.message : 'Não foi possível analisar os arquivos.')
@@ -1096,15 +1116,17 @@ function App() {
   }
 
   async function confirmIntake() {
+    if (!intakePreview) return
     setIntakeBusy(true)
     setIntakeMessage('')
     try {
       const body = new FormData()
       intakeFiles.forEach((file) => body.append('files', file))
+      body.append('analysis', JSON.stringify(intakePreview.analysis))
       const response = await fetch(`${API_URL}/api/intakes/confirm`, { method: 'POST', body })
       const result = await response.json()
       if (!response.ok) throw new Error(result.error ?? 'Falha ao salvar o caso')
-      setIntakeMessage(`Caso criado (${result.caseId}). Arquivos salvos no Tigris.`)
+      setIntakeMessage(`Caso criado (${result.caseId}). Arquivos e paciente_compilado.json salvos no Tigris.`)
       setIntakeFiles([])
       setIntakePreview(null)
     } catch (error) {
@@ -1377,11 +1399,20 @@ function App() {
                 )}
                 {intakePreview && (
                   <div className="mt-4 rounded-xl border border-success/30 bg-success-soft p-4">
-                    <strong className="text-sm">Prévia do caso</strong>
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <strong className="text-sm">{intakePreview.analysis.patient?.full_name || 'Paciente não identificado'}</strong>
+                        <p className="mb-0 mt-1 text-xs text-text-secondary">
+                          {intakePreview.analysis.patient?.birth_date || 'Nascimento não identificado'} · {Object.keys(intakePreview.analysis.exams ?? {}).length} tipo(s) de exame
+                        </p>
+                      </div>
+                      <StatusBadge tone="success">JSON extraído</StatusBadge>
+                    </div>
                     <p className="mb-0 mt-2 text-sm leading-relaxed text-text-secondary">{intakePreview.message}</p>
-                    <ul className="mb-0 mt-3 space-y-2 text-xs text-text-secondary">
-                      {intakePreview.files.map((file) => <li key={`${file.filename}-${file.size}`}>{file.filename} · {file.contentType || 'tipo não informado'}</li>)}
-                    </ul>
+                    <details className="mt-4 rounded-lg border border-border bg-surface">
+                      <summary className="cursor-pointer px-3 py-2 text-xs font-bold text-primary">Ver paciente_compilado.json</summary>
+                      <pre className="m-0 max-h-[520px] overflow-auto border-t border-border p-3 text-xs leading-relaxed text-text-secondary">{JSON.stringify(intakePreview.analysis, null, 2)}</pre>
+                    </details>
                     <div className="mt-4 flex flex-wrap gap-3">
                       <PrimaryButton disabled={intakeBusy} onClick={confirmIntake}>{intakeBusy ? 'Salvando…' : 'Confirmar criação do caso'}</PrimaryButton>
                       <button className="rounded-[9px] border border-border-strong bg-surface px-4 py-[11px] text-sm font-semibold hover:border-danger hover:text-danger" disabled={intakeBusy} onClick={() => { setIntakeFiles([]); setIntakePreview(null); setIntakeMessage('Arquivos descartados. Nada foi salvo.') }} type="button">Descartar</button>

@@ -1,0 +1,251 @@
+package main
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"mime/multipart"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+)
+
+const extractionPrompt = `Extraia e consolide TODOS os dados alfanuméricos legíveis dos documentos oftalmológicos enviados em um único JSON. Não faça diagnóstico, não invente valores e use null quando um dado não estiver visível.
+
+Organize o resultado como paciente_compilado.json:
+- schema_version, generated_on (AAAA-MM-DD) e language (pt-BR);
+- patient: full_name, birth_date normalizada e formatos conflitantes encontrados;
+- facility: nome, descrição, endereço e telefone quando existirem;
+- conventions: OD, OS, AO, significado de null e separador decimal normalizado;
+- source_files: um item por arquivo com path igual ao nome recebido, exam, eye, páginas/dimensões e conteúdo por página quando identificável;
+- exams: uma chave snake_case por tipo de exame. Preserve aparelho, software, data/hora, qualidade, alertas, fonte e TODOS os campos, índices, medições, eixos, tabelas e cálculos legíveis. Separe olhos em eyes.OD e eyes.OS (ou AO quando realmente conjunto). Use nomes de campos técnicos em snake_case e inclua unidades no nome quando isso remover ambiguidade;
+- extraction_notes: method, scope, not_encoded e clinical_use_warning.
+
+Confronte identidade, datas e lateralidade entre os arquivos. Preserve avisos do equipamento e divergências do documento. Não resuma tabelas nem omita linhas repetidas por modelo de lente. Retorne somente um objeto JSON.`
+
+type uploadedFile struct {
+	Metadata intakeFile
+	Data     []byte
+}
+
+type openAIResponse struct {
+	Status string `json:"status"`
+	Output []struct {
+		Type    string `json:"type"`
+		Content []struct {
+			Type    string `json:"type"`
+			Text    string `json:"text"`
+			Refusal string `json:"refusal"`
+		} `json:"content"`
+	} `json:"output"`
+	Error *struct {
+		Message string `json:"message"`
+	} `json:"error"`
+}
+
+func readIntakeFiles(headers []*multipart.FileHeader) ([]uploadedFile, error) {
+	files := make([]uploadedFile, 0, len(headers))
+	for _, header := range headers {
+		file, err := header.Open()
+		if err != nil {
+			return nil, err
+		}
+		data, err := io.ReadAll(file)
+		file.Close()
+		if err != nil {
+			return nil, err
+		}
+		digest := sha256.Sum256(data)
+		files = append(files, uploadedFile{
+			Metadata: intakeFile{Filename: header.Filename, ContentType: header.Header.Get("Content-Type"), Size: header.Size, SHA256: hex.EncodeToString(digest[:])},
+			Data:     data,
+		})
+	}
+	return files, nil
+}
+
+func intakeMetadata(files []uploadedFile) []intakeFile {
+	result := make([]intakeFile, len(files))
+	for index, file := range files {
+		result[index] = file.Metadata
+	}
+	return result
+}
+
+func extractPatient(ctx context.Context, files []uploadedFile) (map[string]any, error) {
+	apiKey := os.Getenv("OPENAI_API_KEY")
+	if apiKey == "" {
+		return nil, errors.New("extração indisponível: OPENAI_API_KEY não configurada")
+	}
+
+	content := make([]map[string]any, 0, len(files)*2+1)
+	content = append(content, map[string]any{"type": "input_text", "text": extractionPrompt})
+	for _, file := range files {
+		content = append(content, map[string]any{"type": "input_text", "text": "Arquivo seguinte: " + file.Metadata.Filename})
+		dataURL := "data:" + file.Metadata.ContentType + ";base64," + base64.StdEncoding.EncodeToString(file.Data)
+		if strings.HasPrefix(file.Metadata.ContentType, "image/") {
+			content = append(content, map[string]any{"type": "input_image", "image_url": dataURL, "detail": "high"})
+		} else {
+			input := map[string]any{"type": "input_file", "filename": file.Metadata.Filename, "file_data": dataURL}
+			if file.Metadata.ContentType == "application/pdf" {
+				input["detail"] = "high"
+			}
+			content = append(content, input)
+		}
+	}
+
+	model := os.Getenv("OPENAI_MODEL")
+	if model == "" {
+		model = "gpt-5.4-mini"
+	}
+	body, err := json.Marshal(map[string]any{
+		"model":             model,
+		"store":             false,
+		"max_output_tokens": 40000,
+		"input": []map[string]any{{
+			"role":    "user",
+			"content": content,
+		}},
+		"text": map[string]any{"format": map[string]any{"type": "json_object"}},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("não foi possível preparar a extração: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.openai.com/v1/responses", strings.NewReader(string(body)))
+	if err != nil {
+		return nil, fmt.Errorf("não foi possível preparar a extração: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	req.Header.Set("Content-Type", "application/json")
+	response, err := (&http.Client{Timeout: 5 * time.Minute}).Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("falha ao processar os documentos: %w", err)
+	}
+	defer response.Body.Close()
+
+	var result openAIResponse
+	if err := json.NewDecoder(io.LimitReader(response.Body, 10<<20)).Decode(&result); err != nil {
+		return nil, errors.New("resposta inválida do serviço de extração")
+	}
+	if response.StatusCode >= 300 {
+		if result.Error != nil && result.Error.Message != "" {
+			return nil, fmt.Errorf("falha na extração: %s", result.Error.Message)
+		}
+		return nil, fmt.Errorf("falha na extração (HTTP %d)", response.StatusCode)
+	}
+	if result.Status != "completed" {
+		return nil, errors.New("a extração não foi concluída")
+	}
+
+	var output string
+	for _, item := range result.Output {
+		for _, part := range item.Content {
+			if part.Refusal != "" {
+				return nil, fmt.Errorf("extração recusada: %s", part.Refusal)
+			}
+			if part.Type == "output_text" {
+				output += part.Text
+			}
+		}
+	}
+	analysis, err := decodeAnalysis(output)
+	if err != nil {
+		return nil, err
+	}
+	enrichSourceFiles(analysis, files)
+	return analysis, nil
+}
+
+func decodeAnalysis(raw string) (map[string]any, error) {
+	var analysis map[string]any
+	if raw == "" || json.Unmarshal([]byte(raw), &analysis) != nil {
+		return nil, errors.New("o serviço de extração não retornou um JSON válido")
+	}
+	if _, ok := analysis["patient"].(map[string]any); !ok {
+		return nil, errors.New("o JSON extraído não contém patient")
+	}
+	if _, ok := analysis["exams"].(map[string]any); !ok {
+		return nil, errors.New("o JSON extraído não contém exams")
+	}
+	return analysis, nil
+}
+
+func enrichSourceFiles(analysis map[string]any, files []uploadedFile) {
+	extracted, _ := analysis["source_files"].([]any)
+	sources := make([]any, 0, len(files))
+	for index, file := range files {
+		source := findSource(extracted, file.Metadata.Filename)
+		source["index"] = index
+		source["path"] = file.Metadata.Filename
+		source["type"] = file.Metadata.ContentType
+		source["size_bytes"] = file.Metadata.Size
+		source["sha256"] = file.Metadata.SHA256
+		sources = append(sources, source)
+	}
+	analysis["source_files"] = sources
+	if _, ok := analysis["schema_version"]; !ok {
+		analysis["schema_version"] = "1.0"
+	}
+	if _, ok := analysis["generated_on"]; !ok {
+		analysis["generated_on"] = time.Now().Format("2006-01-02")
+	}
+	if _, ok := analysis["language"]; !ok {
+		analysis["language"] = "pt-BR"
+	}
+}
+
+func findSource(sources []any, filename string) map[string]any {
+	for _, item := range sources {
+		source, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		path, _ := source["path"].(string)
+		name, _ := source["filename"].(string)
+		if filepath.Base(path) == filename || name == filename {
+			return source
+		}
+	}
+	return map[string]any{}
+}
+
+func confirmedAnalysis(raw string, files []uploadedFile) (map[string]any, error) {
+	if len(raw) > maxAnalysisSize {
+		return nil, errors.New("o JSON analisado excede o limite de 5 MB")
+	}
+	analysis, err := decodeAnalysis(raw)
+	if err != nil {
+		return nil, errors.New("analise novamente os arquivos antes de confirmar")
+	}
+	sources, ok := analysis["source_files"].([]any)
+	if !ok || len(sources) != len(files) {
+		return nil, errors.New("os arquivos não correspondem ao JSON analisado")
+	}
+	for index, file := range files {
+		source, ok := sources[index].(map[string]any)
+		if !ok || source["sha256"] != file.Metadata.SHA256 || filepath.Base(fmt.Sprint(source["path"])) != file.Metadata.Filename {
+			return nil, errors.New("os arquivos não correspondem ao JSON analisado")
+		}
+	}
+	return analysis, nil
+}
+
+func setStoredPaths(analysis map[string]any, files []intakeFile) {
+	sources, _ := analysis["source_files"].([]any)
+	for index, file := range files {
+		if index >= len(sources) {
+			return
+		}
+		if source, ok := sources[index].(map[string]any); ok {
+			source["path"] = file.Key
+		}
+	}
+}

@@ -13,6 +13,8 @@ npm run dev          # frontend
 npm run dev:backend  # backend, em outro terminal
 ```
 
+Defina `OPENAI_API_KEY` no ambiente do backend para extrair os documentos antes da confirmação. `OPENAI_MODEL` é opcional (padrão: `gpt-5.4-mini`).
+
 ### Stack local com Docker
 
 Requer Docker com Compose:
