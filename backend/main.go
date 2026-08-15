@@ -7,10 +7,12 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"mime/multipart"
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -50,6 +52,8 @@ func main() {
 	}
 
 	http.HandleFunc("/health", healthHandler)
+	http.HandleFunc("/api/cases", casesHandler)
+	http.HandleFunc("/api/cases/", caseHandler)
 	http.HandleFunc("/api/intakes/analyze", analyzeIntakeHandler)
 	http.HandleFunc("/api/intakes/confirm", confirmIntakeHandler)
 
@@ -67,6 +71,94 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	fmt.Fprintln(w, "hello world")
+}
+
+func casesHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	client, err := storageClient(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "storage indisponível")
+		return
+	}
+	listed, err := client.ListObjectsV2(r.Context(), &s3.ListObjectsV2Input{
+		Bucket:    aws.String(os.Getenv("BUCKET_NAME")),
+		Prefix:    aws.String("cases/"),
+		Delimiter: aws.String("/"),
+	})
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "não foi possível listar os casos")
+		return
+	}
+
+	type storedCase struct {
+		CaseID      string `json:"caseId"`
+		PatientName string `json:"patientName"`
+		AnalysisKey string `json:"analysisKey"`
+	}
+	cases := make([]storedCase, 0, len(listed.CommonPrefixes))
+	for _, prefix := range listed.CommonPrefixes {
+		casePrefix := aws.ToString(prefix.Prefix)
+		caseID := strings.TrimSuffix(strings.TrimPrefix(casePrefix, "cases/"), "/")
+		analysisKey := casePrefix + "paciente_compilado.json"
+		object, getErr := client.GetObject(r.Context(), &s3.GetObjectInput{
+			Bucket: aws.String(os.Getenv("BUCKET_NAME")),
+			Key:    aws.String(analysisKey),
+		})
+		if getErr != nil {
+			continue
+		}
+		var analysis struct {
+			Patient struct {
+				FullName string `json:"full_name"`
+			} `json:"patient"`
+		}
+		decodeErr := json.NewDecoder(io.LimitReader(object.Body, 1<<20)).Decode(&analysis)
+		object.Body.Close()
+		if decodeErr != nil {
+			continue
+		}
+		cases = append(cases, storedCase{CaseID: caseID, PatientName: analysis.Patient.FullName, AnalysisKey: analysisKey})
+	}
+	sort.Slice(cases, func(i, j int) bool { return cases[i].CaseID > cases[j].CaseID })
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{"cases": cases})
+}
+
+func caseHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	caseID := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/cases/"), "/")
+	if caseID == "" || strings.Contains(caseID, "/") {
+		writeError(w, http.StatusBadRequest, "caso inválido")
+		return
+	}
+	client, err := storageClient(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "storage indisponível")
+		return
+	}
+	analysisKey := fmt.Sprintf("cases/%s/paciente_compilado.json", caseID)
+	object, err := client.GetObject(r.Context(), &s3.GetObjectInput{
+		Bucket: aws.String(os.Getenv("BUCKET_NAME")),
+		Key:    aws.String(analysisKey),
+	})
+	if err != nil {
+		writeError(w, http.StatusNotFound, "caso não encontrado")
+		return
+	}
+	defer object.Body.Close()
+	var analysis map[string]any
+	if err := json.NewDecoder(io.LimitReader(object.Body, maxAnalysisSize)).Decode(&analysis); err != nil {
+		writeError(w, http.StatusBadGateway, "não foi possível ler a análise do caso")
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{"caseId": caseID, "analysis": analysis})
 }
 
 func analyzeIntakeHandler(w http.ResponseWriter, r *http.Request) {

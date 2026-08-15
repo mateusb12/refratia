@@ -36,6 +36,16 @@ type NoticeTone = 'information' | 'warning' | 'blocking'
 type DataKind = 'Dado bruto' | 'Dado calculado' | 'Dado ausente'
 type Confidence = 'Consistente' | 'Suspeita — revisar'
 type Eye = 'OD' | 'OS'
+interface SavedCase {
+  caseId: string
+  patientName: string
+  analysisKey?: string
+}
+
+interface StoredCase {
+  caseId: string
+  analysis: IntakeAnalysis
+}
 
 const eyeLabel = (eye: Eye) => (eye === 'OS' ? 'OE' : eye)
 const API_URL = import.meta.env.VITE_API_URL ?? (
@@ -448,7 +458,18 @@ const recommendationReasons = [
   'ARTmax não identificado',
 ]
 
-const recentCases = [
+interface ReportCase {
+  initials: string
+  patient: string
+  report: string
+  review: string
+  tone: 'warning' | 'success' | 'blocking'
+  real: boolean
+  saved?: boolean
+  caseId?: string
+}
+
+const recentCases: ReportCase[] = [
   { initials: 'RA', patient: realPatientName, report: 'Gerado', review: 'Pendente', tone: 'warning' as const, real: true },
   { initials: 'MS', patient: 'Maria S.', report: 'Parcial', review: 'Pendente', tone: 'warning' as const, real: false },
   { initials: 'JL', patient: 'João L.', report: 'Gerado', review: 'Revisado', tone: 'success' as const, real: false },
@@ -459,6 +480,28 @@ function getInitialTheme(): Theme {
   const storedTheme = localStorage.getItem('refratia-theme')
   if (storedTheme === 'light' || storedTheme === 'dark') return storedTheme
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+}
+
+const appBasePath = import.meta.env.BASE_URL.replace(/\/$/, '')
+const sidebarRoutes: Record<string, string> = {
+  'Visão geral': 'visao-geral',
+  'Nova análise': 'nova-analise',
+  Relatórios: 'relatorios',
+  Configurações: 'configuracoes',
+  Roadmap: 'roadmap',
+}
+
+function getRelativePath(pathname: string) {
+  return pathname.startsWith(appBasePath) ? pathname.slice(appBasePath.length) : pathname
+}
+
+function getReportId(pathname: string) {
+  return getRelativePath(pathname).match(/^\/relatorios\/([^/]+)\/?$/)?.[1] ?? null
+}
+
+function getSectionFromPath(pathname: string) {
+  const relativePath = getRelativePath(pathname).replace(/\/$/, '').replace(/^\//, '')
+  return Object.entries(sidebarRoutes).find(([, path]) => path === relativePath)?.[0] ?? 'Nova análise'
 }
 
 function Eyebrow({ children }: { children: ReactNode }) {
@@ -1126,9 +1169,11 @@ function TraceabilityDrawer({ data, onClose }: { data: ExtractedDatum | null; on
 
 function App() {
   const [theme, setTheme] = useState<Theme>(getInitialTheme)
-  const [activeSection, setActiveSection] = useState('Nova análise')
-  const [selectedCase, setSelectedCase] = useState<CaseKind | null>(null)
-  const [processingStep, setProcessingStep] = useState(0)
+  const [route, setRoute] = useState(() => window.location.pathname)
+  const reportId = getReportId(route)
+  const [activeSection, setActiveSection] = useState(() => getSectionFromPath(window.location.pathname))
+  const [selectedCase, setSelectedCase] = useState<CaseKind | null>(reportId === '1' ? 'real' : null)
+  const [processingStep, setProcessingStep] = useState(reportId === '1' ? steps.length : 0)
   const [expandedDocument, setExpandedDocument] = useState<string | null>(null)
   const [traceData, setTraceData] = useState<ExtractedDatum | null>(null)
   const [isReviewed, setIsReviewed] = useState(false)
@@ -1136,6 +1181,10 @@ function App() {
   const [intakePreview, setIntakePreview] = useState<IntakePreview | null>(null)
   const [intakeBusy, setIntakeBusy] = useState(false)
   const [intakeMessage, setIntakeMessage] = useState('')
+  const [savedCases, setSavedCases] = useState<SavedCase[]>([])
+  const [storedCase, setStoredCase] = useState<StoredCase | null>(null)
+  const [storedCaseLoading, setStoredCaseLoading] = useState(false)
+  const [storedCaseError, setStoredCaseError] = useState('')
 
   const reportGenerated = processingStep === steps.length
   const isRealCase = selectedCase === 'real'
@@ -1149,10 +1198,32 @@ function App() {
   }, [theme])
 
   useEffect(() => {
+    const onPopState = () => {
+      const pathname = window.location.pathname
+      const nextReportId = getReportId(pathname)
+      setRoute(pathname)
+      setActiveSection(nextReportId ? 'Relatórios' : getSectionFromPath(pathname))
+      setSelectedCase(nextReportId === '1' ? 'real' : null)
+      setProcessingStep(nextReportId === '1' ? steps.length : 0)
+    }
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+  }, [])
+
+  useEffect(() => {
     if (!selectedCase || processingStep === steps.length) return
     const timer = window.setTimeout(() => setProcessingStep((step) => step + 1), 220)
     return () => window.clearTimeout(timer)
   }, [processingStep, selectedCase])
+
+  useEffect(() => {
+    fetch(`${API_URL}/api/cases`)
+      .then(async (response) => response.ok ? response.json() : null)
+      .then((result) => {
+        if (result && Array.isArray(result.cases)) setSavedCases(result.cases)
+      })
+      .catch(() => undefined)
+  }, [])
 
   function loadCase(kind: CaseKind) {
     setSelectedCase(kind)
@@ -1163,11 +1234,29 @@ function App() {
   }
 
   function backToReports() {
+    window.history.pushState({}, '', `${appBasePath}/relatorios`)
+    setRoute(window.location.pathname)
     setSelectedCase(null)
     setProcessingStep(0)
     setIsReviewed(false)
     setExpandedDocument(null)
     setTraceData(null)
+  }
+
+  function openReport(reportId: string) {
+    window.history.pushState({}, '', `${appBasePath}/relatorios/${reportId}`)
+    setRoute(window.location.pathname)
+    setActiveSection('Relatórios')
+    setSelectedCase('real')
+    setProcessingStep(steps.length)
+  }
+
+  function navigateSection(section: string) {
+    window.history.pushState({}, '', `${appBasePath}/${sidebarRoutes[section]}`)
+    setRoute(window.location.pathname)
+    setActiveSection(section)
+    setSelectedCase(null)
+    setProcessingStep(0)
   }
 
   async function analyzeIntake() {
@@ -1201,13 +1290,44 @@ function App() {
       const response = await fetch(`${API_URL}/api/intakes/confirm`, { method: 'POST', body })
       const result = await response.json()
       if (!response.ok) throw new Error(result.error ?? 'Falha ao salvar o caso')
+      const newCase = {
+        caseId: result.caseId,
+        patientName: intakePreview.analysis.patient?.full_name || 'Paciente não identificado',
+        analysisKey: result.analysisKey,
+      }
+      setSavedCases((cases) => [newCase, ...cases.filter((item) => item.caseId !== newCase.caseId)])
       setIntakeMessage(`Caso criado (${result.caseId}). Arquivos e paciente_compilado.json salvos no Tigris.`)
       setIntakeFiles([])
       setIntakePreview(null)
+      setActiveSection('Relatórios')
     } catch (error) {
       setIntakeMessage(error instanceof Error ? error.message : 'Não foi possível salvar o caso.')
     } finally {
       setIntakeBusy(false)
+    }
+  }
+
+  async function openSavedCase(caseId: string) {
+    setStoredCase(null)
+    setStoredCaseError('')
+    setStoredCaseLoading(true)
+    try {
+      const response = await fetch(`${API_URL}/api/cases/${encodeURIComponent(caseId)}`)
+      const body = await response.text()
+      let result: unknown
+      try {
+        result = JSON.parse(body)
+      } catch {
+        throw new Error(`Resposta inválida do servidor (${response.status}). Publique o backend atualizado.`)
+      }
+      if (!response.ok || !result || typeof result !== 'object' || !('analysis' in result)) {
+        throw new Error('Não foi possível carregar a análise deste caso.')
+      }
+      setStoredCase({ caseId, analysis: result.analysis as IntakeAnalysis })
+    } catch (error) {
+      setStoredCaseError(error instanceof Error ? error.message : 'Não foi possível carregar o caso.')
+    } finally {
+      setStoredCaseLoading(false)
     }
   }
 
@@ -1283,18 +1403,50 @@ function App() {
     <section className="mt-5 rounded-2xl border border-border bg-surface p-6 shadow-sm">
       <Eyebrow>CASOS DISPONÍVEIS</Eyebrow>
       <h2 className="mb-0 mt-1 font-display text-xl">Escolha um caso para analisar</h2>
+      {storedCaseLoading && <p className="mb-0 mt-3 text-sm text-text-secondary">Carregando análise salva…</p>}
+      {storedCaseError && <p className="mb-0 mt-3 rounded-lg border border-danger bg-danger-soft p-3 text-sm font-semibold text-danger">{storedCaseError}</p>}
+      {storedCase && (
+        <div className="mt-5 rounded-xl border border-success/30 bg-success-soft p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <Eyebrow>ANÁLISE SALVA</Eyebrow>
+              <h3 className="mb-0 mt-1 font-display text-lg">{storedCase.analysis.patient?.full_name || 'Paciente não identificado'}</h3>
+            </div>
+            <button className="text-sm font-semibold text-primary hover:text-primary-hover" onClick={() => setStoredCase(null)} type="button">Fechar</button>
+          </div>
+          <IntakeAnalysisSummary analysis={storedCase.analysis} />
+          <details className="mt-4 rounded-lg border border-border bg-surface">
+            <summary className="cursor-pointer px-3 py-2 text-xs font-bold text-primary">Ver JSON completo (debug)</summary>
+            <pre className="m-0 max-h-[520px] overflow-auto border-t border-border p-3 text-xs leading-relaxed text-text-secondary">{JSON.stringify(storedCase.analysis, null, 2)}</pre>
+          </details>
+        </div>
+      )}
       <div className="mt-4">
-        {recentCases.map((item) => (
+        {[
+          ...savedCases.map((item) => ({
+            initials: item.patientName.split(/\s+/).map((name) => name[0]).join('').slice(0, 2).toUpperCase(),
+            patient: item.patientName,
+            report: 'Gerado',
+            review: 'Pendente',
+            tone: 'success' as const,
+            real: false,
+            saved: true,
+            caseId: item.caseId,
+          })),
+          ...recentCases,
+        ].map((item) => (
           <button
             key={item.patient}
-            disabled={!item.real && item.patient !== 'Maria S.'}
+            disabled={!item.real && item.patient !== 'Maria S.' && !item.saved}
             className={clsx(
               'grid w-full grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-3 rounded-xl border border-border bg-transparent px-3 py-3 text-left max-[580px]:grid-cols-[auto_minmax(0,1fr)]',
               item.real && 'rounded-xl border border-warning/40 bg-warning-soft',
+              item.saved && 'rounded-xl border border-success/40 bg-success-soft',
               item.real ? 'hover:border-warning' : item.patient === 'Maria S.' && 'hover:border-primary',
             )}
             onClick={() => {
-              if (item.real) loadCase('real')
+              if (item.real) openReport(item.caseId ?? '1')
+              if (item.saved && item.caseId) void openSavedCase(item.caseId)
               if (item.patient === 'Maria S.') {
                 setActiveSection('Nova análise')
                 loadCase('demo')
@@ -1310,8 +1462,9 @@ function App() {
               <span className="flex items-center gap-2">
                 <strong className="block truncate text-sm">{item.patient}</strong>
                 {item.real && <StatusBadge tone="warning">REAL</StatusBadge>}
+                {item.saved && <StatusBadge tone="success">NOVO</StatusBadge>}
               </span>
-              <small className="text-xs text-text-muted">{item.real ? 'Caso real' : 'Caso demonstrativo'}</small>
+              <small className="text-xs text-text-muted">{item.saved ? `Caso salvo · ${item.caseId}` : item.real ? 'Caso real' : 'Caso demonstrativo'}</small>
             </span>
             <StatusBadge tone={item.report === 'Bloqueado' ? 'blocking' : item.tone}>Relatório: {item.report}</StatusBadge>
             <StatusBadge tone={item.tone}>Revisão: {item.review}</StatusBadge>
@@ -1347,14 +1500,24 @@ function App() {
                 'flex w-full items-center gap-3 rounded-[10px] border-0 px-[13px] py-[11px] text-left text-sm font-medium',
                 activeSection === item.label ? 'bg-[rgb(103_205_171_/_14%)] text-[#9be0c9]' : 'bg-transparent text-sidebar-muted hover:bg-white/[0.05] hover:text-sidebar-text',
               )}
-              onClick={() => setActiveSection(item.label)}
+              onClick={() => {
+                navigateSection(item.label)
+              }}
               type="button"
             >
               {item.icon}{item.label}
             </button>
           ))}
           <span className="mx-3 mb-2 mt-6 text-xs font-bold tracking-[0.14em] text-sidebar-muted">SISTEMA</span>
-          <button className="flex items-center gap-3 rounded-[10px] px-[13px] py-[11px] text-sm text-sidebar-muted hover:bg-white/[0.05]" type="button">
+          <button
+            aria-current={activeSection === 'Configurações' ? 'page' : undefined}
+            className={clsx(
+              'flex w-full items-center gap-3 rounded-[10px] px-[13px] py-[11px] text-left text-sm',
+              activeSection === 'Configurações' ? 'bg-[rgb(103_205_171_/_14%)] text-[#9be0c9]' : 'text-sidebar-muted hover:bg-white/[0.05] hover:text-sidebar-text',
+            )}
+            onClick={() => navigateSection('Configurações')}
+            type="button"
+          >
             <Settings size={19} /> Configurações
           </button>
           <button
@@ -1363,7 +1526,7 @@ function App() {
               'flex w-full items-center gap-3 rounded-[10px] border-0 px-[13px] py-[11px] text-left text-sm font-medium',
               activeSection === 'Roadmap' ? 'bg-[rgb(103_205_171_/_14%)] text-[#9be0c9]' : 'bg-transparent text-sidebar-muted hover:bg-white/[0.05] hover:text-sidebar-text',
             )}
-            onClick={() => setActiveSection('Roadmap')}
+            onClick={() => navigateSection('Roadmap')}
             type="button"
           >
             <Map size={19} /> Roadmap
@@ -1404,7 +1567,13 @@ function App() {
         </header>
 
         <section className="mx-auto w-full max-w-[1320px] overflow-x-hidden px-[clamp(16px,4vw,56px)] pb-14 pt-8">
-          {activeSection === 'Roadmap' ? <RoadmapPage /> : <>
+          {activeSection === 'Roadmap' ? <RoadmapPage /> : activeSection === 'Configurações' ? (
+            <section className="mt-5 rounded-2xl border border-border bg-surface p-6 shadow-sm">
+              <Eyebrow>SISTEMA</Eyebrow>
+              <h2 className="mb-0 mt-1 font-display text-xl">Configurações</h2>
+              <p className="mb-0 mt-2 text-sm text-text-secondary">As configurações estarão disponíveis em uma próxima etapa.</p>
+            </section>
+          ) : <>
           {activeSection === 'Visão geral' && (
             <>
               <section className="flex items-center justify-between gap-5 rounded-2xl border border-border bg-surface p-6 shadow-sm max-[580px]:flex-col max-[580px]:items-stretch">
