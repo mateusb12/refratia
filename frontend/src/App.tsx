@@ -42,6 +42,11 @@ const API_URL = import.meta.env.VITE_API_URL ?? (
   window.location.hostname === 'localhost' ? 'http://localhost:3000' : 'https://backend-dry-island-4275.fly.dev'
 )
 
+function fileIcon(fileName: string) {
+  const extension = fileName.split('.').pop()?.toLowerCase()
+  return `${import.meta.env.BASE_URL}${extension === 'pdf' ? 'pdf.png' : extension === 'png' ? 'png.png' : 'jpeg.png'}`
+}
+
 interface Metric {
   label: string
   value: string
@@ -1375,9 +1380,31 @@ function App() {
                         {intakeBusy ? 'Analisando…' : 'Analisar arquivos'}
                       </PrimaryButton>
                     </div>
-                    <ul className="mb-0 mt-3 space-y-2 text-xs text-text-secondary">
-                      {intakeFiles.map((file) => <li key={`${file.name}-${file.size}`}>{file.name} · {(file.size / 1024 / 1024).toFixed(2)} MB</li>)}
-                    </ul>
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                      {intakeFiles.map((file) => (
+                        <div
+                          className="relative flex min-w-0 items-center gap-3 rounded-xl border border-border bg-surface-muted p-3 pr-10 shadow-sm"
+                          key={`${file.name}-${file.size}-${file.lastModified}`}
+                        >
+                          <img alt="" className="h-11 w-11 flex-none object-contain" src={fileIcon(file.name)} />
+                          <div className="min-w-0">
+                            <p className="mb-1 truncate text-sm font-semibold text-text-primary" title={file.name}>{file.name}</p>
+                            <span className="text-xs text-text-muted">{(file.size / 1024 / 1024).toFixed(2)} MB</span>
+                          </div>
+                          <button
+                            aria-label={`Cancelar upload de ${file.name}`}
+                            className="absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-full text-text-muted hover:bg-danger-soft hover:text-danger"
+                            onClick={() => {
+                              setIntakeFiles((files) => files.filter((currentFile) => currentFile !== file))
+                              setIntakePreview(null)
+                            }}
+                            type="button"
+                          >
+                            <X size={15} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
                 {intakePreview && (
