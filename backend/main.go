@@ -180,6 +180,7 @@ func storageClient(ctx context.Context) (*s3.Client, error) {
 	}
 	return s3.NewFromConfig(cfg, func(options *s3.Options) {
 		options.BaseEndpoint = aws.String(os.Getenv("AWS_ENDPOINT_URL_S3"))
+		options.UsePathStyle = true
 	}), nil
 }
 

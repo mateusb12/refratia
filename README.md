@@ -13,6 +13,20 @@ npm run dev          # frontend
 npm run dev:backend  # backend, em outro terminal
 ```
 
+### Stack local com Docker
+
+Requer Docker com Compose:
+
+```bash
+docker compose up --build
+```
+
+- Frontend: http://localhost:5173
+- API: http://localhost:3000/health
+- MinIO: http://localhost:9001 (`minioadmin` / `minioadmin`)
+
+Os arquivos confirmados são armazenados no bucket local `refratia`.
+
 ## Validação
 
 ```bash
