@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -45,6 +47,12 @@ type intakeFile struct {
 	Key         string `json:"key,omitempty"`
 }
 
+type storedIntake struct {
+	CreatedAt time.Time      `json:"createdAt"`
+	Files     []intakeFile   `json:"files"`
+	Analysis  map[string]any `json:"analysis"`
+}
+
 func main() {
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -56,6 +64,7 @@ func main() {
 	http.HandleFunc("/api/cases/", caseHandler)
 	http.HandleFunc("/api/intakes/analyze", analyzeIntakeHandler)
 	http.HandleFunc("/api/intakes/confirm", confirmIntakeHandler)
+	http.HandleFunc("/api/intakes/", intakeHandler)
 
 	address := ":" + port
 	fmt.Printf("Backend running on http://localhost%s\n", address)
@@ -128,13 +137,17 @@ func casesHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func caseHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
+	if r.Method != http.MethodGet && r.Method != http.MethodDelete {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
 	caseID := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/cases/"), "/")
-	if caseID == "" || strings.Contains(caseID, "/") {
+	if !validCaseID(caseID) {
 		writeError(w, http.StatusBadRequest, "caso inválido")
+		return
+	}
+	if r.Method == http.MethodDelete {
+		deleteCaseHandler(w, r, caseID)
 		return
 	}
 	client, err := storageClient(r.Context())
@@ -182,6 +195,70 @@ func caseHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]any{"caseId": caseID, "analysis": analysis})
 }
 
+func deleteCaseHandler(w http.ResponseWriter, r *http.Request, caseID string) {
+	token := os.Getenv("CASE_DELETE_TOKEN")
+	if token == "" {
+		writeError(w, http.StatusNotFound, "exclusão de casos desabilitada")
+		return
+	}
+	provided := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if subtle.ConstantTimeCompare([]byte(provided), []byte(token)) != 1 {
+		writeError(w, http.StatusUnauthorized, "token de exclusão inválido")
+		return
+	}
+	client, err := storageClient(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "storage indisponível")
+		return
+	}
+	bucket := os.Getenv("BUCKET_NAME")
+	prefix := fmt.Sprintf("cases/%s/", caseID)
+	marker := prefix + "paciente_compilado.json"
+	keys := make([]string, 0)
+	var continuation *string
+	markerExists := false
+	for {
+		listed, listErr := client.ListObjectsV2(r.Context(), &s3.ListObjectsV2Input{
+			Bucket: aws.String(bucket), Prefix: aws.String(prefix), ContinuationToken: continuation,
+		})
+		if listErr != nil {
+			writeError(w, http.StatusBadGateway, "não foi possível listar os arquivos do caso")
+			return
+		}
+		for _, object := range listed.Contents {
+			key := aws.ToString(object.Key)
+			if key == marker {
+				markerExists = true
+			} else {
+				keys = append(keys, key)
+			}
+		}
+		if !aws.ToBool(listed.IsTruncated) {
+			break
+		}
+		continuation = listed.NextContinuationToken
+	}
+	if len(keys) == 0 && !markerExists {
+		writeError(w, http.StatusNotFound, "caso não encontrado")
+		return
+	}
+	deletedCount := len(keys)
+	if markerExists {
+		deletedCount++
+	}
+	for _, key := range append(keys, marker) {
+		if key == marker && !markerExists {
+			continue
+		}
+		if _, deleteErr := client.DeleteObject(r.Context(), &s3.DeleteObjectInput{Bucket: aws.String(bucket), Key: aws.String(key)}); deleteErr != nil {
+			writeError(w, http.StatusBadGateway, "não foi possível apagar todos os arquivos do caso")
+			return
+		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{"caseId": caseID, "deletedObjects": deletedCount})
+}
+
 func analyzeIntakeHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
@@ -205,12 +282,50 @@ func analyzeIntakeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// No Tigris write here. The browser keeps the original Files until confirmation.
+	intakeID := fmt.Sprintf("intake-%s-%s", time.Now().UTC().Format("20060102T150405Z"), randomToken())
+	client, storageErr := storageClient(r.Context())
+	if storageErr != nil {
+		writeError(w, http.StatusInternalServerError, "storage indisponível")
+		return
+	}
+	cleanupExpiredDrafts(r.Context(), client)
+	storedFiles := make([]intakeFile, 0, len(files))
+	keys := make([]string, 0, len(files)+1)
+	for _, uploaded := range files {
+		key := fmt.Sprintf("drafts/%s/%s", intakeID, safeName(uploaded.Metadata.Filename))
+		_, putErr := client.PutObject(r.Context(), &s3.PutObjectInput{
+			Bucket: aws.String(os.Getenv("BUCKET_NAME")), Key: aws.String(key), Body: bytes.NewReader(uploaded.Data), ContentType: aws.String(uploaded.Metadata.ContentType),
+		})
+		if putErr != nil {
+			cleanupObjects(r.Context(), client, keys)
+			writeError(w, http.StatusBadGateway, "não foi possível armazenar o rascunho")
+			return
+		}
+		keys = append(keys, key)
+		metadata := uploaded.Metadata
+		metadata.Key = key
+		storedFiles = append(storedFiles, metadata)
+	}
+	draft, marshalErr := json.Marshal(storedIntake{CreatedAt: time.Now().UTC(), Files: storedFiles, Analysis: analysis})
+	if marshalErr != nil {
+		cleanupObjects(r.Context(), client, keys)
+		writeError(w, http.StatusInternalServerError, "não foi possível montar o rascunho")
+		return
+	}
+	draftKey := fmt.Sprintf("drafts/%s/intake.json", intakeID)
+	if _, putErr := client.PutObject(r.Context(), &s3.PutObjectInput{
+		Bucket: aws.String(os.Getenv("BUCKET_NAME")), Key: aws.String(draftKey), Body: bytes.NewReader(draft), ContentType: aws.String("application/json"),
+	}); putErr != nil {
+		cleanupObjects(r.Context(), client, keys)
+		writeError(w, http.StatusBadGateway, "não foi possível armazenar o rascunho")
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{
+		"intakeId": intakeID,
 		"files":    intakeMetadata(files),
 		"analysis": analysis,
-		"message":  "Documentos processados. Confira o JSON extraído antes de criar o caso.",
+		"message":  "Documentos e análise armazenados. Confira a extração antes de criar o caso.",
 	})
 }
 
@@ -220,55 +335,64 @@ func confirmIntakeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	headers, err := intakeHeaders(w, r)
-	if err != nil {
-		writeError(w, err.status, err.message)
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+	var request struct {
+		IntakeID string `json:"intakeId"`
+	}
+	if json.NewDecoder(r.Body).Decode(&request) != nil || !validIntakeID(request.IntakeID) {
+		writeError(w, http.StatusBadRequest, "rascunho inválido")
 		return
 	}
-	defer r.MultipartForm.RemoveAll()
-	files, readErr := readIntakeFiles(headers)
-	if readErr != nil {
-		writeError(w, http.StatusBadRequest, "não foi possível ler um dos arquivos")
-		return
-	}
-	analysis, analysisErr := confirmedAnalysis(r.FormValue("analysis"), files)
-	if analysisErr != nil {
-		writeError(w, http.StatusBadRequest, analysisErr.Error())
-		return
-	}
-	caseID := fmt.Sprintf("case-%s-%s", time.Now().UTC().Format("20060102T150405Z"), randomToken())
+	caseID := "case-" + strings.TrimPrefix(request.IntakeID, "intake-")
+	analysisKey := fmt.Sprintf("cases/%s/paciente_compilado.json", caseID)
 	client, storageErr := storageClient(r.Context())
 	if storageErr != nil {
 		writeError(w, http.StatusInternalServerError, "storage indisponível")
 		return
 	}
-	result := make([]intakeFile, 0, len(files))
-	keys := make([]string, 0, len(files)+1)
-	for _, uploaded := range files {
-		key := fmt.Sprintf("cases/%s/%s", caseID, safeName(uploaded.Metadata.Filename))
-		_, putErr := client.PutObject(r.Context(), &s3.PutObjectInput{
-			Bucket: aws.String(os.Getenv("BUCKET_NAME")), Key: aws.String(key), Body: bytes.NewReader(uploaded.Data), ContentType: aws.String(uploaded.Metadata.ContentType),
+	bucket := os.Getenv("BUCKET_NAME")
+	draftKey := fmt.Sprintf("drafts/%s/intake.json", request.IntakeID)
+	object, getErr := client.GetObject(r.Context(), &s3.GetObjectInput{Bucket: aws.String(bucket), Key: aws.String(draftKey)})
+	if getErr != nil {
+		if _, headErr := client.HeadObject(r.Context(), &s3.HeadObjectInput{Bucket: aws.String(bucket), Key: aws.String(analysisKey)}); headErr == nil {
+			writeConfirmation(w, caseID, analysisKey)
+			return
+		}
+		writeError(w, http.StatusNotFound, "rascunho não encontrado")
+		return
+	}
+	var draft storedIntake
+	decodeErr := json.NewDecoder(io.LimitReader(object.Body, maxAnalysisSize+(1<<20))).Decode(&draft)
+	object.Body.Close()
+	if decodeErr != nil || time.Since(draft.CreatedAt) > 24*time.Hour || validateStoredAnalysis(draft.Analysis, draft.Files) != nil {
+		writeError(w, http.StatusBadRequest, "rascunho inválido ou expirado")
+		return
+	}
+	result := make([]intakeFile, 0, len(draft.Files))
+	keys := make([]string, 0, len(draft.Files))
+	for _, file := range draft.Files {
+		key := fmt.Sprintf("cases/%s/%s", caseID, filepath.Base(file.Key))
+		_, copyErr := client.CopyObject(r.Context(), &s3.CopyObjectInput{
+			Bucket: aws.String(bucket), Key: aws.String(key), CopySource: aws.String(url.PathEscape(bucket + "/" + file.Key)), ContentType: aws.String(file.ContentType), MetadataDirective: "REPLACE",
 		})
-		if putErr != nil {
+		if copyErr != nil {
 			cleanupObjects(r.Context(), client, keys)
-			writeError(w, http.StatusBadGateway, "não foi possível armazenar os arquivos")
+			writeError(w, http.StatusBadGateway, "não foi possível confirmar os arquivos")
 			return
 		}
 		keys = append(keys, key)
-		metadata := uploaded.Metadata
-		metadata.Key = key
-		result = append(result, metadata)
+		file.Key = key
+		result = append(result, file)
 	}
-	setStoredPaths(analysis, result)
-	compiled, marshalErr := json.MarshalIndent(analysis, "", "  ")
+	setStoredPaths(draft.Analysis, result)
+	compiled, marshalErr := json.MarshalIndent(draft.Analysis, "", "  ")
 	if marshalErr != nil {
 		cleanupObjects(r.Context(), client, keys)
 		writeError(w, http.StatusInternalServerError, "não foi possível montar o JSON compilado")
 		return
 	}
-	analysisKey := fmt.Sprintf("cases/%s/paciente_compilado.json", caseID)
 	_, putErr := client.PutObject(r.Context(), &s3.PutObjectInput{
-		Bucket: aws.String(os.Getenv("BUCKET_NAME")), Key: aws.String(analysisKey), Body: bytes.NewReader(compiled), ContentType: aws.String("application/json"),
+		Bucket: aws.String(bucket), Key: aws.String(analysisKey), Body: bytes.NewReader(compiled), ContentType: aws.String("application/json"),
 	})
 	if putErr != nil {
 		cleanupObjects(r.Context(), client, keys)
@@ -276,8 +400,71 @@ func confirmIntakeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	draftKeys := make([]string, 0, len(draft.Files)+1)
+	for _, file := range draft.Files {
+		draftKeys = append(draftKeys, file.Key)
+	}
+	cleanupObjects(r.Context(), client, append(draftKeys, draftKey))
+	writeConfirmation(w, caseID, analysisKey)
+}
+
+func intakeHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	intakeID := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/intakes/"), "/")
+	if !validIntakeID(intakeID) {
+		writeError(w, http.StatusBadRequest, "rascunho inválido")
+		return
+	}
+	client, err := storageClient(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "storage indisponível")
+		return
+	}
+	bucket := os.Getenv("BUCKET_NAME")
+	draftKey := fmt.Sprintf("drafts/%s/intake.json", intakeID)
+	object, err := client.GetObject(r.Context(), &s3.GetObjectInput{Bucket: aws.String(bucket), Key: aws.String(draftKey)})
+	if err != nil {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	var draft storedIntake
+	decodeErr := json.NewDecoder(io.LimitReader(object.Body, maxAnalysisSize+(1<<20))).Decode(&draft)
+	object.Body.Close()
+	if decodeErr != nil {
+		writeError(w, http.StatusBadGateway, "não foi possível ler o rascunho")
+		return
+	}
+	keys := []string{draftKey}
+	prefix := fmt.Sprintf("drafts/%s/", intakeID)
+	for _, file := range draft.Files {
+		if strings.HasPrefix(file.Key, prefix) {
+			keys = append(keys, file.Key)
+		}
+	}
+	cleanupObjects(r.Context(), client, keys)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func writeConfirmation(w http.ResponseWriter, caseID, analysisKey string) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"caseId": caseID, "files": result, "analysisKey": analysisKey})
+	json.NewEncoder(w).Encode(map[string]any{"caseId": caseID, "analysisKey": analysisKey})
+}
+
+func validIntakeID(id string) bool {
+	parts := strings.Split(strings.TrimPrefix(id, "intake-"), "-")
+	if !strings.HasPrefix(id, "intake-") || len(parts) != 2 || len(parts[1]) != 8 {
+		return false
+	}
+	_, timeErr := time.Parse("20060102T150405Z", parts[0])
+	_, tokenErr := hex.DecodeString(parts[1])
+	return timeErr == nil && tokenErr == nil
+}
+
+func validCaseID(id string) bool {
+	return strings.HasPrefix(id, "case-") && validIntakeID("intake-"+strings.TrimPrefix(id, "case-"))
 }
 
 type intakeError struct {
@@ -315,6 +502,21 @@ func cleanupObjects(ctx context.Context, client *s3.Client, keys []string) {
 	for _, key := range keys {
 		_, _ = client.DeleteObject(ctx, &s3.DeleteObjectInput{Bucket: aws.String(os.Getenv("BUCKET_NAME")), Key: aws.String(key)})
 	}
+}
+
+func cleanupExpiredDrafts(ctx context.Context, client *s3.Client) {
+	// ponytail: one-page cleanup; use a bucket lifecycle rule if drafts can exceed 1000 objects.
+	listed, err := client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{Bucket: aws.String(os.Getenv("BUCKET_NAME")), Prefix: aws.String("drafts/")})
+	if err != nil {
+		return
+	}
+	keys := make([]string, 0)
+	for _, object := range listed.Contents {
+		if object.LastModified != nil && time.Since(*object.LastModified) > 24*time.Hour {
+			keys = append(keys, aws.ToString(object.Key))
+		}
+	}
+	cleanupObjects(ctx, client, keys)
 }
 
 func storageClient(ctx context.Context) (*s3.Client, error) {
@@ -371,8 +573,8 @@ func cors(next http.Handler) http.Handler {
 				w.Header().Set("Vary", "Origin")
 			}
 		}
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return

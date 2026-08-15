@@ -22,6 +22,7 @@ import {
   ShieldCheck,
   Stethoscope,
   Sun,
+  Trash2,
   UploadCloud,
   UserRound,
   X,
@@ -49,14 +50,25 @@ interface StoredCase {
 
 type ReportData = typeof patientData
 
+function readableBirthDate(value: unknown) {
+  if (typeof value === 'object' && value !== null && 'normalized' in value) {
+    return String((value as { normalized?: unknown }).normalized ?? 'não informado')
+  }
+  return typeof value === 'string' ? value : 'não informado'
+}
+
+function formatNumber(value: unknown, options?: Intl.NumberFormatOptions) {
+  return typeof value === 'number' && Number.isFinite(value) ? value.toLocaleString('pt-BR', options) : 'não informado'
+}
+
 function normalizeSavedReport(analysis: IntakeAnalysis): ReportData {
   const raw = analysis as any
   const pentacam = raw.exams.pentacam_corneal_tomography
   const iol = raw.exams.iol_calculation
   const microscopy = raw.exams.specular_microscopy
   const eyes = (['OD', 'OS'] as const).reduce((result, eye, index) => {
-    const cornea = pentacam.eyes[eye]
-    const biometry = iol.eyes[eye]
+    const cornea = pentacam.eyes?.[eye] ?? {}
+    const biometry = iol.eyes?.[eye] ?? {}
     result[eye] = {
       ...cornea,
       source_file: pentacam.source[index],
@@ -67,7 +79,7 @@ function normalizeSavedReport(analysis: IntakeAnalysis): ReportData {
       },
       pachymetry: {
         ...cornea.pachymetry,
-        thinnest_um: cornea.pachymetry?.thinnest_um ?? cornea.general?.thinnest_pachy_um ?? cornea.display_maps?.belin_ambrósio?.thinnest_pachy_um,
+        thinnest_um: cornea.pachymetry?.thinnest_um ?? cornea.general?.thinnest_pachy_um ?? cornea.display_maps?.belin_ambrósio?.thinnest_pachy_um ?? Number.NaN,
       },
       belin_ambrosio: cornea.belin_ambrosio ?? {
         d: cornea.display_maps?.belin_ambrósio?.d,
@@ -94,6 +106,7 @@ function normalizeSavedReport(analysis: IntakeAnalysis): ReportData {
 
   return {
     ...raw,
+    patient: { ...raw.patient, birth_date: readableBirthDate(raw.patient?.birth_date) },
     exams: {
       ...raw.exams,
       pentacam_corneal_tomography: { ...pentacam, eyes },
@@ -107,6 +120,7 @@ const eyeLabel = (eye: Eye) => (eye === 'OS' ? 'OE' : eye)
 const API_URL = import.meta.env.VITE_API_URL ?? (
   window.location.hostname === 'localhost' ? 'http://localhost:3000' : 'https://backend-dry-island-4275.fly.dev'
 )
+const CASE_DELETE_TOKEN = import.meta.env.VITE_CASE_DELETE_TOKEN ?? 'local-dev-delete-only'
 
 function fileIcon(fileName: string) {
   const extension = fileName.split('.').pop()?.toLowerCase()
@@ -132,7 +146,7 @@ function IntakeAnalysisSummary({ analysis }: { analysis: IntakeAnalysis }) {
           <span className="text-xs font-bold uppercase tracking-[0.12em] text-text-muted">Paciente</span>
           <strong className="mt-2 block text-base">{analysis.patient?.full_name || 'Não identificado'}</strong>
           <span className="mt-1 block text-sm text-text-secondary">
-            Nascimento: {analysis.patient?.birth_date || 'não identificado'}
+            Nascimento: {readableBirthDate(analysis.patient?.birth_date)}
           </span>
         </div>
         <div className="rounded-xl border border-border bg-surface p-4">
@@ -415,7 +429,7 @@ function getReportExtractedData(data: ReportData): ExtractedDatum[] {
   return [
     {
       name: `Paquimetria mínima · ${label}`,
-      value: pentacam.pachymetry.thinnest_um.toLocaleString('pt-BR'),
+      value: formatNumber(pentacam.pachymetry.thinnest_um),
       unit: 'µm',
       source,
       kind: 'Dado bruto',
@@ -427,7 +441,7 @@ function getReportExtractedData(data: ReportData): ExtractedDatum[] {
     {
       name: `Kmax · ${label}`,
       fullName: 'Ceratometria máxima',
-      value: pentacam.anterior_cornea.kmax_d.toLocaleString('pt-BR'),
+      value: formatNumber(pentacam.anterior_cornea.kmax_d),
       unit: 'D',
       source,
       kind: 'Dado bruto',
@@ -439,7 +453,7 @@ function getReportExtractedData(data: ReportData): ExtractedDatum[] {
     {
       name: `BAD-D · ${label}`,
       fullName: 'Belin/Ambrósio Enhanced Ectasia Display',
-      value: pentacam.belin_ambrosio.d.toLocaleString('pt-BR'),
+      value: formatNumber(pentacam.belin_ambrosio.d),
       source,
       kind: 'Dado bruto',
       confidence: 'Consistente',
@@ -450,7 +464,7 @@ function getReportExtractedData(data: ReportData): ExtractedDatum[] {
     {
       name: `ARTmax · ${label}`,
       fullName: 'Ambrósio Relational Thickness máximo',
-      value: pentacam.belin_ambrosio.art_max.toLocaleString('pt-BR'),
+      value: formatNumber(pentacam.belin_ambrosio.art_max),
       source,
       kind: 'Dado bruto',
       confidence: 'Consistente',
@@ -461,7 +475,7 @@ function getReportExtractedData(data: ReportData): ExtractedDatum[] {
     {
       name: `Celularidade endotelial · ${label}`,
       fullName: 'Densidade celular endotelial',
-      value: microscopy.cell_density_cells_per_mm2.toLocaleString('pt-BR'),
+      value: formatNumber(microscopy.cell_density_cells_per_mm2),
       unit: 'células/mm²',
       source: `Microscopia especular ${label}`,
       kind: 'Dado bruto',
@@ -472,7 +486,7 @@ function getReportExtractedData(data: ReportData): ExtractedDatum[] {
     },
     {
       name: `Comprimento axial · ${eye}`,
-      value: biometry.axial_length_mm.toLocaleString('pt-BR'),
+      value: formatNumber(biometry.axial_length_mm),
       unit: 'mm',
       source: `Biometria ${label}`,
       kind: 'Dado bruto',
@@ -1019,7 +1033,7 @@ function RealCaseSummary({ data }: { data: ReportData }) {
             {eyes.map(({ eye, badD, artMax, tkc }) => (
               <div className="rounded-lg border border-border bg-surface-muted p-3 text-xs" key={eye}>
                 <strong>{eyeLabel(eye)}</strong>
-                <span className="mt-1 block text-text-secondary">BAD-D {badD.toLocaleString('pt-BR')} · ARTmax {artMax} µm · TKC {tkc ?? 'em branco'}</span>
+                <span className="mt-1 block text-text-secondary">BAD-D {formatNumber(badD)} · ARTmax {formatNumber(artMax)} µm · TKC {tkc ?? 'em branco'}</span>
                 <span className="mt-2 block font-semibold text-text-primary">{eye === 'OS' ? 'Índices suspeitos; acompanhar' : 'Sem confirmação'}</span>
               </div>
             ))}
@@ -1062,7 +1076,7 @@ function RealCaseSummary({ data }: { data: ReportData }) {
                         {selected ? 'Selecionado' : 'Não escolhido'}
                       </StatusBadge>
                     </div>
-                    <strong className="mt-2 block font-display text-xl">{endothelialDensity.toLocaleString('pt-BR')} células/mm²</strong>
+                    <strong className="mt-2 block font-display text-xl">{formatNumber(endothelialDensity)} células/mm²</strong>
                     <span className="mt-1 block text-xs">{belowCutoff ? 'Registrar ponto de atenção' : 'Celularidade adequada'}</span>
                   </div>
                 )
@@ -1086,7 +1100,7 @@ function RealCaseSummary({ data }: { data: ReportData }) {
                     <strong>{eyeLabel(eye)}</strong>
                     <StatusBadge tone={isToric ? 'success' : 'neutral'}>{isToric ? 'Sim' : 'Não'}</StatusBadge>
                   </div>
-                  <strong className="mt-2 block font-display text-xl">{astigmatism.toLocaleString('pt-BR')} D</strong>
+                  <strong className="mt-2 block font-display text-xl">{formatNumber(astigmatism)} D</strong>
                   <span className="mt-1 block text-xs text-text-secondary">{isToric ? 'LIO tórica' : 'LIO não tórica'}</span>
                 </div>
               )
@@ -1102,9 +1116,9 @@ function RealCaseSummary({ data }: { data: ReportData }) {
             {eyes.map(({ eye, coma, endothelialDensity, z40 }) => (
               <ul className="m-0 grid list-none gap-2 rounded-lg border border-border bg-surface p-3 text-xs text-text-secondary" key={eye}>
                 <li className="font-bold text-text-primary">{eye}</li>
-                <li>Coma {coma.toLocaleString('pt-BR', { minimumFractionDigits: 3 })} µm: sem alerta</li>
-                <li>Endotélio {endothelialDensity.toLocaleString('pt-BR')} células/mm²: adequado</li>
-                <li>Z40 {z40.toLocaleString('pt-BR', { minimumFractionDigits: 3 })} µm: informativo</li>
+                <li>Coma {formatNumber(coma, { minimumFractionDigits: 3 })} µm: sem alerta</li>
+                <li>Endotélio {formatNumber(endothelialDensity)} células/mm²: adequado</li>
+                <li>Z40 {formatNumber(z40, { minimumFractionDigits: 3 })} µm: informativo</li>
               </ul>
             ))}
           </div>
@@ -1301,6 +1315,7 @@ function App() {
   const [storedCase, setStoredCase] = useState<StoredCase | null>(null)
   const [storedCaseLoading, setStoredCaseLoading] = useState(false)
   const [storedCaseError, setStoredCaseError] = useState('')
+  const [caseDeleteBusy, setCaseDeleteBusy] = useState(false)
 
   const isRealCase = selectedCase === 'real'
   const reportData = isRealCase ? patientData : storedCase?.analysis
@@ -1393,6 +1408,7 @@ function App() {
       if (!response.ok) throw new Error(errorMessage)
       if (!isIntakePreview(result)) throw new Error('A API de análise está desatualizada. Reinicie o backend e tente novamente.')
       setIntakePreview(result)
+      setIntakeFiles([])
     } catch (error) {
       setIntakeMessage(error instanceof Error ? error.message : 'Não foi possível analisar os arquivos.')
     } finally {
@@ -1405,10 +1421,11 @@ function App() {
     setIntakeBusy(true)
     setIntakeMessage('')
     try {
-      const body = new FormData()
-      intakeFiles.forEach((file) => body.append('files', file))
-      body.append('analysis', JSON.stringify(intakePreview.analysis))
-      const response = await fetch(`${API_URL}/api/intakes/confirm`, { method: 'POST', body })
+      const response = await fetch(`${API_URL}/api/intakes/confirm`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ intakeId: intakePreview.intakeId }),
+      })
       const result = await response.json()
       if (!response.ok) throw new Error(result.error ?? 'Falha ao salvar o caso')
       const newCase = {
@@ -1426,6 +1443,27 @@ function App() {
     } finally {
       setIntakeBusy(false)
     }
+  }
+
+  async function deleteDraft(preview: IntakePreview | null) {
+    if (!preview) return true
+    try {
+      return (await fetch(`${API_URL}/api/intakes/${encodeURIComponent(preview.intakeId)}`, { method: 'DELETE' })).ok
+    } catch {
+      return false
+    }
+  }
+
+  async function discardIntake() {
+    setIntakeBusy(true)
+    if (await deleteDraft(intakePreview)) {
+      setIntakeFiles([])
+      setIntakePreview(null)
+      setIntakeMessage('Rascunho descartado do storage.')
+    } else {
+      setIntakeMessage('Não foi possível descartar o rascunho. Tente novamente.')
+    }
+    setIntakeBusy(false)
   }
 
   async function openSavedCase(caseId: string, navigate = true) {
@@ -1454,6 +1492,26 @@ function App() {
       setStoredCaseError(error instanceof Error ? error.message : 'Não foi possível carregar o caso.')
     } finally {
       setStoredCaseLoading(false)
+    }
+  }
+
+  async function deleteSavedCase() {
+    if (!storedCase || !window.confirm(`Excluir permanentemente o caso de ${storedCase.analysis.patient?.full_name || 'este paciente'}?`)) return
+    setCaseDeleteBusy(true)
+    setStoredCaseError('')
+    try {
+      const response = await fetch(`${API_URL}/api/cases/${encodeURIComponent(storedCase.caseId)}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${CASE_DELETE_TOKEN}` },
+      })
+      const result = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(result.error ?? 'Não foi possível excluir o caso.')
+      setSavedCases((cases) => cases.filter((item) => item.caseId !== storedCase.caseId))
+      backToReports()
+    } catch (error) {
+      setStoredCaseError(error instanceof Error ? error.message : 'Não foi possível excluir o caso.')
+    } finally {
+      setCaseDeleteBusy(false)
     }
   }
 
@@ -1491,6 +1549,16 @@ function App() {
             </p>
           </div>
         </div>
+        {storedCase && (
+          <button
+            className="inline-flex items-center gap-2 rounded-[9px] border border-danger/50 bg-surface px-3 py-2 text-sm font-semibold text-danger hover:bg-danger-soft disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={caseDeleteBusy}
+            onClick={() => void deleteSavedCase()}
+            type="button"
+          >
+            <Trash2 size={16} /> {caseDeleteBusy ? 'Excluindo…' : 'Excluir caso'}
+          </button>
+        )}
         {!reportData && (
           <div className="flex max-w-[330px] items-center gap-2.5 rounded-[10px] border border-primary-border bg-surface/80 p-3 text-xs leading-relaxed text-text-secondary max-[820px]:max-w-none">
             <ShieldCheck className="flex-none" size={18} />
@@ -1727,13 +1795,14 @@ function App() {
                 <Eyebrow>NOVO CASO</Eyebrow>
                 <h2 className="mb-0 mt-1 font-display text-xl">Envie os arquivos do paciente</h2>
                 <p className="mb-0 mt-1.5 text-sm leading-relaxed text-text-secondary">
-                  Os arquivos serão analisados primeiro. Nada é salvo no Tigris até você confirmar a prévia.
+                  Após a análise, um rascunho é salvo no storage. Ele só vira um caso após sua confirmação.
                 </p>
                 <label
                   className="mt-5 flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-primary/40 bg-surface p-8 text-center hover:border-primary max-[580px]:p-6"
                   onDragOver={(event) => event.preventDefault()}
                   onDrop={(event) => {
                     event.preventDefault()
+                    void deleteDraft(intakePreview)
                     setIntakeFiles(Array.from(event.dataTransfer.files))
                     setIntakePreview(null)
                     setIntakeMessage('')
@@ -1747,6 +1816,7 @@ function App() {
                     className="sr-only"
                     multiple
                     onChange={(event) => {
+                      void deleteDraft(intakePreview)
                       setIntakeFiles(Array.from(event.target.files ?? []))
                       setIntakePreview(null)
                       setIntakeMessage('')
@@ -1777,6 +1847,7 @@ function App() {
                             aria-label={`Cancelar upload de ${file.name}`}
                             className="absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-full text-text-muted hover:bg-danger-soft hover:text-danger"
                             onClick={() => {
+                              void deleteDraft(intakePreview)
                               setIntakeFiles((files) => files.filter((currentFile) => currentFile !== file))
                               setIntakePreview(null)
                             }}
@@ -1808,7 +1879,7 @@ function App() {
                     </details>
                     <div className="mt-4 flex flex-wrap gap-3">
                       <PrimaryButton disabled={intakeBusy} onClick={confirmIntake}>{intakeBusy ? 'Salvando…' : 'Confirmar criação do caso'}</PrimaryButton>
-                      <button className="rounded-[9px] border border-border-strong bg-surface px-4 py-[11px] text-sm font-semibold hover:border-danger hover:text-danger" disabled={intakeBusy} onClick={() => { setIntakeFiles([]); setIntakePreview(null); setIntakeMessage('Arquivos descartados. Nada foi salvo.') }} type="button">Descartar</button>
+                      <button className="rounded-[9px] border border-border-strong bg-surface px-4 py-[11px] text-sm font-semibold hover:border-danger hover:text-danger" disabled={intakeBusy} onClick={discardIntake} type="button">Descartar</button>
                     </div>
                   </div>
                 )}

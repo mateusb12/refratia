@@ -31,6 +31,7 @@ export interface IntakeAnalysis {
 }
 
 export interface IntakePreview {
+  intakeId: string
   files: Array<{ filename: string; contentType: string; size: number; sha256: string }>
   analysis: IntakeAnalysis
   message: string
@@ -39,5 +40,5 @@ export interface IntakePreview {
 export function isIntakePreview(value: unknown): value is IntakePreview {
   if (!value || typeof value !== 'object') return false
   const result = value as Partial<IntakePreview>
-  return Array.isArray(result.files) && typeof result.analysis === 'object' && result.analysis !== null && typeof result.message === 'string'
+  return typeof result.intakeId === 'string' && Array.isArray(result.files) && typeof result.analysis === 'object' && result.analysis !== null && typeof result.message === 'string'
 }

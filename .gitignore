@@ -24,3 +24,4 @@ dist-ssr
 *.sln
 *.sw?
 /codebase.md
+/.env

@@ -23,6 +23,7 @@ services:
     environment:
       PORT: 3000
       CORS_ORIGINS: http://localhost:5173
+      CASE_DELETE_TOKEN: ${CASE_DELETE_TOKEN:-local-dev-delete-only}
       BUCKET_NAME: refratia
       AWS_REGION: us-east-1
       AWS_ACCESS_KEY_ID: minioadmin

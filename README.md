@@ -30,6 +30,18 @@ docker compose up --build
 
 Os arquivos confirmados são armazenados no bucket local `refratia`.
 
+Após a análise, o backend guarda um rascunho em `drafts/{intakeId}`. A confirmação
+envia somente o `intakeId`; o backend promove os documentos e grava
+`paciente_compilado.json` por último, como marcador de um caso completo.
+
+Para apagar um caso inteiro no ambiente local:
+
+```bash
+curl -X DELETE -H 'Authorization: Bearer local-dev-delete-only' http://localhost:3000/api/cases/{caseId}
+```
+
+Em produção, o endpoint só é habilitado quando `CASE_DELETE_TOKEN` estiver definido.
+
 ## Validação
 
 ```bash
