@@ -716,6 +716,11 @@ function DocumentsReview({
   onToggle: (name: string) => void
 }) {
   const received = items.filter((document) => document.status !== 'Não enviado').length
+  const selectedDocument = items.find((document) => document.name === expanded)
+  const [imageZoom, setImageZoom] = useState(100)
+  const selectedIsPdf = selectedDocument?.filename.toLowerCase().endsWith('.pdf')
+
+  useEffect(() => setImageZoom(100), [selectedDocument?.url])
 
   return (
     <section className="mt-5 rounded-2xl border border-border bg-surface p-6 shadow-sm max-[580px]:p-4">
@@ -748,12 +753,12 @@ function DocumentsReview({
               <button
                 aria-expanded={expanded === document.name}
                 className="mt-4 text-xs font-bold text-primary hover:underline"
-                onClick={() => document.url ? window.open(document.url, '_blank', 'noopener,noreferrer') : onToggle(document.name)}
+                onClick={() => onToggle(document.name)}
                 type="button"
               >
-                Visualizar arquivo
+                {expanded === document.name ? 'Fechar visualizador' : 'Visualizar arquivo'}
               </button>
-              {expanded === document.name && (
+              {expanded === document.name && !document.url && (
                 <p className="mb-0 mt-2 border-t border-border pt-3 text-xs leading-relaxed text-text-secondary">
                   {document.detail}
                 </p>
@@ -762,6 +767,27 @@ function DocumentsReview({
           )
         })}
       </div>
+
+      {selectedDocument?.url && (
+        <div className="mt-5 overflow-hidden rounded-xl border border-border bg-surface-muted">
+          <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
+            <strong className="truncate text-sm">{selectedDocument.filename}</strong>
+            <div className="flex items-center gap-3">
+              {!selectedIsPdf && (
+                <label className="flex items-center gap-2 text-xs text-text-secondary">
+                  Zoom
+                  <input aria-label="Zoom da imagem" max="200" min="50" onChange={(event) => setImageZoom(Number(event.target.value))} type="range" value={imageZoom} />
+                  {imageZoom}%
+                </label>
+              )}
+              <button className="text-xs font-bold text-primary hover:underline" onClick={() => onToggle(selectedDocument.name)} type="button">Fechar</button>
+            </div>
+          </div>
+          {selectedIsPdf
+            ? <iframe className="h-[680px] w-full bg-white" src={selectedDocument.url} title={selectedDocument.filename} />
+            : <div className="max-h-[680px] overflow-auto p-4"><img alt={selectedDocument.name} className="block h-auto max-w-none" src={selectedDocument.url} style={{ width: `${imageZoom}%` }} /></div>}
+        </div>
+      )}
 
       <div className="mt-4">
         <InformationNotice>
