@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { Component, useEffect, useState, type ErrorInfo, type ReactNode } from 'react'
 import clsx from 'clsx'
 import {
   Activity,
@@ -46,6 +46,8 @@ interface StoredCase {
   caseId: string
   analysis: IntakeAnalysis
 }
+
+type ReportData = typeof patientData
 
 const eyeLabel = (eye: Eye) => (eye === 'OS' ? 'OE' : eye)
 const API_URL = import.meta.env.VITE_API_URL ?? (
@@ -334,19 +336,22 @@ const extractedData: ExtractedDatum[] = [
 
 const realPatientName = 'Gerinaldo Alfregildo'
 const endothelialCutoff = 2000
-const realDocuments: DocumentReview[] = patientData.source_files.map((file) => {
+function getReportDocuments(data: ReportData): DocumentReview[] {
+  return data.source_files.map((file) => {
   return {
     name: `${file.exam.charAt(0).toUpperCase()}${file.exam.slice(1)} · ${eyeLabel(file.eye as Eye)}`,
     filename: file.path.split('/').pop() ?? file.path,
     status: 'Processado',
     detail: `${file.type === 'application/pdf' ? `${file.pages} páginas` : 'Imagem'} disponível no caso.`,
   }
-})
+  })
+}
 
-const realExtractedData: ExtractedDatum[] = (['OD', 'OS'] as const).flatMap((eye) => {
-  const pentacam = patientData.exams.pentacam_corneal_tomography.eyes[eye]
-  const biometry = patientData.exams.iol_calculation.eyes[eye]
-  const microscopy = patientData.exams.specular_microscopy.eyes[eye]
+function getReportExtractedData(data: ReportData): ExtractedDatum[] {
+  return (['OD', 'OS'] as const).flatMap((eye) => {
+  const pentacam = data.exams.pentacam_corneal_tomography.eyes[eye]
+  const biometry = data.exams.iol_calculation.eyes[eye]
+  const microscopy = data.exams.specular_microscopy.eyes[eye]
   const label = eyeLabel(eye)
   const source = `Pentacam ${label}`
 
@@ -404,7 +409,7 @@ const realExtractedData: ExtractedDatum[] = (['OD', 'OS'] as const).flatMap((eye
       source: `Microscopia especular ${label}`,
       kind: 'Dado bruto',
       confidence: 'Consistente',
-      document: patientData.exams.specular_microscopy.source[0]?.split('/').pop() ?? source,
+      document: data.exams.specular_microscopy.source[0]?.split('/').pop() ?? source,
       screen: 'NIDEK',
       field: 'Cell Density (CD)',
     },
@@ -420,24 +425,26 @@ const realExtractedData: ExtractedDatum[] = (['OD', 'OS'] as const).flatMap((eye
       field: 'Axial length',
     },
   ] satisfies ExtractedDatum[]
-})
+  })
+}
 
-const realMetrics: Metric[] = [
+function getReportMetrics(data: ReportData, extractedData: ExtractedDatum[]): Metric[] {
+  return [
   {
     label: 'Arquivos recebidos',
-    value: String(patientData.source_files.length),
+    value: String(data.source_files.length),
     detail: 'Todos disponíveis para revisão',
     tone: 'success',
   },
   {
     label: 'Dados em destaque',
-    value: String(realExtractedData.length),
+    value: String(extractedData.length),
     detail: 'Parâmetros reais de OD e OE',
     tone: 'success',
   },
   {
     label: 'Qualidade Pentacam',
-    value: `${patientData.exams.pentacam_corneal_tomography.eyes.OD.quality} / ${patientData.exams.pentacam_corneal_tomography.eyes.OS.quality}`,
+    value: `${data.exams.pentacam_corneal_tomography.eyes.OD.quality} / ${data.exams.pentacam_corneal_tomography.eyes.OS.quality}`,
     detail: 'OD / OE',
     tone: 'success',
   },
@@ -447,7 +454,8 @@ const realMetrics: Metric[] = [
     detail: 'Datas normalizadas',
     tone: 'success',
   },
-]
+  ]
+}
 
 const recommendationReasons = [
   'Faixa refracional compatível',
@@ -506,6 +514,31 @@ function getSectionFromPath(pathname: string) {
 
 function Eyebrow({ children }: { children: ReactNode }) {
   return <span className="text-primary text-xs font-bold tracking-[0.13em]">{children}</span>
+}
+
+class ReportErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state: { error: Error | null } = { error: null }
+
+  static getDerivedStateFromError(error: Error) {
+    return { error }
+  }
+
+  componentDidCatch(_error: Error, _info: ErrorInfo) {}
+
+  render() {
+    if (!this.state.error) return this.props.children
+    return (
+      <main className="grid min-h-screen place-items-center bg-page p-6">
+        <section className="w-full max-w-xl rounded-2xl border border-danger bg-surface p-6 shadow-sm">
+          <Eyebrow>ERRO AO CARREGAR RELATÓRIO</Eyebrow>
+          <h1 className="mb-0 mt-2 font-display text-2xl">Não foi possível exibir este caso</h1>
+          <p className="mb-0 mt-3 text-sm leading-relaxed text-text-secondary">O JSON salvo não contém todos os campos necessários para este fluxo.</p>
+          <p className="mb-0 mt-3 text-xs text-text-muted">{this.state.error.message}</p>
+          <button className="mt-5 rounded-[9px] bg-primary px-4 py-2.5 text-sm font-semibold text-white" onClick={() => window.location.assign(`${appBasePath}/relatorios`)} type="button">Voltar para casos</button>
+        </section>
+      </main>
+    )
+  }
 }
 
 function PrimaryButton({ children, onClick, disabled }: { children: ReactNode; onClick?: () => void; disabled?: boolean }) {
@@ -809,11 +842,11 @@ function FlowConnector({
   )
 }
 
-function RealCaseSummary() {
+function RealCaseSummary({ data }: { data: ReportData }) {
   const eyes = (['OD', 'OS'] as const).map((eye) => {
-    const pentacam = patientData.exams.pentacam_corneal_tomography.eyes[eye]
-    const biometry = patientData.exams.iol_calculation.eyes[eye]
-    const endothelium = patientData.exams.specular_microscopy.eyes[eye]
+    const pentacam = data.exams.pentacam_corneal_tomography.eyes[eye]
+    const biometry = data.exams.iol_calculation.eyes[eye]
+    const endothelium = data.exams.specular_microscopy.eyes[eye]
     const astigmatism = Math.abs(biometry.keratometry.astigmatism_d)
     const coma = Number.parseFloat(pentacam.corneal_rings.zernike['5mm'].z31_coma)
 
@@ -1186,11 +1219,12 @@ function App() {
   const [storedCaseLoading, setStoredCaseLoading] = useState(false)
   const [storedCaseError, setStoredCaseError] = useState('')
 
-  const reportGenerated = processingStep === steps.length
   const isRealCase = selectedCase === 'real'
-  const activeMetrics = isRealCase ? realMetrics : metrics
-  const activeDocuments = isRealCase ? realDocuments : documents
-  const activeExtractedData = isRealCase ? realExtractedData : extractedData
+  const reportData = isRealCase ? patientData : storedCase?.analysis as ReportData | undefined
+  const reportGenerated = processingStep === steps.length || Boolean(reportData)
+  const activeExtractedData = reportData ? getReportExtractedData(reportData) : extractedData
+  const activeMetrics = reportData ? getReportMetrics(reportData, activeExtractedData) : metrics
+  const activeDocuments = reportData ? getReportDocuments(reportData) : documents
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
@@ -1205,7 +1239,9 @@ function App() {
       setActiveSection(nextReportId ? 'Relatórios' : getSectionFromPath(pathname))
       setSelectedCase(nextReportId === '1' ? 'real' : null)
       setProcessingStep(nextReportId === '1' ? steps.length : 0)
+      if (nextReportId && nextReportId !== '1') void openSavedCase(nextReportId, false)
     }
+    onPopState()
     window.addEventListener('popstate', onPopState)
     return () => window.removeEventListener('popstate', onPopState)
   }, [])
@@ -1307,7 +1343,7 @@ function App() {
     }
   }
 
-  async function openSavedCase(caseId: string) {
+  async function openSavedCase(caseId: string, navigate = true) {
     setStoredCase(null)
     setStoredCaseError('')
     setStoredCaseLoading(true)
@@ -1324,6 +1360,11 @@ function App() {
         throw new Error('Não foi possível carregar a análise deste caso.')
       }
       setStoredCase({ caseId, analysis: result.analysis as IntakeAnalysis })
+      if (navigate) {
+        window.history.pushState({}, '', `${appBasePath}/relatorios/${caseId}`)
+        setRoute(window.location.pathname)
+        setActiveSection('Relatórios')
+      }
     } catch (error) {
       setStoredCaseError(error instanceof Error ? error.message : 'Não foi possível carregar o caso.')
     } finally {
@@ -1342,30 +1383,30 @@ function App() {
       </button>
       <div className={clsx(
         'mt-5 flex items-center justify-between gap-6 rounded-2xl border p-6 max-[820px]:flex-col max-[820px]:items-start max-[580px]:p-4',
-        isRealCase ? 'border-warning/50 bg-warning-soft' : 'hero-bg border-primary-border',
+        reportData ? 'border-warning/50 bg-warning-soft' : 'hero-bg border-primary-border',
       )}>
         <div className="flex items-start gap-4">
           <span className={clsx(
             'grid h-10 w-10 flex-none place-items-center rounded-xl bg-surface shadow-sm',
-            isRealCase ? 'text-warning' : 'text-primary',
+            reportData ? 'text-warning' : 'text-primary',
           )}>
-            {isRealCase ? <Database size={20} /> : <FileSearch size={20} />}
+            {reportData ? <Database size={20} /> : <FileSearch size={20} />}
           </span>
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="m-0 font-display text-xl">
-                {isRealCase ? realPatientName : 'Revise evidências antes da conclusão clínica'}
+                {isRealCase ? realPatientName : reportData?.patient.full_name ?? 'Revise evidências antes da conclusão clínica'}
               </h2>
-              {isRealCase && <StatusBadge tone="warning">CASO REAL</StatusBadge>}
+              {reportData && <StatusBadge tone="warning">{isRealCase ? 'CASO REAL' : 'CASO SALVO'}</StatusBadge>}
             </div>
             <p className="mb-0 mt-1.5 max-w-[690px] text-sm leading-relaxed text-text-secondary">
-              {isRealCase
-                ? 'Nascimento: 12/05/1967 · Dados clínicos importados'
+              {reportData
+                ? `Nascimento: ${isRealCase ? '12/05/1967' : reportData.patient.birth_date} · Dados clínicos importados`
                 : 'Confira documentos, dados extraídos, cálculos e a justificativa da recomendação preliminar.'}
             </p>
           </div>
         </div>
-        {!isRealCase && (
+        {!reportData && (
           <div className="flex max-w-[330px] items-center gap-2.5 rounded-[10px] border border-primary-border bg-surface/80 p-3 text-xs leading-relaxed text-text-secondary max-[820px]:max-w-none">
             <ShieldCheck className="flex-none" size={18} />
             Apoio à avaliação clínica. Não constitui diagnóstico, laudo ou indicação cirúrgica.
@@ -1382,9 +1423,9 @@ function App() {
         expanded={expandedDocument}
         onToggle={(name) => setExpandedDocument((current) => current === name ? null : name)}
       />
-      <ExtractedDataReview isReal={isRealCase} items={activeExtractedData} onTrace={setTraceData} />
-      {isRealCase
-        ? <RealCaseSummary />
+      <ExtractedDataReview isReal={Boolean(reportData)} items={activeExtractedData} onTrace={setTraceData} />
+      {reportData
+        ? <RealCaseSummary data={reportData} />
         : <RecommendationSummary reviewed={isReviewed} onReview={() => setIsReviewed(true)} />}
     </>
   ) : (
@@ -1721,7 +1762,7 @@ function App() {
             </>
           )}
 
-          {activeSection === 'Relatórios' && (selectedCase === 'real' ? reviewContent : reportsSection)}
+          {activeSection === 'Relatórios' && (selectedCase === 'real' || storedCase ? reviewContent : reportsSection)}
           </>}
         </section>
       </main>
@@ -1731,4 +1772,6 @@ function App() {
   )
 }
 
-export default App
+export default function Root() {
+  return <ReportErrorBoundary><App /></ReportErrorBoundary>
+}
