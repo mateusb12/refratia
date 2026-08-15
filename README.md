@@ -15,7 +15,6 @@ npm run dev:backend  # backend, em outro terminal
 
 Defina `OPENAI_API_KEY` no ambiente do backend para extrair os documentos antes da confirmação. `OPENAI_MODEL` é opcional (padrão: `gpt-5.4-mini`).
 
-O envelope e os nomes oficiais dos exames estão em [`docs/paciente-json-contract.md`](docs/paciente-json-contract.md).
 
 ### Stack local com Docker
 

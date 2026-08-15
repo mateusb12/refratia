@@ -28,6 +28,7 @@ import {
 } from 'lucide-react'
 import patientData from '../data/paciente_compilado.json'
 import RoadmapPage from './components/roadmap/RoadmapPage'
+import { isIntakePreview, type IntakePreview } from './contracts/patient-analysis'
 
 type Theme = 'light' | 'dark'
 type CaseKind = 'demo' | 'real'
@@ -68,24 +69,6 @@ interface ExtractedDatum {
   field: string
   crossCheck?: string
   formula?: string
-}
-
-interface IntakeAnalysis {
-  patient?: { full_name?: string; birth_date?: string }
-  exams?: Record<string, unknown>
-  [key: string]: unknown
-}
-
-interface IntakePreview {
-  files: Array<{ filename: string; contentType: string; size: number; sha256: string }>
-  analysis: IntakeAnalysis
-  message: string
-}
-
-function isIntakePreview(value: unknown): value is IntakePreview {
-  if (!value || typeof value !== 'object') return false
-  const result = value as Partial<IntakePreview>
-  return Array.isArray(result.files) && typeof result.analysis === 'object' && result.analysis !== null && typeof result.message === 'string'
 }
 
 const steps = [

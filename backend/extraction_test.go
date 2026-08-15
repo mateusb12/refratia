@@ -14,3 +14,15 @@ func TestConfirmedAnalysisRejectsDifferentFile(t *testing.T) {
 		t.Fatal("expected mismatched file to be rejected")
 	}
 }
+
+func TestValidatePatientJSONUsesOfficialExamKeys(t *testing.T) {
+	valid := `{"patient":{},"exams":{"pentacam_corneal_tomography":{"source":[]}}}`
+	if err := validatePatientJSON(valid); err != nil {
+		t.Fatalf("expected official contract: %v", err)
+	}
+
+	unknown := `{"patient":{},"exams":{"pentacam":{"source":[]}}}`
+	if err := validatePatientJSON(unknown); err == nil {
+		t.Fatal("expected unknown exam key to be rejected")
+	}
+}

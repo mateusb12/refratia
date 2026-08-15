@@ -165,15 +165,12 @@ func extractPatient(ctx context.Context, files []uploadedFile) (map[string]any, 
 }
 
 func decodeAnalysis(raw string) (map[string]any, error) {
+	if err := validatePatientJSON(raw); err != nil {
+		return nil, err
+	}
 	var analysis map[string]any
 	if raw == "" || json.Unmarshal([]byte(raw), &analysis) != nil {
 		return nil, errors.New("o serviço de extração não retornou um JSON válido")
-	}
-	if _, ok := analysis["patient"].(map[string]any); !ok {
-		return nil, errors.New("o JSON extraído não contém patient")
-	}
-	if _, ok := analysis["exams"].(map[string]any); !ok {
-		return nil, errors.New("o JSON extraído não contém exams")
 	}
 	return analysis, nil
 }
