@@ -30,6 +30,13 @@ Organize o resultado como paciente_compilado.json:
 
 Confronte identidade, datas e lateralidade entre os arquivos. Preserve avisos do equipamento e divergências do documento. Não resuma tabelas nem omita linhas repetidas por modelo de lente. Retorne somente um objeto JSON.`
 
+const pentacamRepairPrompt = `Analise somente os PDFs do Pentacam enviados e extraia os campos abaixo. Cada PDF pode ter várias páginas: examine todas, especialmente a página "Ectasia Reforçada Belin / Ambrósio".
+
+Retorne somente este objeto JSON, mantendo null apenas quando o valor realmente não estiver legível em nenhuma página:
+{"eyes":{"OD":{"general":{"pachymetry_thinnest_um":null,"k_max_anterior_diopters":null},"belin_ambrosio":{"d":null,"art_max":null}},"OS":{"general":{"pachymetry_thinnest_um":null,"k_max_anterior_diopters":null},"belin_ambrosio":{"d":null,"art_max":null}}}}
+
+Use a lateralidade impressa no documento. Em "Ectasia Reforçada Belin / Ambrósio", leia D no rodapé direito e ARTmax no quadro "Índice de Progressão". Não confunda ARTmax com os valores Mín, Méd ou Máx.`
+
 type uploadedFile struct {
 	Metadata intakeFile
 	Data     []byte
@@ -80,13 +87,34 @@ func intakeMetadata(files []uploadedFile) []intakeFile {
 }
 
 func extractPatient(ctx context.Context, files []uploadedFile) (map[string]any, error) {
+	output, err := requestOpenAIJSON(ctx, files, extractionPrompt, 40000)
+	if err != nil {
+		return nil, err
+	}
+	analysis, err := decodeAnalysis(output)
+	if err != nil {
+		return nil, err
+	}
+	if repairFiles := pentacamFilesNeedingRepair(analysis, files); len(repairFiles) > 0 {
+		if repairOutput, repairErr := requestOpenAIJSON(ctx, repairFiles, pentacamRepairPrompt, 5000); repairErr == nil {
+			var repair map[string]any
+			if json.Unmarshal([]byte(repairOutput), &repair) == nil {
+				mergePentacamRepair(analysis, repair)
+			}
+		}
+	}
+	enrichSourceFiles(analysis, files)
+	return analysis, nil
+}
+
+func requestOpenAIJSON(ctx context.Context, files []uploadedFile, prompt string, maxOutputTokens int) (string, error) {
 	apiKey := os.Getenv("OPENAI_API_KEY")
 	if apiKey == "" {
-		return nil, errors.New("extração indisponível: OPENAI_API_KEY não configurada")
+		return "", errors.New("extração indisponível: OPENAI_API_KEY não configurada")
 	}
 
 	content := make([]map[string]any, 0, len(files)*2+1)
-	content = append(content, map[string]any{"type": "input_text", "text": extractionPrompt})
+	content = append(content, map[string]any{"type": "input_text", "text": prompt})
 	for _, file := range files {
 		content = append(content, map[string]any{"type": "input_text", "text": "Arquivo seguinte: " + file.Metadata.Filename})
 		dataURL := "data:" + file.Metadata.ContentType + ";base64," + base64.StdEncoding.EncodeToString(file.Data)
@@ -108,7 +136,7 @@ func extractPatient(ctx context.Context, files []uploadedFile) (map[string]any, 
 	body, err := json.Marshal(map[string]any{
 		"model":             model,
 		"store":             false,
-		"max_output_tokens": 40000,
+		"max_output_tokens": maxOutputTokens,
 		"input": []map[string]any{{
 			"role":    "user",
 			"content": content,
@@ -116,52 +144,159 @@ func extractPatient(ctx context.Context, files []uploadedFile) (map[string]any, 
 		"text": map[string]any{"format": map[string]any{"type": "json_object"}},
 	})
 	if err != nil {
-		return nil, fmt.Errorf("não foi possível preparar a extração: %w", err)
+		return "", fmt.Errorf("não foi possível preparar a extração: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.openai.com/v1/responses", strings.NewReader(string(body)))
 	if err != nil {
-		return nil, fmt.Errorf("não foi possível preparar a extração: %w", err)
+		return "", fmt.Errorf("não foi possível preparar a extração: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 	req.Header.Set("Content-Type", "application/json")
 	response, err := (&http.Client{Timeout: 5 * time.Minute}).Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("falha ao processar os documentos: %w", err)
+		return "", fmt.Errorf("falha ao processar os documentos: %w", err)
 	}
 	defer response.Body.Close()
 
 	var result openAIResponse
 	if err := json.NewDecoder(io.LimitReader(response.Body, 10<<20)).Decode(&result); err != nil {
-		return nil, errors.New("resposta inválida do serviço de extração")
+		return "", errors.New("resposta inválida do serviço de extração")
 	}
 	if response.StatusCode >= 300 {
 		if result.Error != nil && result.Error.Message != "" {
-			return nil, fmt.Errorf("falha na extração: %s", result.Error.Message)
+			return "", fmt.Errorf("falha na extração: %s", result.Error.Message)
 		}
-		return nil, fmt.Errorf("falha na extração (HTTP %d)", response.StatusCode)
+		return "", fmt.Errorf("falha na extração (HTTP %d)", response.StatusCode)
 	}
 	if result.Status != "completed" {
-		return nil, errors.New("a extração não foi concluída")
+		return "", errors.New("a extração não foi concluída")
 	}
 
 	var output string
 	for _, item := range result.Output {
 		for _, part := range item.Content {
 			if part.Refusal != "" {
-				return nil, fmt.Errorf("extração recusada: %s", part.Refusal)
+				return "", fmt.Errorf("extração recusada: %s", part.Refusal)
 			}
 			if part.Type == "output_text" {
 				output += part.Text
 			}
 		}
 	}
-	analysis, err := decodeAnalysis(output)
-	if err != nil {
-		return nil, err
+	return output, nil
+}
+
+func pentacamFilesNeedingRepair(analysis map[string]any, files []uploadedFile) []uploadedFile {
+	exam := pentacamExam(analysis)
+	if exam == nil || !pentacamNeedsRepair(exam) {
+		return nil
 	}
-	enrichSourceFiles(analysis, files)
-	return analysis, nil
+
+	wanted := map[string]bool{}
+	if sources, ok := exam["source"].([]any); ok {
+		for _, source := range sources {
+			wanted[filepath.Base(fmt.Sprint(source))] = true
+		}
+	}
+	result := make([]uploadedFile, 0, len(wanted))
+	for _, file := range files {
+		if wanted[file.Metadata.Filename] {
+			result = append(result, file)
+		}
+	}
+	return result
+}
+
+func pentacamExam(analysis map[string]any) map[string]any {
+	exams, _ := analysis["exams"].(map[string]any)
+	exam, _ := exams["pentacam_corneal_tomography"].(map[string]any)
+	return exam
+}
+
+func pentacamNeedsRepair(exam map[string]any) bool {
+	eyes, _ := exam["eyes"].(map[string]any)
+	for _, eyeName := range []string{"OD", "OS"} {
+		eye, _ := eyes[eyeName].(map[string]any)
+		if !hasNumberAtAnyPath(eye,
+			[]string{"pachymetry", "thinnest_um"},
+			[]string{"pachymetry", "point_and_finest_um"},
+			[]string{"general", "thinnest_pachy_um"},
+			[]string{"general", "pachymetry_thinnest_um"},
+		) || !hasNumberAtAnyPath(eye,
+			[]string{"anterior_cornea", "kmax_d"},
+			[]string{"pachymetry", "k_max_anterior_diopters"},
+			[]string{"general", "k_max_anterior_diopters"},
+		) || !hasNumberAtAnyPath(eye,
+			[]string{"belin_ambrosio", "d"},
+			[]string{"ectasia_reforcada_belin_ambrosio", "d"},
+		) || !hasNumberAtAnyPath(eye,
+			[]string{"belin_ambrosio", "art_max"},
+			[]string{"belin_ambrosio", "indice_de_progressao", "art_max"},
+			[]string{"ectasia_reforcada_belin_ambrosio", "art_max"},
+			[]string{"ectasia_reforcada_belin_ambrosio", "indice_de_progressao", "art_max"},
+		) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasNumberAtAnyPath(root map[string]any, paths ...[]string) bool {
+	for _, path := range paths {
+		var value any = root
+		for _, key := range path {
+			object, ok := value.(map[string]any)
+			if !ok {
+				value = nil
+				break
+			}
+			value = object[key]
+		}
+		if _, ok := value.(float64); ok {
+			return true
+		}
+	}
+	return false
+}
+
+func mergePentacamRepair(analysis, repair map[string]any) {
+	exam := pentacamExam(analysis)
+	if exam == nil {
+		return
+	}
+	targetEyes, _ := exam["eyes"].(map[string]any)
+	repairEyes, _ := repair["eyes"].(map[string]any)
+	if targetEyes == nil || repairEyes == nil {
+		return
+	}
+	for _, eyeName := range []string{"OD", "OS"} {
+		targetEye, _ := targetEyes[eyeName].(map[string]any)
+		repairEye, _ := repairEyes[eyeName].(map[string]any)
+		if targetEye != nil && repairEye != nil {
+			mergeMissingValues(targetEye, repairEye)
+		}
+	}
+}
+
+func mergeMissingValues(target, repair map[string]any) {
+	for key, value := range repair {
+		if value == nil {
+			continue
+		}
+		if repairObject, ok := value.(map[string]any); ok {
+			targetObject, _ := target[key].(map[string]any)
+			if targetObject == nil {
+				targetObject = map[string]any{}
+				target[key] = targetObject
+			}
+			mergeMissingValues(targetObject, repairObject)
+			continue
+		}
+		if existing, ok := target[key]; !ok || existing == nil {
+			target[key] = value
+		}
+	}
 }
 
 func decodeAnalysis(raw string) (map[string]any, error) {

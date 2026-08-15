@@ -363,7 +363,7 @@ function getReportDocuments(data: ReportData): DocumentReview[] {
   return data.source_files.map((file) => {
   const signedURL = (file as typeof file & { signed_url?: string }).signed_url
   return {
-    name: `${file.exam.charAt(0).toUpperCase()}${file.exam.slice(1)} · ${eyeLabel(file.eye as Eye)}`,
+    name: file.exam ? `${file.exam.charAt(0).toUpperCase()}${file.exam.slice(1)}${file.eye ? ` · ${eyeLabel(file.eye as Eye)}` : ''}` : 'Documento',
     filename: file.path.split('/').pop() ?? file.path,
     status: 'Processado',
     detail: `${file.type === 'application/pdf' ? `${file.pages} páginas` : 'Imagem'} disponível no caso.`,

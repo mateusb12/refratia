@@ -1,9 +1,16 @@
 import assert from 'node:assert/strict'
 import { normalizeSavedAnalysis } from '../src/contracts/patient-analysis.ts'
 
-const eye = (thinnest, kmax, badD, artMax, coma, z40) => ({
+const legacyEye = (thinnest, kmax, badD, artMax, coma, z40) => ({
   pachymetry: { point_and_finest_um: thinnest, k_max_anterior_diopters: kmax },
   ectasia_reforcada_belin_ambrosio: { d: badD, indice_de_progressao: { art_max: artMax } },
+  anéis_corneanos: { total_corneal_wfa_components_of_zernike: { diam_zone_5_mm: { z31_coma_um: coma } } },
+  cataract_pre_op: { total_corneal_z40_6mm_um: z40 },
+})
+
+const currentEye = (thinnest, kmax, badD, artMax, coma, z40) => ({
+  general: { pachymetry_thinnest_um: thinnest, k_max_anterior_diopters: kmax },
+  belin_ambrosio: { d: badD, art_max: artMax },
   anéis_corneanos: { total_corneal_wfa_components_of_zernike: { diam_zone_5_mm: { z31_coma_um: coma } } },
   cataract_pre_op: { total_corneal_z40_6mm_um: z40 },
 })
@@ -11,7 +18,10 @@ const eye = (thinnest, kmax, badD, artMax, coma, z40) => ({
 const normalized = normalizeSavedAnalysis({
   schema_version: '1.0', generated_on: '2026-08-15', language: 'pt-BR', patient: {}, source_files: [],
   exams: {
-    pentacam_corneal_tomography: { source: ['od.pdf', 'os.pdf'], eyes: { OD: eye(529, 44.2, 0.65, 416, 0.097, 0.287), OS: eye(526, 45.5, 2.27, 366, 0.299, 0.602) } },
+    pentacam_corneal_tomography: { source: ['od.pdf', 'os.pdf'], eyes: {
+      OD: legacyEye(529, 44.2, 0.65, 416, 0.097, 0.287),
+      OS: currentEye(526, 45.5, 2.27, 366, 0.299, 0.602),
+    } },
     iol_calculation: { source: ['bio.pdf'], eyes: { AO: {
       OD: { biometry: { al_mm: 24.6 }, anterior_cornea: { astig_diopters: -0.28 } },
       OS: { biometry: { al_mm: 24.74 }, anterior_cornea: { astig_diopters: -3.17 } },

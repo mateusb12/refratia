@@ -46,3 +46,44 @@ func TestValidatePatientJSONUsesOfficialExamKeys(t *testing.T) {
 		t.Fatal("expected unknown exam key to be rejected")
 	}
 }
+
+func TestPentacamRepairFillsOnlyMissingMetrics(t *testing.T) {
+	analysis := map[string]any{"exams": map[string]any{
+		"pentacam_corneal_tomography": map[string]any{
+			"source": []any{"od.pdf", "os.pdf"},
+			"eyes": map[string]any{
+				"OD": map[string]any{"general": map[string]any{"pachymetry_thinnest_um": 529.0, "k_max_anterior_diopters": 44.2}},
+				"OS": map[string]any{"general": map[string]any{"pachymetry_thinnest_um": 526.0, "k_max_anterior_diopters": 45.5}},
+			},
+		},
+	}}
+	files := []uploadedFile{
+		{Metadata: intakeFile{Filename: "od.pdf"}},
+		{Metadata: intakeFile{Filename: "os.pdf"}},
+		{Metadata: intakeFile{Filename: "biometria.pdf"}},
+	}
+
+	selected := pentacamFilesNeedingRepair(analysis, files)
+	if len(selected) != 2 || selected[0].Metadata.Filename != "od.pdf" || selected[1].Metadata.Filename != "os.pdf" {
+		t.Fatalf("expected only Pentacam sources, got %#v", selected)
+	}
+
+	mergePentacamRepair(analysis, map[string]any{"eyes": map[string]any{
+		"OD": map[string]any{
+			"general":        map[string]any{"k_max_anterior_diopters": 99.0},
+			"belin_ambrosio": map[string]any{"d": 0.65, "art_max": 416.0},
+		},
+		"OS": map[string]any{
+			"belin_ambrosio": map[string]any{"d": 2.27, "art_max": 366.0},
+		},
+	}})
+
+	exam := pentacamExam(analysis)
+	if pentacamNeedsRepair(exam) {
+		t.Fatal("expected targeted repair to complete Pentacam metrics")
+	}
+	od := exam["eyes"].(map[string]any)["OD"].(map[string]any)
+	if od["general"].(map[string]any)["k_max_anterior_diopters"] != 44.2 {
+		t.Fatal("repair must not overwrite an existing extracted value")
+	}
+}

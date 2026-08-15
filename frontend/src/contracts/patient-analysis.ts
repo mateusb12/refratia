@@ -55,13 +55,17 @@ export function normalizeSavedAnalysis(analysis: IntakeAnalysis): IntakeAnalysis
       quality: cornea.quality ?? cornea.general?.quality ?? 'Não informado',
       anterior_cornea: {
         ...cornea.anterior_cornea,
-        kmax_d: cornea.anterior_cornea?.kmax_d ?? cornea.pachymetry?.k_max_anterior_diopters ?? Number.NaN,
+        kmax_d: cornea.anterior_cornea?.kmax_d
+          ?? cornea.pachymetry?.k_max_anterior_diopters
+          ?? cornea.general?.k_max_anterior_diopters
+          ?? Number.NaN,
       },
       pachymetry: {
         ...cornea.pachymetry,
         thinnest_um: cornea.pachymetry?.thinnest_um
           ?? cornea.pachymetry?.point_and_finest_um
           ?? cornea.general?.thinnest_pachy_um
+          ?? cornea.general?.pachymetry_thinnest_um
           ?? cornea.display_maps?.belin_ambrósio?.thinnest_pachy_um
           ?? ectasia.pachy_ponto_fino_um
           ?? Number.NaN,
