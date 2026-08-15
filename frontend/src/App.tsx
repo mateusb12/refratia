@@ -37,6 +37,9 @@ type Confidence = 'Consistente' | 'Suspeita — revisar'
 type Eye = 'OD' | 'OS'
 
 const eyeLabel = (eye: Eye) => (eye === 'OS' ? 'OE' : eye)
+const API_URL = import.meta.env.VITE_API_URL ?? (
+  window.location.hostname === 'localhost' ? 'http://localhost:3000' : 'https://backend-dry-island-4275.fly.dev'
+)
 
 interface Metric {
   label: string
@@ -482,11 +485,15 @@ function DocumentsReview({
   isReal,
   expanded,
   onToggle,
+  uploading,
+  onUpload,
 }: {
   items: DocumentReview[]
   isReal: boolean
   expanded: string | null
   onToggle: (name: string) => void
+  uploading: boolean
+  onUpload: (file: File) => void
 }) {
   const received = items.filter((document) => document.status !== 'Não enviado').length
 
@@ -538,9 +545,23 @@ function DocumentsReview({
 
       <div className="mt-4">
         {isReal ? (
-          <InformationNotice>
-            Arquivos processados e disponíveis para revisão.
-          </InformationNotice>
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary-border bg-primary-soft/50 p-4">
+            <InformationNotice>Arquivos processados e disponíveis para revisão.</InformationNotice>
+            <label className="inline-flex cursor-pointer items-center gap-2 rounded-[9px] bg-primary px-4 py-[11px] text-sm font-semibold text-white hover:bg-primary-hover">
+              <UploadCloud size={17} /> {uploading ? 'Enviando…' : 'Anexar arquivo'}
+              <input
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
+                className="sr-only"
+                disabled={uploading}
+                onChange={(event) => {
+                  const file = event.target.files?.[0]
+                  if (file) onUpload(file)
+                  event.currentTarget.value = ''
+                }}
+                type="file"
+              />
+            </label>
+          </div>
         ) : (
           <InformationNotice>
             OCT de retina não enviado. A ausência deste dado não altera a recomendação atual.
@@ -1044,11 +1065,13 @@ function App() {
   const [expandedDocument, setExpandedDocument] = useState<string | null>(null)
   const [traceData, setTraceData] = useState<ExtractedDatum | null>(null)
   const [isReviewed, setIsReviewed] = useState(false)
+  const [realCaseDocuments, setRealCaseDocuments] = useState(realDocuments)
+  const [uploading, setUploading] = useState(false)
 
   const reportGenerated = processingStep === steps.length
   const isRealCase = selectedCase === 'real'
   const activeMetrics = isRealCase ? realMetrics : metrics
-  const activeDocuments = isRealCase ? realDocuments : documents
+  const activeDocuments = isRealCase ? realCaseDocuments : documents
   const activeExtractedData = isRealCase ? realExtractedData : extractedData
 
   useEffect(() => {
@@ -1076,6 +1099,27 @@ function App() {
     setIsReviewed(false)
     setExpandedDocument(null)
     setTraceData(null)
+  }
+
+  async function uploadRealCaseFile(file: File) {
+    setUploading(true)
+    try {
+      const body = new FormData()
+      body.append('file', file)
+      const response = await fetch(`${API_URL}/api/cases/gerinaldo-alfregildo/files`, { method: 'POST', body })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error ?? 'Falha no upload')
+      setRealCaseDocuments((current) => [...current, {
+        name: `Anexo · ${file.name}`,
+        filename: file.name,
+        status: 'Processado',
+        detail: `${file.type || 'Arquivo'} enviado ao armazenamento.`,
+      }])
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'Não foi possível enviar o arquivo.')
+    } finally {
+      setUploading(false)
+    }
   }
 
   const reviewContent = reportGenerated ? (
@@ -1129,6 +1173,8 @@ function App() {
         items={activeDocuments}
         expanded={expandedDocument}
         onToggle={(name) => setExpandedDocument((current) => current === name ? null : name)}
+        uploading={uploading}
+        onUpload={uploadRealCaseFile}
       />
       <ExtractedDataReview isReal={isRealCase} items={activeExtractedData} onTrace={setTraceData} />
       {isRealCase
