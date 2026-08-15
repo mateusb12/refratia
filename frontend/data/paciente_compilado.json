@@ -25,82 +25,197 @@
   },
   "source_files": [
     {
-      "path": "data/ARANTES SILVA_ROLMEY_OD_30072026_115226.pdf",
+      "path": "ARANTES SILVA_ROLMEY_OD_30072026_115226.pdf",
       "sha256": "1472d3c5f5c5f37aaa8cfa2b04eb41673ddc34472754ff1aa50dd477396f0e66",
       "type": "application/pdf",
-      "pages": 9,
-      "exam": "tomografia corneana Pentacam",
+      "pages": [
+        {
+          "page": 1,
+          "content": {
+            "title": "Geral"
+          }
+        },
+        {
+          "page": 2,
+          "content": {
+            "title": "Imagens Scheimpflug"
+          }
+        },
+        {
+          "page": 3,
+          "content": {
+            "title": "Mapas"
+          }
+        },
+        {
+          "page": 4,
+          "content": {
+            "title": "4 Mapas Refrativos"
+          }
+        },
+        {
+          "page": 5,
+          "content": {
+            "title": "Paquimétrico"
+          }
+        },
+        {
+          "page": 6,
+          "content": {
+            "title": "Topométrico / Estadiamento KC"
+          }
+        },
+        {
+          "page": 7,
+          "content": {
+            "title": "Cataract Pre-OP"
+          }
+        },
+        {
+          "page": 8,
+          "content": {
+            "title": "Ectasia Reforçada Belin / Ambrósio"
+          }
+        },
+        {
+          "page": 9,
+          "content": {
+            "title": "Anéis Corneanos"
+          }
+        }
+      ],
+      "exam": "pentacam_corneal_tomography",
       "eye": "OD",
-      "page_contents": {
-        "1": "Geral",
-        "2": "Imagens Scheimpflug",
-        "3": "Mapas",
-        "4": "4 Mapas Refrativos",
-        "5": "Paquimétrico",
-        "6": "Topométrico / Estadiamento KC",
-        "7": "Cataract Pre-OP",
-        "8": "Ectasia Reforçada Belin / Ambrósio",
-        "9": "Anéis Corneanos"
-      }
+      "size_bytes": 3385635
     },
     {
-      "path": "data/ARANTES SILVA_ROLMEY_OS_30072026_115345.pdf",
+      "path": "ARANTES SILVA_ROLMEY_OS_30072026_115345.pdf",
       "sha256": "656e90a015429535d7b957c3b5ccf706a65859390ebaeef0384a4292e9a2fbcb",
       "type": "application/pdf",
-      "pages": 9,
-      "exam": "tomografia corneana Pentacam",
+      "pages": [
+        {
+          "page": 1,
+          "content": {
+            "title": "Geral"
+          }
+        },
+        {
+          "page": 2,
+          "content": {
+            "title": "Imagens Scheimpflug"
+          }
+        },
+        {
+          "page": 3,
+          "content": {
+            "title": "Mapas"
+          }
+        },
+        {
+          "page": 4,
+          "content": {
+            "title": "4 Mapas Refrativos"
+          }
+        },
+        {
+          "page": 5,
+          "content": {
+            "title": "Paquimétrico"
+          }
+        },
+        {
+          "page": 6,
+          "content": {
+            "title": "Topométrico / Estadiamento KC"
+          }
+        },
+        {
+          "page": 7,
+          "content": {
+            "title": "Cataract Pre-OP"
+          }
+        },
+        {
+          "page": 8,
+          "content": {
+            "title": "Ectasia Reforçada Belin / Ambrósio"
+          }
+        },
+        {
+          "page": 9,
+          "content": {
+            "title": "Anéis Corneanos"
+          }
+        }
+      ],
+      "exam": "pentacam_corneal_tomography",
       "eye": "OS",
-      "page_contents": {
-        "1": "Geral",
-        "2": "Imagens Scheimpflug",
-        "3": "Mapas",
-        "4": "4 Mapas Refrativos",
-        "5": "Paquimétrico",
-        "6": "Topométrico / Estadiamento KC",
-        "7": "Cataract Pre-OP",
-        "8": "Ectasia Reforçada Belin / Ambrósio",
-        "9": "Anéis Corneanos"
-      }
+      "size_bytes": 3376474
     },
     {
-      "path": "data/BIO SRK-T AO.pdf",
+      "path": "BIO SRK-T AO.pdf",
       "sha256": "76bde1307350ddf09b18c2273f116362bce2d5f947cea0996abf4ef57840e9e7",
       "type": "application/pdf",
-      "pages": 4,
-      "exam": "biometria e cálculo de lente intraocular SRK/T",
-      "eye": "AO"
+      "pages": [
+        {
+          "page": 1
+        },
+        {
+          "page": 2
+        },
+        {
+          "page": 3
+        },
+        {
+          "page": 4
+        }
+      ],
+      "exam": "iol_calculation",
+      "eye": "AO",
+      "size_bytes": 961281
     },
     {
-      "path": "data/9e903625-ef7e-4b6e-b545-b77778d3b517.jpeg",
+      "path": "9e903625-ef7e-4b6e-b545-b77778d3b517.jpeg",
       "sha256": "170ad7601e2a3104d227b0e5634cce0e97b8c1ce2e0fa096e3b76d7d5191ec12",
       "type": "image/jpeg",
-      "dimensions_px": [1600, 1200],
-      "exam": "retinografia",
-      "eye": "OD"
+      "exam": "fundus_retinography",
+      "eye": "OD",
+      "dimensions": {
+        "width_px": 1600,
+        "height_px": 1200
+      },
+      "size_bytes": 195128
     },
     {
-      "path": "data/c748c418-0589-4faa-9513-5ba9d25634e4.jpeg",
+      "path": "c748c418-0589-4faa-9513-5ba9d25634e4.jpeg",
       "sha256": "5efe8401311c15d037e7436e89dcdf8136138a676a44ed16e14790d0ba87357e",
       "type": "image/jpeg",
-      "dimensions_px": [1600, 1200],
-      "exam": "retinografia",
-      "eye": "OS"
+      "exam": "fundus_retinography",
+      "eye": "OS",
+      "dimensions": {
+        "width_px": 1600,
+        "height_px": 1200
+      },
+      "size_bytes": 193109
     },
     {
-      "path": "data/fa8ae102-8b94-4bcf-a109-e528b7afe846.jpeg",
+      "path": "fa8ae102-8b94-4bcf-a109-e528b7afe846.jpeg",
       "sha256": "f329ac4b86e93d14688afe9eaed6e2da9febaa373ddcf6ed4a1e11ce3769aab7",
       "type": "image/jpeg",
-      "dimensions_px": [800, 1050],
-      "exam": "microscopia especular de córnea",
-      "eye": "AO"
+      "exam": "specular_microscopy",
+      "eye": "AO",
+      "dimensions": {
+        "width_px": 800,
+        "height_px": 1050
+      },
+      "size_bytes": 463326
     }
   ],
   "exams": {
-    "biometry_iol": {
-      "source": {
-        "file": "data/BIO SRK-T AO.pdf",
-        "pages": [1, 2, 3, 4]
-      },
+    "iol_calculation": {
+      "source": [
+        "BIO SRK-T AO.pdf"
+      ],
       "device": "Haag-Streit EyeSuite IOL V4.12.0 / LS900",
       "calculation_id": 1917,
       "calculated_at": "2026-07-30T12:03:00-03:00",
@@ -154,7 +269,10 @@
         }
       },
       "iol_calculations": {
-        "columns": ["iol_power_d", "predicted_refraction_d"],
+        "columns": [
+          "iol_power_d",
+          "predicted_refraction_d"
+        ],
         "highlighted_row": "Em cada olho, o documento destaca a linha cuja refração prevista tem o menor valor absoluto.",
         "models": [
           {
@@ -162,186 +280,1113 @@
             "manufacturer": "Alcon",
             "a_constant": 119.1,
             "source_page": 1,
-            "OD": [[16.5, 0.69], [17.0, 0.38], [17.5, 0.05], [18.0, -0.27], [18.5, -0.6]],
-            "OS": [[17.5, 0.62], [18.0, 0.29], [18.5, -0.04], [19.0, -0.38], [19.5, -0.72]]
+            "OD": [
+              [
+                16.5,
+                0.69
+              ],
+              [
+                17.0,
+                0.38
+              ],
+              [
+                17.5,
+                0.05
+              ],
+              [
+                18.0,
+                -0.27
+              ],
+              [
+                18.5,
+                -0.6
+              ]
+            ],
+            "OS": [
+              [
+                17.5,
+                0.62
+              ],
+              [
+                18.0,
+                0.29
+              ],
+              [
+                18.5,
+                -0.04
+              ],
+              [
+                19.0,
+                -0.38
+              ],
+              [
+                19.5,
+                -0.72
+              ]
+            ]
           },
           {
             "model": "TECNIS SYNERGY",
             "manufacturer": "AMO",
             "a_constant": 119.3,
             "source_page": 1,
-            "OD": [[17.0, 0.5], [17.5, 0.19], [18.0, -0.14], [18.5, -0.46], [19.0, -0.79]],
-            "OS": [[17.5, 0.75], [18.0, 0.43], [18.5, 0.1], [19.0, -0.24], [19.5, -0.57]]
+            "OD": [
+              [
+                17.0,
+                0.5
+              ],
+              [
+                17.5,
+                0.19
+              ],
+              [
+                18.0,
+                -0.14
+              ],
+              [
+                18.5,
+                -0.46
+              ],
+              [
+                19.0,
+                -0.79
+              ]
+            ],
+            "OS": [
+              [
+                17.5,
+                0.75
+              ],
+              [
+                18.0,
+                0.43
+              ],
+              [
+                18.5,
+                0.1
+              ],
+              [
+                19.0,
+                -0.24
+              ],
+              [
+                19.5,
+                -0.57
+              ]
+            ]
           },
           {
             "model": "Vivity *Ext",
             "manufacturer": "Alcon",
             "a_constant": 119.2,
             "source_page": 1,
-            "OD": [[16.5, 0.76], [17.0, 0.44], [17.5, 0.12], [18.0, -0.2], [18.5, -0.53]],
-            "OS": [[17.5, 0.69], [18.0, 0.36], [18.5, 0.03], [19.0, -0.31], [19.5, -0.65]]
+            "OD": [
+              [
+                16.5,
+                0.76
+              ],
+              [
+                17.0,
+                0.44
+              ],
+              [
+                17.5,
+                0.12
+              ],
+              [
+                18.0,
+                -0.2
+              ],
+              [
+                18.5,
+                -0.53
+              ]
+            ],
+            "OS": [
+              [
+                17.5,
+                0.69
+              ],
+              [
+                18.0,
+                0.36
+              ],
+              [
+                18.5,
+                0.03
+              ],
+              [
+                19.0,
+                -0.31
+              ],
+              [
+                19.5,
+                -0.65
+              ]
+            ]
           },
           {
             "model": "Tecnis ZMB00 +4",
             "manufacturer": "AMO",
             "a_constant": 119.5,
             "source_page": 1,
-            "OD": [[17.0, 0.63], [17.5, 0.32], [18.0, 0.0], [18.5, -0.32], [19.0, -0.64]],
-            "OS": [[18.0, 0.56], [18.5, 0.24], [19.0, -0.09], [19.5, -0.42], [20.0, -0.76]]
+            "OD": [
+              [
+                17.0,
+                0.63
+              ],
+              [
+                17.5,
+                0.32
+              ],
+              [
+                18.0,
+                0.0
+              ],
+              [
+                18.5,
+                -0.32
+              ],
+              [
+                19.0,
+                -0.64
+              ]
+            ],
+            "OS": [
+              [
+                18.0,
+                0.56
+              ],
+              [
+                18.5,
+                0.24
+              ],
+              [
+                19.0,
+                -0.09
+              ],
+              [
+                19.5,
+                -0.42
+              ],
+              [
+                20.0,
+                -0.76
+              ]
+            ]
           },
           {
             "model": "Clareon",
             "manufacturer": "Alcon",
             "a_constant": 119.1,
             "source_page": 1,
-            "OD": [[16.5, 0.69], [17.0, 0.38], [17.5, 0.05], [18.0, -0.27], [18.5, -0.6]],
-            "OS": [[17.5, 0.62], [18.0, 0.29], [18.5, -0.04], [19.0, -0.38], [19.5, -0.72]]
+            "OD": [
+              [
+                16.5,
+                0.69
+              ],
+              [
+                17.0,
+                0.38
+              ],
+              [
+                17.5,
+                0.05
+              ],
+              [
+                18.0,
+                -0.27
+              ],
+              [
+                18.5,
+                -0.6
+              ]
+            ],
+            "OS": [
+              [
+                17.5,
+                0.62
+              ],
+              [
+                18.0,
+                0.29
+              ],
+              [
+                18.5,
+                -0.04
+              ],
+              [
+                19.0,
+                -0.38
+              ],
+              [
+                19.5,
+                -0.72
+              ]
+            ]
           },
           {
             "model": "A Monofocal",
             "manufacturer": "LEEDSLAY",
             "a_constant": 118.4,
             "source_page": 1,
-            "OD": [[16.0, 0.59], [16.5, 0.26], [17.0, -0.08], [17.5, -0.42], [18.0, -0.76]],
-            "OS": [[16.5, 0.84], [17.0, 0.5], [17.5, 0.16], [18.0, -0.19], [18.5, -0.54]]
+            "OD": [
+              [
+                16.0,
+                0.59
+              ],
+              [
+                16.5,
+                0.26
+              ],
+              [
+                17.0,
+                -0.08
+              ],
+              [
+                17.5,
+                -0.42
+              ],
+              [
+                18.0,
+                -0.76
+              ]
+            ],
+            "OS": [
+              [
+                16.5,
+                0.84
+              ],
+              [
+                17.0,
+                0.5
+              ],
+              [
+                17.5,
+                0.16
+              ],
+              [
+                18.0,
+                -0.19
+              ],
+              [
+                18.5,
+                -0.54
+              ]
+            ]
           },
           {
             "model": "AMF Bifocal",
             "manufacturer": "LEEDSLAY",
             "a_constant": 118.4,
             "source_page": 2,
-            "OD": [[16.0, 0.59], [16.5, 0.26], [17.0, -0.08], [17.5, -0.42], [18.0, -0.76]],
-            "OS": [[16.5, 0.84], [17.0, 0.5], [17.5, 0.16], [18.0, -0.19], [18.5, -0.54]]
+            "OD": [
+              [
+                16.0,
+                0.59
+              ],
+              [
+                16.5,
+                0.26
+              ],
+              [
+                17.0,
+                -0.08
+              ],
+              [
+                17.5,
+                -0.42
+              ],
+              [
+                18.0,
+                -0.76
+              ]
+            ],
+            "OS": [
+              [
+                16.5,
+                0.84
+              ],
+              [
+                17.0,
+                0.5
+              ],
+              [
+                17.5,
+                0.16
+              ],
+              [
+                18.0,
+                -0.19
+              ],
+              [
+                18.5,
+                -0.54
+              ]
+            ]
           },
           {
             "model": "AMF Trifocal",
             "manufacturer": "LEEDSLAY",
             "a_constant": 118.4,
             "source_page": 2,
-            "OD": [[16.0, 0.59], [16.5, 0.26], [17.0, -0.08], [17.5, -0.42], [18.0, -0.76]],
-            "OS": [[16.5, 0.84], [17.0, 0.5], [17.5, 0.16], [18.0, -0.19], [18.5, -0.54]]
+            "OD": [
+              [
+                16.0,
+                0.59
+              ],
+              [
+                16.5,
+                0.26
+              ],
+              [
+                17.0,
+                -0.08
+              ],
+              [
+                17.5,
+                -0.42
+              ],
+              [
+                18.0,
+                -0.76
+              ]
+            ],
+            "OS": [
+              [
+                16.5,
+                0.84
+              ],
+              [
+                17.0,
+                0.5
+              ],
+              [
+                17.5,
+                0.16
+              ],
+              [
+                18.0,
+                -0.19
+              ],
+              [
+                18.5,
+                -0.54
+              ]
+            ]
           },
           {
             "model": "ASPHERIC - QUAD LOOP",
             "manufacturer": "LEEDSLAY",
             "a_constant": 118.4,
             "source_page": 2,
-            "OD": [[16.0, 0.59], [16.5, 0.26], [17.0, -0.08], [17.5, -0.42], [18.0, -0.76]],
-            "OS": [[16.5, 0.84], [17.0, 0.5], [17.5, 0.16], [18.0, -0.19], [18.5, -0.54]]
+            "OD": [
+              [
+                16.0,
+                0.59
+              ],
+              [
+                16.5,
+                0.26
+              ],
+              [
+                17.0,
+                -0.08
+              ],
+              [
+                17.5,
+                -0.42
+              ],
+              [
+                18.0,
+                -0.76
+              ]
+            ],
+            "OS": [
+              [
+                16.5,
+                0.84
+              ],
+              [
+                17.0,
+                0.5
+              ],
+              [
+                17.5,
+                0.16
+              ],
+              [
+                18.0,
+                -0.19
+              ],
+              [
+                18.5,
+                -0.54
+              ]
+            ]
           },
           {
             "model": "AcrySof MA60AC",
             "manufacturer": "Alcon",
             "a_constant": 119.2,
             "source_page": 2,
-            "OD": [[16.5, 0.76], [17.0, 0.44], [17.5, 0.12], [18.0, -0.2], [18.5, -0.53]],
-            "OS": [[17.5, 0.69], [18.0, 0.36], [18.5, 0.03], [19.0, -0.31], [19.5, -0.65]]
+            "OD": [
+              [
+                16.5,
+                0.76
+              ],
+              [
+                17.0,
+                0.44
+              ],
+              [
+                17.5,
+                0.12
+              ],
+              [
+                18.0,
+                -0.2
+              ],
+              [
+                18.5,
+                -0.53
+              ]
+            ],
+            "OS": [
+              [
+                17.5,
+                0.69
+              ],
+              [
+                18.0,
+                0.36
+              ],
+              [
+                18.5,
+                0.03
+              ],
+              [
+                19.0,
+                -0.31
+              ],
+              [
+                19.5,
+                -0.65
+              ]
+            ]
           },
           {
             "model": "Tecnis ZA9003",
             "manufacturer": "AMO",
             "a_constant": 119.1,
             "source_page": 2,
-            "OD": [[16.5, 0.69], [17.0, 0.38], [17.5, 0.05], [18.0, -0.27], [18.5, -0.6]],
-            "OS": [[17.5, 0.62], [18.0, 0.29], [18.5, -0.04], [19.0, -0.38], [19.5, -0.72]]
+            "OD": [
+              [
+                16.5,
+                0.69
+              ],
+              [
+                17.0,
+                0.38
+              ],
+              [
+                17.5,
+                0.05
+              ],
+              [
+                18.0,
+                -0.27
+              ],
+              [
+                18.5,
+                -0.6
+              ]
+            ],
+            "OS": [
+              [
+                17.5,
+                0.62
+              ],
+              [
+                18.0,
+                0.29
+              ],
+              [
+                18.5,
+                -0.04
+              ],
+              [
+                19.0,
+                -0.38
+              ],
+              [
+                19.5,
+                -0.72
+              ]
+            ]
           },
           {
             "model": "LOOP ASPHERIC",
             "manufacturer": "Biotech",
             "a_constant": 118.3,
-            "source_pages": [2, 3],
-            "OD": [[16.0, 0.53], [16.5, 0.19], [17.0, -0.14], [17.5, -0.48], [18.0, -0.83]],
-            "OS": [[16.5, 0.78], [17.0, 0.43], [17.5, 0.09], [18.0, -0.26], [18.5, -0.61]]
+            "source_pages": [
+              2,
+              3
+            ],
+            "OD": [
+              [
+                16.0,
+                0.53
+              ],
+              [
+                16.5,
+                0.19
+              ],
+              [
+                17.0,
+                -0.14
+              ],
+              [
+                17.5,
+                -0.48
+              ],
+              [
+                18.0,
+                -0.83
+              ]
+            ],
+            "OS": [
+              [
+                16.5,
+                0.78
+              ],
+              [
+                17.0,
+                0.43
+              ],
+              [
+                17.5,
+                0.09
+              ],
+              [
+                18.0,
+                -0.26
+              ],
+              [
+                18.5,
+                -0.61
+              ]
+            ]
           },
           {
             "model": "OPTFLEX TRIFOCAL",
             "manufacturer": "Biotech",
             "a_constant": 118.37,
             "source_page": 3,
-            "OD": [[16.0, 0.57], [16.5, 0.24], [17.0, -0.1], [17.5, -0.44], [18.0, -0.78]],
-            "OS": [[16.5, 0.82], [17.0, 0.48], [17.5, 0.14], [18.0, -0.21], [18.5, -0.56]]
+            "OD": [
+              [
+                16.0,
+                0.57
+              ],
+              [
+                16.5,
+                0.24
+              ],
+              [
+                17.0,
+                -0.1
+              ],
+              [
+                17.5,
+                -0.44
+              ],
+              [
+                18.0,
+                -0.78
+              ]
+            ],
+            "OS": [
+              [
+                16.5,
+                0.82
+              ],
+              [
+                17.0,
+                0.48
+              ],
+              [
+                17.5,
+                0.14
+              ],
+              [
+                18.0,
+                -0.21
+              ],
+              [
+                18.5,
+                -0.56
+              ]
+            ]
           },
           {
             "model": "TECNIS EYHANCE",
             "manufacturer": "AMO",
             "a_constant": 119.3,
             "source_page": 3,
-            "OD": [[17.0, 0.5], [17.5, 0.19], [18.0, -0.14], [18.5, -0.46], [19.0, -0.79]],
-            "OS": [[17.5, 0.75], [18.0, 0.43], [18.5, 0.1], [19.0, -0.24], [19.5, -0.57]]
+            "OD": [
+              [
+                17.0,
+                0.5
+              ],
+              [
+                17.5,
+                0.19
+              ],
+              [
+                18.0,
+                -0.14
+              ],
+              [
+                18.5,
+                -0.46
+              ],
+              [
+                19.0,
+                -0.79
+              ]
+            ],
+            "OS": [
+              [
+                17.5,
+                0.75
+              ],
+              [
+                18.0,
+                0.43
+              ],
+              [
+                18.5,
+                0.1
+              ],
+              [
+                19.0,
+                -0.24
+              ],
+              [
+                19.5,
+                -0.57
+              ]
+            ]
           },
           {
             "model": "Medical Optics Liteflex",
             "manufacturer": "Visiontech",
             "a_constant": 118.6,
             "source_page": 3,
-            "OD": [[16.0, 0.71], [16.5, 0.38], [17.0, 0.05], [17.5, -0.28], [18.0, -0.62]],
-            "OS": [[17.0, 0.63], [17.5, 0.29], [18.0, -0.05], [18.5, -0.4], [19.0, -0.75]]
+            "OD": [
+              [
+                16.0,
+                0.71
+              ],
+              [
+                16.5,
+                0.38
+              ],
+              [
+                17.0,
+                0.05
+              ],
+              [
+                17.5,
+                -0.28
+              ],
+              [
+                18.0,
+                -0.62
+              ]
+            ],
+            "OS": [
+              [
+                17.0,
+                0.63
+              ],
+              [
+                17.5,
+                0.29
+              ],
+              [
+                18.0,
+                -0.05
+              ],
+              [
+                18.5,
+                -0.4
+              ],
+              [
+                19.0,
+                -0.75
+              ]
+            ]
           },
           {
             "model": "Vision Eyecryl plus ASHFY600",
             "manufacturer": "Biotech",
             "a_constant": 118.6,
             "source_page": 3,
-            "OD": [[16.0, 0.71], [16.5, 0.38], [17.0, 0.05], [17.5, -0.28], [18.0, -0.62]],
-            "OS": [[17.0, 0.63], [17.5, 0.29], [18.0, -0.05], [18.5, -0.4], [19.0, -0.75]]
+            "OD": [
+              [
+                16.0,
+                0.71
+              ],
+              [
+                16.5,
+                0.38
+              ],
+              [
+                17.0,
+                0.05
+              ],
+              [
+                17.5,
+                -0.28
+              ],
+              [
+                18.0,
+                -0.62
+              ]
+            ],
+            "OS": [
+              [
+                17.0,
+                0.63
+              ],
+              [
+                17.5,
+                0.29
+              ],
+              [
+                18.0,
+                -0.05
+              ],
+              [
+                18.5,
+                -0.4
+              ],
+              [
+                19.0,
+                -0.75
+              ]
+            ]
           },
           {
             "model": "LuxSmart",
             "manufacturer": "Bausch & Lomb",
             "a_constant": 118.5,
             "source_page": 3,
-            "OD": [[16.0, 0.65], [16.5, 0.32], [17.0, -0.01], [17.5, -0.35], [18.0, -0.69]],
-            "OS": [[17.0, 0.56], [17.5, 0.22], [18.0, -0.12], [18.5, -0.47], [19.0, -0.82]]
+            "OD": [
+              [
+                16.0,
+                0.65
+              ],
+              [
+                16.5,
+                0.32
+              ],
+              [
+                17.0,
+                -0.01
+              ],
+              [
+                17.5,
+                -0.35
+              ],
+              [
+                18.0,
+                -0.69
+              ]
+            ],
+            "OS": [
+              [
+                17.0,
+                0.56
+              ],
+              [
+                17.5,
+                0.22
+              ],
+              [
+                18.0,
+                -0.12
+              ],
+              [
+                18.5,
+                -0.47
+              ],
+              [
+                19.0,
+                -0.82
+              ]
+            ]
           },
           {
             "model": "LuxSmart Toric",
             "manufacturer": "Bausch & Lomb",
             "a_constant": 118.5,
             "source_page": 4,
-            "OD": [[16.0, 0.65], [16.5, 0.32], [17.0, -0.01], [17.5, -0.35], [18.0, -0.69]],
-            "OS": [[17.0, 0.56], [17.5, 0.22], [18.0, -0.12], [18.5, -0.47], [19.0, -0.82]]
+            "OD": [
+              [
+                16.0,
+                0.65
+              ],
+              [
+                16.5,
+                0.32
+              ],
+              [
+                17.0,
+                -0.01
+              ],
+              [
+                17.5,
+                -0.35
+              ],
+              [
+                18.0,
+                -0.69
+              ]
+            ],
+            "OS": [
+              [
+                17.0,
+                0.56
+              ],
+              [
+                17.5,
+                0.22
+              ],
+              [
+                18.0,
+                -0.12
+              ],
+              [
+                18.5,
+                -0.47
+              ],
+              [
+                19.0,
+                -0.82
+              ]
+            ]
           },
           {
             "model": "SN60WF",
             "manufacturer": "Alcon",
             "a_constant": 119.0,
             "source_page": 4,
-            "OD": [[16.5, 0.63], [17.0, 0.31], [17.5, -0.01], [18.0, -0.34], [18.5, -0.67]],
-            "OS": [[17.5, 0.56], [18.0, 0.22], [18.5, -0.11], [19.0, -0.45], [19.5, -0.8]]
+            "OD": [
+              [
+                16.5,
+                0.63
+              ],
+              [
+                17.0,
+                0.31
+              ],
+              [
+                17.5,
+                -0.01
+              ],
+              [
+                18.0,
+                -0.34
+              ],
+              [
+                18.5,
+                -0.67
+              ]
+            ],
+            "OS": [
+              [
+                17.5,
+                0.56
+              ],
+              [
+                18.0,
+                0.22
+              ],
+              [
+                18.5,
+                -0.11
+              ],
+              [
+                19.0,
+                -0.45
+              ],
+              [
+                19.5,
+                -0.8
+              ]
+            ]
           },
           {
             "model": "AT LISA TRI TORIC 939M MP",
             "manufacturer": "Zeiss",
             "a_constant": 118.5,
             "source_page": 4,
-            "OD": [[16.0, 0.65], [16.5, 0.32], [17.0, -0.01], [17.5, -0.35], [18.0, -0.69]],
-            "OS": [[17.0, 0.56], [17.5, 0.22], [18.0, -0.12], [18.5, -0.47], [19.0, -0.82]]
+            "OD": [
+              [
+                16.0,
+                0.65
+              ],
+              [
+                16.5,
+                0.32
+              ],
+              [
+                17.0,
+                -0.01
+              ],
+              [
+                17.5,
+                -0.35
+              ],
+              [
+                18.0,
+                -0.69
+              ]
+            ],
+            "OS": [
+              [
+                17.0,
+                0.56
+              ],
+              [
+                17.5,
+                0.22
+              ],
+              [
+                18.0,
+                -0.12
+              ],
+              [
+                18.5,
+                -0.47
+              ],
+              [
+                19.0,
+                -0.82
+              ]
+            ]
           },
           {
             "model": "MONO TORICA*",
             "manufacturer": "Biotech",
             "a_constant": 118.7,
             "source_page": 4,
-            "OD": [[16.0, 0.77], [16.5, 0.45], [17.0, 0.12], [17.5, -0.21], [18.0, -0.55]],
-            "OS": [[17.0, 0.69], [17.5, 0.36], [18.0, 0.02], [18.5, -0.33], [19.0, -0.67]]
+            "OD": [
+              [
+                16.0,
+                0.77
+              ],
+              [
+                16.5,
+                0.45
+              ],
+              [
+                17.0,
+                0.12
+              ],
+              [
+                17.5,
+                -0.21
+              ],
+              [
+                18.0,
+                -0.55
+              ]
+            ],
+            "OS": [
+              [
+                17.0,
+                0.69
+              ],
+              [
+                17.5,
+                0.36
+              ],
+              [
+                18.0,
+                0.02
+              ],
+              [
+                18.5,
+                -0.33
+              ],
+              [
+                19.0,
+                -0.67
+              ]
+            ]
           },
           {
             "model": "GEMETRIC TRIFOCAL",
             "manufacturer": "Hoya",
             "a_constant": 118.9,
             "source_page": 4,
-            "OD": [[16.5, 0.57], [17.0, 0.25], [17.5, -0.08], [18.0, -0.41], [18.5, -0.75]],
-            "OS": [[17.0, 0.82], [17.5, 0.49], [18.0, 0.15], [18.5, -0.18], [19.0, -0.53]]
+            "OD": [
+              [
+                16.5,
+                0.57
+              ],
+              [
+                17.0,
+                0.25
+              ],
+              [
+                17.5,
+                -0.08
+              ],
+              [
+                18.0,
+                -0.41
+              ],
+              [
+                18.5,
+                -0.75
+              ]
+            ],
+            "OS": [
+              [
+                17.0,
+                0.82
+              ],
+              [
+                17.5,
+                0.49
+              ],
+              [
+                18.0,
+                0.15
+              ],
+              [
+                18.5,
+                -0.18
+              ],
+              [
+                19.0,
+                -0.53
+              ]
+            ]
           }
         ]
       }
     },
-    "pentacam": {
+    "pentacam_corneal_tomography": {
       "device": "OCULUS Pentacam",
       "software_version": "1.32r04",
       "eyes": {
         "OD": {
-          "source_file": "data/ARANTES SILVA_ROLMEY_OD_30072026_115226.pdf",
+          "source_file": "ARANTES SILVA_ROLMEY_OD_30072026_115226.pdf",
           "exam_at": "2026-07-30T11:52:26-03:00",
           "quality": "OK",
           "anterior_cornea": {
@@ -381,10 +1426,16 @@
           },
           "pachymetry": {
             "pupil_center_um": 534,
-            "pupil_center_xy_mm": [0.02, -0.08],
+            "pupil_center_xy_mm": [
+              0.02,
+              -0.08
+            ],
             "vertex_normal_um": 534,
             "thinnest_um": 529,
-            "thinnest_xy_mm": [-0.72, -0.5],
+            "thinnest_xy_mm": [
+              -0.72,
+              -0.5
+            ],
             "thinnest_distance_from_vertex_mm": 0.87,
             "thinnest_location": "IT"
           },
@@ -484,13 +1535,19 @@
               "7mm": "511 µm @ 313°"
             },
             "zernike": {
-              "5mm": {"z31_coma": "0.097 µm @ 151°", "z51_secondary_coma": "0.017 µm @ 55°"},
-              "6mm": {"z31_coma": "0.143 µm @ 157°", "z51_secondary_coma": "0.017 µm @ 305°"}
+              "5mm": {
+                "z31_coma": "0.097 µm @ 151°",
+                "z51_secondary_coma": "0.017 µm @ 55°"
+              },
+              "6mm": {
+                "z31_coma": "0.143 µm @ 157°",
+                "z51_secondary_coma": "0.017 µm @ 305°"
+              }
             }
           }
         },
         "OS": {
-          "source_file": "data/ARANTES SILVA_ROLMEY_OS_30072026_115345.pdf",
+          "source_file": "ARANTES SILVA_ROLMEY_OS_30072026_115345.pdf",
           "exam_at": "2026-07-30T11:53:45-03:00",
           "quality": "OK",
           "anterior_cornea": {
@@ -530,10 +1587,16 @@
           },
           "pachymetry": {
             "pupil_center_um": 537,
-            "pupil_center_xy_mm": [-0.1, 0.04],
+            "pupil_center_xy_mm": [
+              -0.1,
+              0.04
+            ],
             "vertex_normal_um": 538,
             "thinnest_um": 526,
-            "thinnest_xy_mm": [0.84, -0.63],
+            "thinnest_xy_mm": [
+              0.84,
+              -0.63
+            ],
             "thinnest_distance_from_vertex_mm": 1.06
           },
           "anterior_segment": {
@@ -631,17 +1694,27 @@
               "7mm": "512 µm @ 237°"
             },
             "zernike": {
-              "5mm": {"z31_coma": "0.299 µm @ 180°", "z51_secondary_coma": "0.022 µm @ 186°"},
-              "6mm": {"z31_coma": "0.568 µm @ 181°", "z51_secondary_coma": "0.036 µm @ 197°"}
+              "5mm": {
+                "z31_coma": "0.299 µm @ 180°",
+                "z51_secondary_coma": "0.022 µm @ 186°"
+              },
+              "6mm": {
+                "z31_coma": "0.568 µm @ 181°",
+                "z51_secondary_coma": "0.036 µm @ 197°"
+              }
             }
           }
         }
-      }
+      },
+      "source": [
+        "ARANTES SILVA_ROLMEY_OD_30072026_115226.pdf",
+        "ARANTES SILVA_ROLMEY_OS_30072026_115345.pdf"
+      ]
     },
     "specular_microscopy": {
-      "source": {
-        "file": "data/fa8ae102-8b94-4bcf-a109-e528b7afe846.jpeg"
-      },
+      "source": [
+        "fa8ae102-8b94-4bcf-a109-e528b7afe846.jpeg"
+      ],
       "device": "NIDEK",
       "exam_at": "2026-07-30T11:57:27-03:00",
       "report_number": "0618",
@@ -670,23 +1743,27 @@
         }
       }
     },
-    "retinography": {
+    "fundus_retinography": {
       "device_or_mode": "Retina",
       "images": [
         {
-          "file": "data/9e903625-ef7e-4b6e-b545-b77778d3b517.jpeg",
+          "file": "9e903625-ef7e-4b6e-b545-b77778d3b517.jpeg",
           "eye": "OD",
           "captured_at": "2026-07-30T12:08:21-03:00",
           "structured_findings": null
         },
         {
-          "file": "data/c748c418-0589-4faa-9513-5ba9d25634e4.jpeg",
+          "file": "c748c418-0589-4faa-9513-5ba9d25634e4.jpeg",
           "eye": "OS",
           "captured_at": "2026-07-30T16:10:03-03:00",
           "structured_findings": null
         }
       ],
-      "note": "As imagens foram catalogadas sem inferência diagnóstica."
+      "note": "As imagens foram catalogadas sem inferência diagnóstica.",
+      "source": [
+        "9e903625-ef7e-4b6e-b545-b77778d3b517.jpeg",
+        "c748c418-0589-4faa-9513-5ba9d25634e4.jpeg"
+      ]
     }
   },
   "extraction_notes": {

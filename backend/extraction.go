@@ -25,7 +25,7 @@ Organize o resultado como paciente_compilado.json:
 - facility: nome, descrição, endereço e telefone quando existirem;
 - conventions: OD, OS, AO, significado de null e separador decimal normalizado;
 - source_files: um item por arquivo com path igual ao nome recebido, exam, eye, páginas/dimensões e conteúdo por página quando identificável;
-- exams: uma chave snake_case por tipo de exame. Preserve aparelho, software, data/hora, qualidade, alertas, fonte e TODOS os campos, índices, medições, eixos, tabelas e cálculos legíveis. Separe olhos em eyes.OD e eyes.OS (ou AO quando realmente conjunto). Use nomes de campos técnicos em snake_case e inclua unidades no nome quando isso remover ambiguidade;
+- exams: use exatamente as chaves fundus_retinography, iol_calculation, pentacam_corneal_tomography e specular_microscopy quando aplicáveis. Cada exame deve ter source com os nomes dos arquivos correspondentes. Preserve aparelho, software, data/hora, qualidade, alertas, fonte e TODOS os campos, índices, medições, eixos, tabelas e cálculos legíveis. Separe olhos em eyes.OD e eyes.OS (ou AO quando realmente conjunto). Use nomes de campos técnicos em snake_case e inclua unidades no nome quando isso remover ambiguidade; não substitua a hierarquia específica do equipamento por um modelo genérico;
 - extraction_notes: method, scope, not_encoded e clinical_use_warning.
 
 Confronte identidade, datas e lateralidade entre os arquivos. Preserve avisos do equipamento e divergências do documento. Não resuma tabelas nem omita linhas repetidas por modelo de lente. Retorne somente um objeto JSON.`

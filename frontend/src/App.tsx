@@ -259,8 +259,8 @@ const realDocuments: DocumentReview[] = patientData.source_files.map((file) => {
 })
 
 const realExtractedData: ExtractedDatum[] = (['OD', 'OS'] as const).flatMap((eye) => {
-  const pentacam = patientData.exams.pentacam.eyes[eye]
-  const biometry = patientData.exams.biometry_iol.eyes[eye]
+  const pentacam = patientData.exams.pentacam_corneal_tomography.eyes[eye]
+  const biometry = patientData.exams.iol_calculation.eyes[eye]
   const microscopy = patientData.exams.specular_microscopy.eyes[eye]
   const label = eyeLabel(eye)
   const source = `Pentacam ${label}`
@@ -319,7 +319,7 @@ const realExtractedData: ExtractedDatum[] = (['OD', 'OS'] as const).flatMap((eye
       source: `Microscopia especular ${label}`,
       kind: 'Dado bruto',
       confidence: 'Consistente',
-      document: patientData.exams.specular_microscopy.source.file.split('/').pop() ?? source,
+      document: patientData.exams.specular_microscopy.source[0]?.split('/').pop() ?? source,
       screen: 'NIDEK',
       field: 'Cell Density (CD)',
     },
@@ -352,7 +352,7 @@ const realMetrics: Metric[] = [
   },
   {
     label: 'Qualidade Pentacam',
-    value: `${patientData.exams.pentacam.eyes.OD.quality} / ${patientData.exams.pentacam.eyes.OS.quality}`,
+    value: `${patientData.exams.pentacam_corneal_tomography.eyes.OD.quality} / ${patientData.exams.pentacam_corneal_tomography.eyes.OS.quality}`,
     detail: 'OD / OE',
     tone: 'success',
   },
@@ -693,8 +693,8 @@ function FlowConnector({
 
 function RealCaseSummary() {
   const eyes = (['OD', 'OS'] as const).map((eye) => {
-    const pentacam = patientData.exams.pentacam.eyes[eye]
-    const biometry = patientData.exams.biometry_iol.eyes[eye]
+    const pentacam = patientData.exams.pentacam_corneal_tomography.eyes[eye]
+    const biometry = patientData.exams.iol_calculation.eyes[eye]
     const endothelium = patientData.exams.specular_microscopy.eyes[eye]
     const astigmatism = Math.abs(biometry.keratometry.astigmatism_d)
     const coma = Number.parseFloat(pentacam.corneal_rings.zernike['5mm'].z31_coma)
