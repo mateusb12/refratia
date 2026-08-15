@@ -482,18 +482,12 @@ function BlockingNotice({ children }: { children: ReactNode }) {
 
 function DocumentsReview({
   items,
-  isReal,
   expanded,
   onToggle,
-  uploading,
-  onUpload,
 }: {
   items: DocumentReview[]
-  isReal: boolean
   expanded: string | null
   onToggle: (name: string) => void
-  uploading: boolean
-  onUpload: (file: File) => void
 }) {
   const received = items.filter((document) => document.status !== 'Não enviado').length
 
@@ -544,29 +538,9 @@ function DocumentsReview({
       </div>
 
       <div className="mt-4">
-        {isReal ? (
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary-border bg-primary-soft/50 p-4">
-            <InformationNotice>Arquivos processados e disponíveis para revisão.</InformationNotice>
-            <label className="inline-flex cursor-pointer items-center gap-2 rounded-[9px] bg-primary px-4 py-[11px] text-sm font-semibold text-white hover:bg-primary-hover">
-              <UploadCloud size={17} /> {uploading ? 'Enviando…' : 'Anexar arquivo'}
-              <input
-                accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
-                className="sr-only"
-                disabled={uploading}
-                onChange={(event) => {
-                  const file = event.target.files?.[0]
-                  if (file) onUpload(file)
-                  event.currentTarget.value = ''
-                }}
-                type="file"
-              />
-            </label>
-          </div>
-        ) : (
-          <InformationNotice>
-            OCT de retina não enviado. A ausência deste dado não altera a recomendação atual.
-          </InformationNotice>
-        )}
+        <InformationNotice>
+          OCT de retina não enviado. A ausência deste dado não altera a recomendação atual.
+        </InformationNotice>
       </div>
     </section>
   )
@@ -1065,13 +1039,15 @@ function App() {
   const [expandedDocument, setExpandedDocument] = useState<string | null>(null)
   const [traceData, setTraceData] = useState<ExtractedDatum | null>(null)
   const [isReviewed, setIsReviewed] = useState(false)
-  const [realCaseDocuments, setRealCaseDocuments] = useState(realDocuments)
-  const [uploading, setUploading] = useState(false)
+  const [intakeFiles, setIntakeFiles] = useState<File[]>([])
+  const [intakePreview, setIntakePreview] = useState<{ files: Array<{ filename: string; contentType: string; size: number }>; message: string } | null>(null)
+  const [intakeBusy, setIntakeBusy] = useState(false)
+  const [intakeMessage, setIntakeMessage] = useState('')
 
   const reportGenerated = processingStep === steps.length
   const isRealCase = selectedCase === 'real'
   const activeMetrics = isRealCase ? realMetrics : metrics
-  const activeDocuments = isRealCase ? realCaseDocuments : documents
+  const activeDocuments = isRealCase ? realDocuments : documents
   const activeExtractedData = isRealCase ? realExtractedData : extractedData
 
   useEffect(() => {
@@ -1101,24 +1077,40 @@ function App() {
     setTraceData(null)
   }
 
-  async function uploadRealCaseFile(file: File) {
-    setUploading(true)
+  async function analyzeIntake() {
+    if (!intakeFiles.length) return
+    setIntakeBusy(true)
+    setIntakeMessage('')
     try {
       const body = new FormData()
-      body.append('file', file)
-      const response = await fetch(`${API_URL}/api/cases/gerinaldo-alfregildo/files`, { method: 'POST', body })
+      intakeFiles.forEach((file) => body.append('files', file))
+      const response = await fetch(`${API_URL}/api/intakes/analyze`, { method: 'POST', body })
       const result = await response.json()
-      if (!response.ok) throw new Error(result.error ?? 'Falha no upload')
-      setRealCaseDocuments((current) => [...current, {
-        name: `Anexo · ${file.name}`,
-        filename: file.name,
-        status: 'Processado',
-        detail: `${file.type || 'Arquivo'} enviado ao armazenamento.`,
-      }])
+      if (!response.ok) throw new Error(result.error ?? 'Falha na análise')
+      setIntakePreview(result)
     } catch (error) {
-      window.alert(error instanceof Error ? error.message : 'Não foi possível enviar o arquivo.')
+      setIntakeMessage(error instanceof Error ? error.message : 'Não foi possível analisar os arquivos.')
     } finally {
-      setUploading(false)
+      setIntakeBusy(false)
+    }
+  }
+
+  async function confirmIntake() {
+    setIntakeBusy(true)
+    setIntakeMessage('')
+    try {
+      const body = new FormData()
+      intakeFiles.forEach((file) => body.append('files', file))
+      const response = await fetch(`${API_URL}/api/intakes/confirm`, { method: 'POST', body })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error ?? 'Falha ao salvar o caso')
+      setIntakeMessage(`Caso criado (${result.caseId}). Arquivos salvos no Tigris.`)
+      setIntakeFiles([])
+      setIntakePreview(null)
+    } catch (error) {
+      setIntakeMessage(error instanceof Error ? error.message : 'Não foi possível salvar o caso.')
+    } finally {
+      setIntakeBusy(false)
     }
   }
 
@@ -1169,12 +1161,9 @@ function App() {
       </div>
 
       <DocumentsReview
-        isReal={isRealCase}
         items={activeDocuments}
         expanded={expandedDocument}
         onToggle={(name) => setExpandedDocument((current) => current === name ? null : name)}
-        uploading={uploading}
-        onUpload={uploadRealCaseFile}
       />
       <ExtractedDataReview isReal={isRealCase} items={activeExtractedData} onTrace={setTraceData} />
       {isRealCase
@@ -1342,6 +1331,65 @@ function App() {
                   <ArrowLeft size={16} /> Voltar para casos
                 </button>
               )}
+              <section className="mt-5 rounded-2xl border border-primary-border bg-primary-soft/30 p-6 shadow-sm max-[580px]:p-4">
+                <Eyebrow>NOVO CASO</Eyebrow>
+                <h2 className="mb-0 mt-1 font-display text-xl">Envie os arquivos do paciente</h2>
+                <p className="mb-0 mt-1.5 text-sm leading-relaxed text-text-secondary">
+                  Os arquivos serão analisados primeiro. Nada é salvo no Tigris até você confirmar a prévia.
+                </p>
+                <label
+                  className="mt-5 flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-primary/40 bg-surface p-8 text-center hover:border-primary max-[580px]:p-6"
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={(event) => {
+                    event.preventDefault()
+                    setIntakeFiles(Array.from(event.dataTransfer.files))
+                    setIntakePreview(null)
+                    setIntakeMessage('')
+                  }}
+                >
+                  <UploadCloud className="text-primary" size={30} />
+                  <strong className="mt-3 text-sm">Arraste os arquivos aqui ou clique para selecionar</strong>
+                  <span className="mt-1 text-xs text-text-muted">PDF, DOC, DOCX, XLS, XLSX, JPG e PNG · até 20 MB por arquivo</span>
+                  <input
+                    accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
+                    className="sr-only"
+                    multiple
+                    onChange={(event) => {
+                      setIntakeFiles(Array.from(event.target.files ?? []))
+                      setIntakePreview(null)
+                      setIntakeMessage('')
+                    }}
+                    type="file"
+                  />
+                </label>
+                {intakeFiles.length > 0 && (
+                  <div className="mt-4 rounded-xl border border-border bg-surface p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <strong className="text-sm">{intakeFiles.length} arquivo(s) selecionado(s)</strong>
+                      <PrimaryButton disabled={intakeBusy} onClick={analyzeIntake}>
+                        {intakeBusy ? 'Analisando…' : 'Analisar arquivos'}
+                      </PrimaryButton>
+                    </div>
+                    <ul className="mb-0 mt-3 space-y-2 text-xs text-text-secondary">
+                      {intakeFiles.map((file) => <li key={`${file.name}-${file.size}`}>{file.name} · {(file.size / 1024 / 1024).toFixed(2)} MB</li>)}
+                    </ul>
+                  </div>
+                )}
+                {intakePreview && (
+                  <div className="mt-4 rounded-xl border border-success/30 bg-success-soft p-4">
+                    <strong className="text-sm">Prévia do caso</strong>
+                    <p className="mb-0 mt-2 text-sm leading-relaxed text-text-secondary">{intakePreview.message}</p>
+                    <ul className="mb-0 mt-3 space-y-2 text-xs text-text-secondary">
+                      {intakePreview.files.map((file) => <li key={`${file.filename}-${file.size}`}>{file.filename} · {file.contentType || 'tipo não informado'}</li>)}
+                    </ul>
+                    <div className="mt-4 flex flex-wrap gap-3">
+                      <PrimaryButton disabled={intakeBusy} onClick={confirmIntake}>{intakeBusy ? 'Salvando…' : 'Confirmar criação do caso'}</PrimaryButton>
+                      <button className="rounded-[9px] border border-border-strong bg-surface px-4 py-[11px] text-sm font-semibold hover:border-danger hover:text-danger" disabled={intakeBusy} onClick={() => { setIntakeFiles([]); setIntakePreview(null); setIntakeMessage('Arquivos descartados. Nada foi salvo.') }} type="button">Descartar</button>
+                    </div>
+                  </div>
+                )}
+                {intakeMessage && <p className="mb-0 mt-3 text-sm font-semibold text-text-secondary">{intakeMessage}</p>}
+              </section>
               <section className="mt-5 rounded-2xl border border-border bg-surface p-6 shadow-sm max-[580px]:p-4">
                 <div className="flex items-start justify-between gap-4">
                   <div>

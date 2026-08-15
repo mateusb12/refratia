@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"mime/multipart"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -29,11 +30,11 @@ var allowedTypes = map[string]bool{
 	"image/png":  true,
 }
 
-type uploadResponse struct {
-	Key         string `json:"key"`
+type intakeFile struct {
 	Filename    string `json:"filename"`
 	ContentType string `json:"contentType"`
 	Size        int64  `json:"size"`
+	Key         string `json:"key,omitempty"`
 }
 
 func main() {
@@ -43,7 +44,8 @@ func main() {
 	}
 
 	http.HandleFunc("/health", healthHandler)
-	http.HandleFunc("/api/cases/gerinaldo-alfregildo/files", uploadHandler)
+	http.HandleFunc("/api/intakes/analyze", analyzeIntakeHandler)
+	http.HandleFunc("/api/intakes/confirm", confirmIntakeHandler)
 
 	address := ":" + port
 	fmt.Printf("Backend running on http://localhost%s\n", address)
@@ -61,54 +63,114 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintln(w, "hello world")
 }
 
-func uploadHandler(w http.ResponseWriter, r *http.Request) {
+func analyzeIntakeHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
 
-	r.Body = http.MaxBytesReader(w, r.Body, maxFileSize+(1<<20))
-	if err := r.ParseMultipartForm(maxFileSize); err != nil {
-		writeError(w, http.StatusBadRequest, "arquivo excede o limite de 20 MB ou é inválido")
-		return
-	}
-
-	file, header, err := r.FormFile("file")
+	files, err := intakeFiles(w, r)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "envie um campo file")
-		return
-	}
-	defer file.Close()
-
-	contentType := header.Header.Get("Content-Type")
-	if !allowedTypes[contentType] {
-		writeError(w, http.StatusBadRequest, "tipo de arquivo não permitido")
-		return
-	}
-	if header.Size > maxFileSize {
-		writeError(w, http.StatusRequestEntityTooLarge, "arquivo excede o limite de 20 MB")
+		writeError(w, err.status, err.message)
 		return
 	}
 
-	key := fmt.Sprintf("cases/gerinaldo-alfregildo/%s-%s", time.Now().UTC().Format("20060102T150405Z"), safeName(header.Filename))
-	client, err := storageClient(r.Context())
+	// No Tigris write here. The browser keeps the original Files until confirmation.
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"files":   files,
+		"patient": nil,
+		"message": "Arquivos recebidos. A identificação do paciente e a extração clínica ainda precisam de OCR/processamento.",
+	})
+}
+
+func confirmIntakeHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	files, err := intakeHeaders(w, r)
 	if err != nil {
+		writeError(w, err.status, err.message)
+		return
+	}
+	caseID := fmt.Sprintf("case-%s-%s", time.Now().UTC().Format("20060102T150405Z"), randomToken())
+	client, storageErr := storageClient(r.Context())
+	if storageErr != nil {
 		writeError(w, http.StatusInternalServerError, "storage indisponível")
 		return
 	}
-	_, err = client.PutObject(r.Context(), &s3.PutObjectInput{
-		Bucket:      aws.String(os.Getenv("BUCKET_NAME")),
-		Key:         aws.String(key),
-		Body:        file,
-		ContentType: aws.String(contentType),
-	})
-	if err != nil {
-		writeError(w, http.StatusBadGateway, "não foi possível armazenar o arquivo")
-		return
+	result := make([]intakeFile, 0, len(files))
+	keys := make([]string, 0, len(files))
+	for _, header := range files {
+		file, openErr := header.Open()
+		if openErr != nil {
+			cleanupObjects(r.Context(), client, keys)
+			writeError(w, http.StatusBadRequest, "não foi possível ler um dos arquivos")
+			return
+		}
+		contentType := header.Header.Get("Content-Type")
+		key := fmt.Sprintf("cases/%s/%s", caseID, safeName(header.Filename))
+		_, putErr := client.PutObject(r.Context(), &s3.PutObjectInput{
+			Bucket: aws.String(os.Getenv("BUCKET_NAME")), Key: aws.String(key), Body: file, ContentType: aws.String(contentType),
+		})
+		file.Close()
+		if putErr != nil {
+			cleanupObjects(r.Context(), client, keys)
+			writeError(w, http.StatusBadGateway, "não foi possível armazenar os arquivos")
+			return
+		}
+		keys = append(keys, key)
+		result = append(result, intakeFile{Filename: header.Filename, ContentType: contentType, Size: header.Size, Key: key})
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(uploadResponse{Key: key, Filename: header.Filename, ContentType: contentType, Size: header.Size})
+	json.NewEncoder(w).Encode(map[string]any{"caseId": caseID, "files": result})
+}
+
+type intakeError struct {
+	status  int
+	message string
+}
+
+func intakeFiles(w http.ResponseWriter, r *http.Request) ([]intakeFile, *intakeError) {
+	headers, err := intakeHeaders(w, r)
+	if err != nil {
+		return nil, err
+	}
+	files := make([]intakeFile, 0, len(headers))
+	for _, header := range headers {
+		files = append(files, intakeFile{Filename: header.Filename, ContentType: header.Header.Get("Content-Type"), Size: header.Size})
+	}
+	return files, nil
+}
+
+func intakeHeaders(w http.ResponseWriter, r *http.Request) ([]*multipart.FileHeader, *intakeError) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxFileSize*10+(1<<20))
+	if err := r.ParseMultipartForm(maxFileSize * 10); err != nil {
+		return nil, &intakeError{http.StatusBadRequest, "arquivos excedem o limite ou são inválidos"}
+	}
+	headers := r.MultipartForm.File["files"]
+	if len(headers) == 0 {
+		return nil, &intakeError{http.StatusBadRequest, "envie ao menos um arquivo no campo files"}
+	}
+	for _, header := range headers {
+		contentType := header.Header.Get("Content-Type")
+		if !allowedTypes[contentType] {
+			return nil, &intakeError{http.StatusBadRequest, "tipo de arquivo não permitido: " + header.Filename}
+		}
+		if header.Size > maxFileSize {
+			return nil, &intakeError{http.StatusRequestEntityTooLarge, "arquivo excede o limite de 20 MB: " + header.Filename}
+		}
+	}
+	return headers, nil
+}
+
+func cleanupObjects(ctx context.Context, client *s3.Client, keys []string) {
+	for _, key := range keys {
+		_, _ = client.DeleteObject(ctx, &s3.DeleteObjectInput{Bucket: aws.String(os.Getenv("BUCKET_NAME")), Key: aws.String(key)})
+	}
 }
 
 func storageClient(ctx context.Context) (*s3.Client, error) {
@@ -124,11 +186,15 @@ func storageClient(ctx context.Context) (*s3.Client, error) {
 func safeName(name string) string {
 	name = filepath.Base(name)
 	name = strings.ReplaceAll(name, " ", "-")
+	return randomToken() + "-" + name
+}
+
+func randomToken() string {
 	var token [4]byte
 	if _, err := rand.Read(token[:]); err != nil {
-		return name
+		return "file"
 	}
-	return hex.EncodeToString(token[:]) + "-" + name
+	return hex.EncodeToString(token[:])
 }
 
 func cors(next http.Handler) http.Handler {
