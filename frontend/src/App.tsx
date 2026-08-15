@@ -28,7 +28,7 @@ import {
 } from 'lucide-react'
 import patientData from '../data/paciente_compilado.json'
 import RoadmapPage from './components/roadmap/RoadmapPage'
-import { isIntakePreview, type IntakePreview } from './contracts/patient-analysis'
+import { isIntakePreview, type IntakeAnalysis, type IntakePreview } from './contracts/patient-analysis'
 
 type Theme = 'light' | 'dark'
 type CaseKind = 'demo' | 'real'
@@ -45,6 +45,93 @@ const API_URL = import.meta.env.VITE_API_URL ?? (
 function fileIcon(fileName: string) {
   const extension = fileName.split('.').pop()?.toLowerCase()
   return `${import.meta.env.BASE_URL}${extension === 'pdf' ? 'pdf.png' : extension === 'png' ? 'png.png' : 'jpeg.png'}`
+}
+
+const examLabels: Record<string, string> = {
+  fundus_retinography: 'Retinografia de fundo de olho',
+  iol_calculation: 'Cálculo de lente intraocular',
+  pentacam_corneal_tomography: 'Tomografia corneana Pentacam',
+  specular_microscopy: 'Microscopia especular',
+}
+
+function IntakeAnalysisSummary({ analysis }: { analysis: IntakeAnalysis }) {
+  const sourceFiles = analysis.source_files ?? []
+  const exams = Object.entries(analysis.exams ?? {})
+  const notes = analysis.extraction_notes ?? {}
+
+  return (
+    <div className="mt-4 space-y-4">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="rounded-xl border border-border bg-surface p-4">
+          <span className="text-xs font-bold uppercase tracking-[0.12em] text-text-muted">Paciente</span>
+          <strong className="mt-2 block text-base">{analysis.patient?.full_name || 'Não identificado'}</strong>
+          <span className="mt-1 block text-sm text-text-secondary">
+            Nascimento: {analysis.patient?.birth_date || 'não identificado'}
+          </span>
+        </div>
+        <div className="rounded-xl border border-border bg-surface p-4">
+          <span className="text-xs font-bold uppercase tracking-[0.12em] text-text-muted">Resumo da extração</span>
+          <strong className="mt-2 block text-base">{exams.length} tipo(s) de exame identificado(s)</strong>
+          <span className="mt-1 block text-sm text-text-secondary">{sourceFiles.length} arquivo(s) relacionado(s)</span>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-border bg-surface p-4">
+        <span className="text-xs font-bold uppercase tracking-[0.12em] text-text-muted">Exames encontrados</span>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          {exams.length > 0 ? exams.map(([key, exam]) => (
+            <div className="rounded-lg border border-border bg-surface-muted p-3" key={key}>
+              <strong className="block text-sm">{examLabels[key] ?? key.replaceAll('_', ' ')}</strong>
+              {exam?.eyes && (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {Object.keys(exam.eyes).map((eye) => <StatusBadge key={eye} tone="neutral">{eye}</StatusBadge>)}
+                </div>
+              )}
+              {exam?.source?.length > 0 && <p className="mb-0 mt-2 truncate text-xs text-text-secondary" title={exam.source.join(', ')}>Fonte: {exam.source.join(', ')}</p>}
+            </div>
+          )) : <span className="text-sm text-text-secondary">Nenhum exame identificado.</span>}
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-border bg-surface p-4">
+        <span className="text-xs font-bold uppercase tracking-[0.12em] text-text-muted">Arquivos processados</span>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          {sourceFiles.map((source, index) => {
+            const fileName = String(source.path ?? source.filename ?? `Arquivo ${index + 1}`)
+            const pages = Array.isArray(source.pages) ? source.pages.length : null
+            return (
+              <div className="flex min-w-0 items-center gap-3 rounded-lg border border-border bg-surface-muted p-3" key={`${fileName}-${index}`}>
+                <img alt="" className="h-10 w-10 flex-none object-contain" src={fileIcon(fileName)} />
+                <div className="min-w-0">
+                  <strong className="block truncate text-sm" title={fileName}>{fileName}</strong>
+                  <span className="text-xs text-text-secondary">
+                    {[source.exam, source.eye, pages ? `${pages} páginas` : null].filter(Boolean).join(' · ') || 'Arquivo processado'}
+                  </span>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      {Object.keys(analysis.conventions ?? {}).length > 0 && (
+        <div className="rounded-xl border border-border bg-surface p-4">
+          <span className="text-xs font-bold uppercase tracking-[0.12em] text-text-muted">Convenções usadas</span>
+          <div className="mt-3 grid gap-x-5 gap-y-2 sm:grid-cols-2">
+            {Object.entries(analysis.conventions ?? {}).map(([key, value]) => (
+              <div className="text-sm" key={key}><strong>{key}:</strong> <span className="text-text-secondary">{String(value)}</span></div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {typeof notes.clinical_use_warning === 'string' && (
+        <div className="rounded-xl border border-warning/30 bg-warning-soft p-4 text-sm text-text-secondary">
+          <strong className="text-warning">Atenção:</strong> {notes.clinical_use_warning}
+        </div>
+      )}
+    </div>
+  )
 }
 
 interface Metric {
@@ -1419,8 +1506,9 @@ function App() {
                       <StatusBadge tone="success">JSON extraído</StatusBadge>
                     </div>
                     <p className="mb-0 mt-2 text-sm leading-relaxed text-text-secondary">{intakePreview.message}</p>
+                    <IntakeAnalysisSummary analysis={intakePreview.analysis} />
                     <details className="mt-4 rounded-lg border border-border bg-surface">
-                      <summary className="cursor-pointer px-3 py-2 text-xs font-bold text-primary">Ver paciente_compilado.json</summary>
+                      <summary className="cursor-pointer px-3 py-2 text-xs font-bold text-primary">Ver JSON completo (debug)</summary>
                       <pre className="m-0 max-h-[520px] overflow-auto border-t border-border p-3 text-xs leading-relaxed text-text-secondary">{JSON.stringify(intakePreview.analysis, null, 2)}</pre>
                     </details>
                     <div className="mt-4 flex flex-wrap gap-3">
