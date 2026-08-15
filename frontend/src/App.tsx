@@ -44,10 +44,64 @@ interface SavedCase {
 
 interface StoredCase {
   caseId: string
-  analysis: IntakeAnalysis
+  analysis: ReportData
 }
 
 type ReportData = typeof patientData
+
+function normalizeSavedReport(analysis: IntakeAnalysis): ReportData {
+  const raw = analysis as any
+  const pentacam = raw.exams.pentacam_corneal_tomography
+  const iol = raw.exams.iol_calculation
+  const microscopy = raw.exams.specular_microscopy
+  const eyes = (['OD', 'OS'] as const).reduce((result, eye, index) => {
+    const cornea = pentacam.eyes[eye]
+    const biometry = iol.eyes[eye]
+    result[eye] = {
+      ...cornea,
+      source_file: pentacam.source[index],
+      quality: cornea.quality ?? cornea.general?.quality ?? 'Não informado',
+      anterior_cornea: {
+        ...cornea.anterior_cornea,
+        kmax_d: cornea.anterior_cornea?.kmax_d ?? Number.NaN,
+      },
+      pachymetry: {
+        ...cornea.pachymetry,
+        thinnest_um: cornea.pachymetry?.thinnest_um ?? cornea.general?.thinnest_pachy_um ?? cornea.display_maps?.belin_ambrósio?.thinnest_pachy_um,
+      },
+      belin_ambrosio: cornea.belin_ambrosio ?? {
+        d: cornea.display_maps?.belin_ambrósio?.d,
+        art_max: Number.NaN,
+      },
+      topometric_indices_8mm: cornea.topometric_indices_8mm ?? { tkc: null },
+      cataract_preop: cornea.cataract_preop ?? { total_corneal_z40_6mm_um: Number.NaN },
+      corneal_rings: cornea.corneal_rings ?? {
+        zernike: {
+          '5mm': { z31_coma: `${cornea.display_maps?.corneal_rings?.zernike_total_corneal_wfa_5mm?.z31_coma_um ?? Number.NaN} µm` },
+        },
+      },
+    }
+    result[eye].corneal_rings.zernike ??= {
+      '5mm': { z31_coma: `${cornea.display_maps?.corneal_rings?.zernike_total_corneal_wfa_5mm?.z31_coma_um ?? Number.NaN} µm` },
+    }
+    result[eye].iol = {
+      ...biometry,
+      axial_length_mm: biometry.axial_length_mm ?? biometry.biometry?.al_mm,
+      keratometry: biometry.keratometry ?? { astigmatism_d: Number.parseFloat(biometry.anterior_cornea?.ast_d_deg) },
+    }
+    return result
+  }, {} as any)
+
+  return {
+    ...raw,
+    exams: {
+      ...raw.exams,
+      pentacam_corneal_tomography: { ...pentacam, eyes },
+      iol_calculation: { ...iol, eyes: { OD: eyes.OD.iol, OS: eyes.OS.iol } },
+      specular_microscopy: microscopy,
+    },
+  } as ReportData
+}
 
 const eyeLabel = (eye: Eye) => (eye === 'OS' ? 'OE' : eye)
 const API_URL = import.meta.env.VITE_API_URL ?? (
@@ -1220,7 +1274,7 @@ function App() {
   const [storedCaseError, setStoredCaseError] = useState('')
 
   const isRealCase = selectedCase === 'real'
-  const reportData = isRealCase ? patientData : storedCase?.analysis as ReportData | undefined
+  const reportData = isRealCase ? patientData : storedCase?.analysis
   const reportGenerated = processingStep === steps.length || Boolean(reportData)
   const activeExtractedData = reportData ? getReportExtractedData(reportData) : extractedData
   const activeMetrics = reportData ? getReportMetrics(reportData, activeExtractedData) : metrics
@@ -1273,6 +1327,8 @@ function App() {
     window.history.pushState({}, '', `${appBasePath}/relatorios`)
     setRoute(window.location.pathname)
     setSelectedCase(null)
+    setStoredCase(null)
+    setStoredCaseError('')
     setProcessingStep(0)
     setIsReviewed(false)
     setExpandedDocument(null)
@@ -1359,7 +1415,7 @@ function App() {
       if (!response.ok || !result || typeof result !== 'object' || !('analysis' in result)) {
         throw new Error('Não foi possível carregar a análise deste caso.')
       }
-      setStoredCase({ caseId, analysis: result.analysis as IntakeAnalysis })
+      setStoredCase({ caseId, analysis: normalizeSavedReport(result.analysis as IntakeAnalysis) })
       if (navigate) {
         window.history.pushState({}, '', `${appBasePath}/relatorios/${caseId}`)
         setRoute(window.location.pathname)
@@ -1483,7 +1539,7 @@ function App() {
               'grid w-full grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-3 rounded-xl border border-border bg-transparent px-3 py-3 text-left max-[580px]:grid-cols-[auto_minmax(0,1fr)]',
               item.real && 'rounded-xl border border-warning/40 bg-warning-soft',
               item.saved && 'rounded-xl border border-success/40 bg-success-soft',
-              item.real ? 'hover:border-warning' : item.patient === 'Maria S.' && 'hover:border-primary',
+              item.real ? 'hover:border-warning' : (item.saved || item.patient === 'Maria S.') && 'hover:border-primary',
             )}
             onClick={() => {
               if (item.real) openReport(item.caseId ?? '1')
