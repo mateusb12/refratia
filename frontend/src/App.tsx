@@ -212,6 +212,7 @@ interface DocumentReview {
   filename: string
   status: 'Processado' | 'Atenção' | 'Não enviado'
   detail: string
+  url?: string
 }
 
 interface ExtractedDatum {
@@ -392,11 +393,13 @@ const realPatientName = 'Gerinaldo Alfregildo'
 const endothelialCutoff = 2000
 function getReportDocuments(data: ReportData): DocumentReview[] {
   return data.source_files.map((file) => {
+  const signedURL = (file as typeof file & { signed_url?: string }).signed_url
   return {
     name: `${file.exam.charAt(0).toUpperCase()}${file.exam.slice(1)} · ${eyeLabel(file.eye as Eye)}`,
     filename: file.path.split('/').pop() ?? file.path,
     status: 'Processado',
     detail: `${file.type === 'application/pdf' ? `${file.pages} páginas` : 'Imagem'} disponível no caso.`,
+    url: signedURL,
   }
   })
 }
@@ -745,10 +748,10 @@ function DocumentsReview({
               <button
                 aria-expanded={expanded === document.name}
                 className="mt-4 text-xs font-bold text-primary hover:underline"
-                onClick={() => onToggle(document.name)}
+                onClick={() => document.url ? window.open(document.url, '_blank', 'noopener,noreferrer') : onToggle(document.name)}
                 type="button"
               >
-                {expanded === document.name ? 'Ocultar detalhes' : 'Ver detalhes'}
+                Visualizar arquivo
               </button>
               {expanded === document.name && (
                 <p className="mb-0 mt-2 border-t border-border pt-3 text-xs leading-relaxed text-text-secondary">

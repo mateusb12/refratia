@@ -157,6 +157,27 @@ func caseHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadGateway, "não foi possível ler a análise do caso")
 		return
 	}
+	presigner, err := storagePresigner(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "storage indisponível")
+		return
+	}
+	if files, ok := analysis["source_files"].([]any); ok {
+		for _, rawFile := range files {
+			file, ok := rawFile.(map[string]any)
+			key, ok := file["path"].(string)
+			if !ok || !strings.HasPrefix(key, fmt.Sprintf("cases/%s/", caseID)) {
+				continue
+			}
+			request, err := presigner.PresignGetObject(r.Context(), &s3.GetObjectInput{
+				Bucket: aws.String(os.Getenv("BUCKET_NAME")),
+				Key:    aws.String(key),
+			})
+			if err == nil {
+				file["signed_url"] = request.URL
+			}
+		}
+	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{"caseId": caseID, "analysis": analysis})
 }
@@ -297,12 +318,28 @@ func cleanupObjects(ctx context.Context, client *s3.Client, keys []string) {
 }
 
 func storageClient(ctx context.Context) (*s3.Client, error) {
+	return newStorageClient(ctx, os.Getenv("AWS_ENDPOINT_URL_S3"))
+}
+
+func storagePresigner(ctx context.Context) (*s3.PresignClient, error) {
+	endpoint := os.Getenv("AWS_PUBLIC_ENDPOINT_URL_S3")
+	if endpoint == "" {
+		endpoint = os.Getenv("AWS_ENDPOINT_URL_S3")
+	}
+	client, err := newStorageClient(ctx, endpoint)
+	if err != nil {
+		return nil, err
+	}
+	return s3.NewPresignClient(client), nil
+}
+
+func newStorageClient(ctx context.Context, endpoint string) (*s3.Client, error) {
 	cfg, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
 		return nil, err
 	}
 	return s3.NewFromConfig(cfg, func(options *s3.Options) {
-		options.BaseEndpoint = aws.String(os.Getenv("AWS_ENDPOINT_URL_S3"))
+		options.BaseEndpoint = aws.String(endpoint)
 		options.UsePathStyle = true
 	}), nil
 }
