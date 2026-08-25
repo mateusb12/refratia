@@ -25,7 +25,7 @@ Organize o resultado como paciente_compilado.json:
 - facility: nome, descrição, endereço e telefone quando existirem;
 - conventions: OD, OS, AO, significado de null e separador decimal normalizado;
 - source_files: um item por arquivo com path igual ao nome recebido, exam, eye, páginas/dimensões e conteúdo por página quando identificável;
-- exams: use exatamente as chaves fundus_retinography, iol_calculation, pentacam_corneal_tomography e specular_microscopy quando aplicáveis. Cada exame deve ter source com os nomes dos arquivos correspondentes. Preserve aparelho, software, data/hora, qualidade, alertas, fonte e TODOS os campos, índices, medições, eixos, tabelas e cálculos legíveis. Separe olhos em eyes.OD e eyes.OS (ou AO quando realmente conjunto). Use nomes de campos técnicos em snake_case e inclua unidades no nome quando isso remover ambiguidade; não substitua a hierarquia específica do equipamento por um modelo genérico;
+- exams: use exatamente as chaves fundus_retinography, iol_calculation, pentacam_corneal_tomography e specular_microscopy quando aplicáveis. Inclua SOMENTE exames realmente evidenciados pelos arquivos; não crie chaves para exames ausentes. Cada exame deve ter source com os nomes dos arquivos correspondentes. Preserve aparelho, software, data/hora, qualidade, alertas, fonte e TODOS os campos, índices, medições, eixos, tabelas e cálculos legíveis. Separe olhos em eyes.OD e eyes.OS (ou AO quando realmente conjunto). Use nomes de campos técnicos em snake_case e inclua unidades no nome quando isso remover ambiguidade; não substitua a hierarquia específica do equipamento por um modelo genérico;
 - extraction_notes: method, scope, not_encoded e clinical_use_warning.
 
 Confronte identidade, datas e lateralidade entre os arquivos. Preserve avisos do equipamento e divergências do documento. Não resuma tabelas nem omita linhas repetidas por modelo de lente. Retorne somente um objeto JSON.`
@@ -300,14 +300,45 @@ func mergeMissingValues(target, repair map[string]any) {
 }
 
 func decodeAnalysis(raw string) (map[string]any, error) {
-	if err := validatePatientJSON(raw); err != nil {
-		return nil, err
-	}
-	var analysis map[string]any
-	if raw == "" || json.Unmarshal([]byte(raw), &analysis) != nil {
+	if raw == "" {
 		return nil, errors.New("o serviço de extração não retornou um JSON válido")
 	}
+	var analysis map[string]any
+	if json.Unmarshal([]byte(raw), &analysis) != nil || analysis == nil {
+		return nil, errors.New("o serviço de extração não retornou um JSON válido")
+	}
+	dropMalformedOptionalExams(analysis)
+	normalized, err := json.Marshal(analysis)
+	if err != nil {
+		return nil, errors.New("o serviço de extração não retornou um JSON válido")
+	}
+	if err := validatePatientJSON(string(normalized)); err != nil {
+		return nil, err
+	}
 	return analysis, nil
+}
+
+// A resposta de um exame isolado pode conter um payload vazio para outros
+// exames. Exame ausente é válido; exame com payload inválido deve ser ignorado
+// para não bloquear a análise do documento que realmente foi enviado.
+func dropMalformedOptionalExams(analysis map[string]any) {
+	exams, ok := analysis["exams"].(map[string]any)
+	if !ok {
+		return
+	}
+	for key, rawExam := range exams {
+		if !officialExamKeys[key] {
+			continue
+		}
+		exam, ok := rawExam.(map[string]any)
+		if !ok {
+			delete(exams, key)
+			continue
+		}
+		if _, ok := exam["source"].([]any); !ok {
+			delete(exams, key)
+		}
+	}
 }
 
 func enrichSourceFiles(analysis map[string]any, files []uploadedFile) {

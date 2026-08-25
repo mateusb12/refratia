@@ -22,7 +22,7 @@ services:
           path: ./backend
     environment:
       PORT: 3000
-      CORS_ORIGINS: http://localhost:5173
+      CORS_ORIGINS: http://localhost:5173,http://127.0.0.1:5173
       CASE_DELETE_TOKEN: ${CASE_DELETE_TOKEN:-local-dev-delete-only}
       BUCKET_NAME: refratia
       AWS_REGION: us-east-1

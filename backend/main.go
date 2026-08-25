@@ -45,6 +45,7 @@ type intakeFile struct {
 	Size        int64  `json:"size"`
 	SHA256      string `json:"sha256"`
 	Key         string `json:"key,omitempty"`
+	SignedURL   string `json:"signed_url,omitempty"`
 }
 
 type storedIntake struct {
@@ -320,10 +321,25 @@ func analyzeIntakeHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadGateway, "não foi possível armazenar o rascunho")
 		return
 	}
+	presigner, presignErr := storagePresigner(r.Context())
+	if presignErr != nil {
+		writeError(w, http.StatusInternalServerError, "storage indisponível")
+		return
+	}
+	previewFiles := intakeMetadata(files)
+	for index := range previewFiles {
+		request, err := presigner.PresignGetObject(r.Context(), &s3.GetObjectInput{
+			Bucket: aws.String(os.Getenv("BUCKET_NAME")),
+			Key:    aws.String(storedFiles[index].Key),
+		})
+		if err == nil {
+			previewFiles[index].SignedURL = request.URL
+		}
+	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{
 		"intakeId": intakeID,
-		"files":    intakeMetadata(files),
+		"files":    previewFiles,
 		"analysis": analysis,
 		"message":  "Documentos e análise armazenados. Confira a extração antes de criar o caso.",
 	})
@@ -366,6 +382,10 @@ func confirmIntakeHandler(w http.ResponseWriter, r *http.Request) {
 	object.Body.Close()
 	if decodeErr != nil || time.Since(draft.CreatedAt) > 24*time.Hour || validateStoredAnalysis(draft.Analysis, draft.Files) != nil {
 		writeError(w, http.StatusBadRequest, "rascunho inválido ou expirado")
+		return
+	}
+	if missing := missingRequiredExams(draft.Analysis); len(missing) > 0 {
+		writeError(w, http.StatusUnprocessableEntity, "análise parcial: faltam os exames " + strings.Join(missing, ", ") + ". O caso não pode ser confirmado ainda")
 		return
 	}
 	result := make([]intakeFile, 0, len(draft.Files))

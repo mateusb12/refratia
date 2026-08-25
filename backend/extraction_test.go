@@ -47,6 +47,26 @@ func TestValidatePatientJSONUsesOfficialExamKeys(t *testing.T) {
 	}
 }
 
+func TestDecodeAnalysisAllowsSingleExamWithMalformedAbsentExam(t *testing.T) {
+	analysis, err := decodeAnalysis(`{"patient":{"full_name":"Paciente"},"exams":{"fundus_retinography":{"source":["olho.jpeg"]},"iol_calculation":null}}`)
+	if err != nil {
+		t.Fatalf("expected isolated exam to be accepted: %v", err)
+	}
+	exams := analysis["exams"].(map[string]any)
+	if _, exists := exams["iol_calculation"]; exists {
+		t.Fatal("expected malformed absent exam to be removed")
+	}
+}
+
+func TestMissingRequiredExamsMarksPartialAnalysis(t *testing.T) {
+	missing := missingRequiredExams(map[string]any{"exams": map[string]any{
+		"fundus_retinography": map[string]any{"source": []any{"olho.jpeg"}},
+	}})
+	if len(missing) != 3 {
+		t.Fatalf("expected three missing exams, got %v", missing)
+	}
+}
+
 func TestPentacamRepairFillsOnlyMissingMetrics(t *testing.T) {
 	analysis := map[string]any{"exams": map[string]any{
 		"pentacam_corneal_tomography": map[string]any{

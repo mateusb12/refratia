@@ -71,9 +71,7 @@ function normalizeSavedReport(analysis: IntakeAnalysis): ReportData {
 }
 
 const eyeLabel = (eye: Eye) => (eye === 'OS' ? 'OE' : eye)
-const API_URL = import.meta.env.VITE_API_URL ?? (
-  window.location.hostname === 'localhost' ? 'http://localhost:3000' : 'https://backend-dry-island-4275.fly.dev'
-)
+const API_URL = import.meta.env.VITE_API_URL?.trim() ?? ''
 const CASE_DELETE_TOKEN = import.meta.env.VITE_CASE_DELETE_TOKEN ?? 'local-dev-delete-only'
 
 function fileIcon(fileName: string) {
@@ -86,6 +84,25 @@ const examLabels: Record<string, string> = {
   iol_calculation: 'Cálculo de lente intraocular',
   pentacam_corneal_tomography: 'Tomografia corneana Pentacam',
   specular_microscopy: 'Microscopia especular',
+}
+
+const requiredIntakeExams = Object.keys(examLabels)
+
+function missingRequiredIntakeExams(analysis: IntakeAnalysis) {
+  return requiredIntakeExams.filter((key) => !analysis.exams?.[key as keyof IntakeAnalysis['exams']])
+}
+
+function IntakeCompletenessNotice({ analysis }: { analysis: IntakeAnalysis }) {
+  const missing = missingRequiredIntakeExams(analysis)
+  if (!missing.length) return null
+  return (
+    <div className="mt-4 rounded-xl border border-warning/40 bg-warning-soft p-4 text-sm text-text-secondary">
+      <strong className="text-warning">Análise parcial: faltam exames obrigatórios.</strong>
+      <p className="mb-0 mt-1 leading-relaxed">
+        O arquivo enviado foi analisado, mas este paciente não pode ser confirmado ainda. Faltam: {missing.map((key) => examLabels[key] ?? key).join(' · ')}.
+      </p>
+    </div>
+  )
 }
 
 function IntakeAnalysisSummary({ analysis }: { analysis: IntakeAnalysis }) {
@@ -164,6 +181,99 @@ function IntakeAnalysisSummary({ analysis }: { analysis: IntakeAnalysis }) {
           <strong className="text-warning">Atenção:</strong> {notes.clinical_use_warning}
         </div>
       )}
+    </div>
+  )
+}
+
+function extractedPreviewFields(source: Record<string, unknown> | undefined) {
+  if (!source) return []
+  const ignored = new Set(['index', 'path', 'filename', 'type', 'size_bytes', 'sha256', 'signed_url'])
+  const fields: Array<[string, string]> = []
+
+  function visit(value: unknown, path: string) {
+    if (fields.length >= 8 || value === null || value === undefined) return
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+      fields.push([path, String(value)])
+      return
+    }
+    if (Array.isArray(value)) {
+      value.slice(0, 3).forEach((item, index) => visit(item, `${path}[${index + 1}]`))
+      return
+    }
+    if (typeof value === 'object') {
+      Object.entries(value as Record<string, unknown>).forEach(([key, child]) => {
+        if (!ignored.has(key)) visit(child, path ? `${path}.${key}` : key)
+      })
+    }
+  }
+
+  visit(source, '')
+  return fields
+}
+
+function IntakeDocumentsDebug({ preview, localPreviews }: { preview: IntakePreview; localPreviews?: Record<string, string> }) {
+  const sources = preview.analysis.source_files ?? []
+
+  return (
+    <div className="mt-5 rounded-xl border border-border bg-surface p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <span className="text-xs font-bold uppercase tracking-[0.12em] text-text-muted">Debug por documento</span>
+          <h3 className="mb-0 mt-1 font-display text-lg">O que foi lido em cada arquivo</h3>
+          <p className="mb-0 mt-1 text-sm text-text-secondary">Compare a prévia original com os campos que entraram na extração.</p>
+        </div>
+        <StatusBadge tone="success">{preview.files.length} arquivo(s) analisado(s)</StatusBadge>
+      </div>
+
+      <div className="mt-4 grid gap-4 lg:grid-cols-2">
+        {preview.files.map((file, index) => {
+          const source = sources[index] as Record<string, unknown> | undefined
+          const previewUrl = file.signed_url ?? localPreviews?.[file.filename]
+          const isPdf = file.contentType === 'application/pdf' || file.filename.toLowerCase().endsWith('.pdf')
+          const isImage = file.contentType.startsWith('image/')
+          const fields = extractedPreviewFields(source)
+          return (
+            <article className="overflow-hidden rounded-xl border border-border bg-surface-muted" key={`${file.filename}-${file.sha256}`}>
+              <div className="grid min-h-[190px] place-items-center border-b border-border bg-black/[.04] p-3 dark:bg-white/[.03]">
+                {previewUrl && isPdf ? (
+                  <iframe className="h-[190px] w-full rounded-lg bg-white" src={previewUrl} title={`Prévia de ${file.filename}`} />
+                ) : previewUrl && isImage ? (
+                  <img alt={`Prévia de ${file.filename}`} className="max-h-[190px] max-w-full rounded-lg object-contain" src={previewUrl} />
+                ) : (
+                  <div className="grid place-items-center gap-2 text-center">
+                    <img alt="" className="h-16 w-16 object-contain" src={fileIcon(file.filename)} />
+                    <span className="text-xs text-text-muted">Prévia indisponível para este formato</span>
+                  </div>
+                )}
+              </div>
+              <div className="p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <strong className="block truncate text-sm" title={file.filename}>{file.filename}</strong>
+                    <span className="mt-1 block text-xs text-text-muted">{(file.size / 1024 / 1024).toFixed(2)} MB · {source?.exam ? String(source.exam) : 'tipo não identificado'}{source?.eye ? ` · ${String(source.eye)}` : ''}</span>
+                  </div>
+                  <StatusBadge tone={fields.length ? 'success' : 'warning'}>{fields.length ? 'Extraído' : 'Sem campos'}</StatusBadge>
+                </div>
+                <details className="mt-3 rounded-lg border border-border bg-surface">
+                  <summary className="cursor-pointer px-3 py-2 text-xs font-bold text-primary">Ver campos identificados ({fields.length})</summary>
+                  <div className="border-t border-border px-3 py-2">
+                    {fields.length ? fields.map(([key, value]) => (
+                      <div className="grid grid-cols-[minmax(0,.9fr)_minmax(0,1.1fr)] gap-3 border-b border-border py-2 text-xs last:border-0" key={`${key}-${value}`}>
+                        <span className="break-words font-semibold text-text-secondary">{key}</span>
+                        <span className="break-words text-text-primary">{value}</span>
+                      </div>
+                    )) : <p className="mb-0 py-1 text-xs text-text-secondary">Nenhum campo estruturado foi associado a este arquivo.</p>}
+                  </div>
+                </details>
+                <details className="mt-2 rounded-lg border border-border bg-surface">
+                  <summary className="cursor-pointer px-3 py-2 text-xs font-bold text-text-secondary">Ver JSON deste arquivo</summary>
+                  <pre className="m-0 max-h-[280px] overflow-auto border-t border-border p-3 text-[11px] leading-relaxed text-text-secondary">{JSON.stringify(source ?? {}, null, 2)}</pre>
+                </details>
+              </div>
+            </article>
+          )
+        })}
+      </div>
     </div>
   )
 }
@@ -1262,6 +1372,7 @@ function App() {
   const [traceData, setTraceData] = useState<ExtractedDatum | null>(null)
   const [isReviewed, setIsReviewed] = useState(false)
   const [intakeFiles, setIntakeFiles] = useState<File[]>([])
+  const [intakeLocalPreviews, setIntakeLocalPreviews] = useState<Record<string, string>>({})
   const [intakePreview, setIntakePreview] = useState<IntakePreview | null>(null)
   const [intakeBusy, setIntakeBusy] = useState(false)
   const [intakeMessage, setIntakeMessage] = useState('')
@@ -1351,27 +1462,58 @@ function App() {
 
   async function analyzeIntake() {
     if (!intakeFiles.length) return
+    if (!API_URL) {
+      setIntakeMessage('VITE_API_URL não está configurada no .env. Exemplo local: VITE_API_URL=http://localhost:3000')
+      return
+    }
     setIntakeBusy(true)
     setIntakeMessage('')
     try {
       const body = new FormData()
       intakeFiles.forEach((file) => body.append('files', file))
       const response = await fetch(`${API_URL}/api/intakes/analyze`, { method: 'POST', body })
-      const result: unknown = await response.json()
-      const errorMessage = result && typeof result === 'object' && 'error' in result && typeof result.error === 'string' ? result.error : 'Falha na análise'
+      const responseText = await response.text()
+      let result: unknown = null
+      try {
+        result = responseText ? JSON.parse(responseText) : null
+      } catch {
+        if (!response.ok) {
+          throw new Error(`Falha na análise (HTTP ${response.status}): ${responseText.slice(0, 300) || 'o servidor não retornou detalhes'}`)
+        }
+      }
+      const errorMessage = result && typeof result === 'object' && 'error' in result && typeof result.error === 'string'
+        ? result.error
+        : `Falha na análise (HTTP ${response.status}): ${responseText.slice(0, 300) || 'o servidor não retornou detalhes'}`
       if (!response.ok) throw new Error(errorMessage)
       if (!isIntakePreview(result)) throw new Error('A API de análise está desatualizada. Reinicie o backend e tente novamente.')
       setIntakePreview(result)
       setIntakeFiles([])
     } catch (error) {
-      setIntakeMessage(error instanceof Error ? error.message : 'Não foi possível analisar os arquivos.')
+      if (error instanceof TypeError) {
+        setIntakeMessage(`NetworkError: não foi possível conectar ao backend em ${API_URL}. Verifique se o container backend está ativo e se a porta 3000 está publicada.`)
+      } else {
+        setIntakeMessage(error instanceof Error ? error.message : 'Não foi possível analisar os arquivos.')
+      }
     } finally {
       setIntakeBusy(false)
     }
   }
 
+  function replaceIntakeFiles(files: File[]) {
+    setIntakeLocalPreviews((current) => {
+      Object.values(current).forEach((url) => URL.revokeObjectURL(url))
+      return Object.fromEntries(files.map((file) => [file.name, URL.createObjectURL(file)]))
+    })
+    setIntakeFiles(files)
+  }
+
   async function confirmIntake() {
     if (!intakePreview) return
+    const missing = missingRequiredIntakeExams(intakePreview.analysis)
+    if (missing.length) {
+      setIntakeMessage(`Análise parcial. Faltam: ${missing.map((key) => examLabels[key] ?? key).join(', ')}.`)
+      return
+    }
     setIntakeBusy(true)
     setIntakeMessage('')
     try {
@@ -1390,6 +1532,10 @@ function App() {
       setSavedCases((cases) => [newCase, ...cases.filter((item) => item.caseId !== newCase.caseId)])
       setIntakeMessage(`Caso criado (${result.caseId}). Arquivos e paciente_compilado.json salvos no Tigris.`)
       setIntakeFiles([])
+      setIntakeLocalPreviews((current) => {
+        Object.values(current).forEach((url) => URL.revokeObjectURL(url))
+        return {}
+      })
       setIntakePreview(null)
       setActiveSection('Relatórios')
     } catch (error) {
@@ -1412,6 +1558,10 @@ function App() {
     setIntakeBusy(true)
     if (await deleteDraft(intakePreview)) {
       setIntakeFiles([])
+      setIntakeLocalPreviews((current) => {
+        Object.values(current).forEach((url) => URL.revokeObjectURL(url))
+        return {}
+      })
       setIntakePreview(null)
       setIntakeMessage('Rascunho descartado do storage.')
     } else {
@@ -1757,7 +1907,7 @@ function App() {
                   onDrop={(event) => {
                     event.preventDefault()
                     void deleteDraft(intakePreview)
-                    setIntakeFiles(Array.from(event.dataTransfer.files))
+                    replaceIntakeFiles(Array.from(event.dataTransfer.files))
                     setIntakePreview(null)
                     setIntakeMessage('')
                   }}
@@ -1771,7 +1921,7 @@ function App() {
                     multiple
                     onChange={(event) => {
                       void deleteDraft(intakePreview)
-                      setIntakeFiles(Array.from(event.target.files ?? []))
+                      replaceIntakeFiles(Array.from(event.target.files ?? []))
                       setIntakePreview(null)
                       setIntakeMessage('')
                     }}
@@ -1826,18 +1976,20 @@ function App() {
                       <StatusBadge tone="success">JSON extraído</StatusBadge>
                     </div>
                     <p className="mb-0 mt-2 text-sm leading-relaxed text-text-secondary">{intakePreview.message}</p>
+                    <IntakeDocumentsDebug localPreviews={intakeLocalPreviews} preview={intakePreview} />
+                    <IntakeCompletenessNotice analysis={intakePreview.analysis} />
                     <IntakeAnalysisSummary analysis={intakePreview.analysis} />
                     <details className="mt-4 rounded-lg border border-border bg-surface">
                       <summary className="cursor-pointer px-3 py-2 text-xs font-bold text-primary">Ver JSON completo (debug)</summary>
                       <pre className="m-0 max-h-[520px] overflow-auto border-t border-border p-3 text-xs leading-relaxed text-text-secondary">{JSON.stringify(intakePreview.analysis, null, 2)}</pre>
                     </details>
                     <div className="mt-4 flex flex-wrap gap-3">
-                      <PrimaryButton disabled={intakeBusy} onClick={confirmIntake}>{intakeBusy ? 'Salvando…' : 'Confirmar criação do caso'}</PrimaryButton>
+                      <PrimaryButton disabled={intakeBusy || missingRequiredIntakeExams(intakePreview.analysis).length > 0} onClick={confirmIntake}>{intakeBusy ? 'Salvando…' : 'Confirmar criação do caso'}</PrimaryButton>
                       <button className="rounded-[9px] border border-border-strong bg-surface px-4 py-[11px] text-sm font-semibold hover:border-danger hover:text-danger" disabled={intakeBusy} onClick={discardIntake} type="button">Descartar</button>
                     </div>
                   </div>
                 )}
-                {intakeMessage && <p className="mb-0 mt-3 text-sm font-semibold text-text-secondary">{intakeMessage}</p>}
+                {intakeMessage && <p aria-live="assertive" className="mb-0 mt-3 whitespace-pre-wrap rounded-lg border border-danger/30 bg-danger-soft p-3 text-sm font-semibold text-danger">{intakeMessage}</p>}
               </section>
               <section className="mt-5 rounded-2xl border border-border bg-surface p-6 shadow-sm max-[580px]:p-4">
                 <div className="flex items-start justify-between gap-4">
