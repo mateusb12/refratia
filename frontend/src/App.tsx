@@ -259,17 +259,28 @@ function IntakeDocumentsDebug({ preview, localPreviews }: { preview: IntakePrevi
                   </StatusBadge>
                 </div>
                 {contractAssessment && (
-                  <div className="mt-3 grid gap-2 text-xs">
-                    <div className="rounded-lg border border-success/30 bg-success-soft p-2.5">
-                      <strong className="text-success">Extraídos ({contractAssessment.extracted.length})</strong>
-                      <p className="mb-0 mt-1 leading-relaxed text-text-secondary">{contractAssessment.extracted.length ? contractAssessment.extracted.map((field) => field.label).join(' · ') : 'Nenhum campo do contrato identificado.'}</p>
-                    </div>
-                    {contractAssessment.missing.length > 0 && (
-                      <div className="rounded-lg border border-warning/30 bg-warning-soft p-2.5">
-                        <strong className="text-warning">Faltantes ({contractAssessment.missing.length})</strong>
-                        <p className="mb-0 mt-1 leading-relaxed text-text-secondary">{contractAssessment.missing.map((field) => field.label).join(' · ')}</p>
-                      </div>
-                    )}
+                  <div className="mt-3 overflow-hidden rounded-lg border border-border bg-surface text-xs">
+                    <table className="w-full border-collapse text-left">
+                      <thead className="bg-surface-muted text-text-secondary">
+                        <tr>
+                          <th className="w-12 px-3 py-2 font-bold">Status</th>
+                          <th className="px-3 py-2 font-bold">Campo do contrato</th>
+                          <th className="px-3 py-2 font-bold">Valor</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {contractAssessment.contract.fields.map((field) => {
+                          const extracted = contractAssessment.extracted.includes(field)
+                          return (
+                            <tr className={extracted ? 'bg-success-soft/60' : 'bg-danger-soft/60'} key={field.key}>
+                              <td className="px-3 py-2 text-base" title={extracted ? 'Campo extraído' : 'Campo ausente'}>{extracted ? '✅' : '❌'}</td>
+                              <td className={clsx('px-3 py-2 font-semibold', extracted ? 'text-success' : 'text-danger')}>{field.label}</td>
+                              <td className="max-w-[180px] truncate px-3 py-2 text-text-secondary">{extracted ? 'Identificado' : 'Não encontrado'}</td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
                   </div>
                 )}
                 <details className="mt-3 rounded-lg border border-border bg-surface">
@@ -1394,6 +1405,7 @@ function App() {
   const [intakePreview, setIntakePreview] = useState<IntakePreview | null>(null)
   const [intakeBusy, setIntakeBusy] = useState(false)
   const [intakeProgress, setIntakeProgress] = useState(0)
+  const [intakeElapsed, setIntakeElapsed] = useState(0)
   const [intakeMessage, setIntakeMessage] = useState('')
   const [savedCases, setSavedCases] = useState<SavedCase[]>([])
   const [storedCase, setStoredCase] = useState<StoredCase | null>(null)
@@ -1416,6 +1428,12 @@ function App() {
     }, 650)
     return () => window.clearInterval(timer)
   }, [intakeBusy, intakeFiles.length])
+
+  useEffect(() => {
+    if (!intakeBusy) return
+    const timer = window.setInterval(() => setIntakeElapsed((elapsed) => elapsed + 1), 1000)
+    return () => window.clearInterval(timer)
+  }, [intakeBusy])
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
@@ -1496,6 +1514,7 @@ function App() {
     }
     setIntakeBusy(true)
     setIntakeProgress(4)
+    setIntakeElapsed(0)
     setIntakeMessage('')
     try {
       const body = new FormData()
@@ -1969,10 +1988,12 @@ function App() {
                     {intakeBusy && (() => {
                       const currentIndex = Math.min(intakeFiles.length - 1, Math.floor((intakeProgress / 100) * intakeFiles.length))
                       const currentFile = intakeFiles[currentIndex]
+                      const isWaitingResponse = intakeProgress >= 94
+                      const elapsedLabel = `${String(Math.floor(intakeElapsed / 60)).padStart(2, '0')}:${String(intakeElapsed % 60).padStart(2, '0')}`
                       return (
                         <div aria-live="polite" className="mt-4 rounded-xl border border-primary-border bg-primary-soft p-4">
                           <div className="flex items-center justify-between gap-3 text-xs font-bold">
-                            <span className="text-primary">Analisando documento {currentIndex + 1}/{intakeFiles.length}</span>
+                            <span className="text-primary">{isWaitingResponse ? 'Aguardando resposta do backend' : `Analisando documento ${currentIndex + 1}/${intakeFiles.length}`}</span>
                             <span className="text-text-secondary">{intakeProgress}%</span>
                           </div>
                           <div aria-hidden="true" className="mt-2 h-2 overflow-hidden rounded-full bg-surface">
@@ -1980,9 +2001,10 @@ function App() {
                           </div>
                           <div className="mt-2 flex items-center gap-2 text-xs text-text-secondary">
                             <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-primary" />
-                            <span className="truncate" title={currentFile?.name}>{currentFile?.name}</span>
+                            <span className="truncate" title={currentFile?.name}>{isWaitingResponse ? 'Documentos enviados; esperando o JSON consolidado…' : currentFile?.name}</span>
+                            <span className="ml-auto flex-none font-mono text-text-muted">{elapsedLabel}</span>
                           </div>
-                          <p className="mb-0 mt-2 text-[11px] text-text-muted">Depois dos documentos, consolidando os dados extraídos…</p>
+                          <p className="mb-0 mt-2 text-[11px] text-text-muted">{isWaitingResponse ? 'A análise ainda está em andamento. A tela será atualizada quando o HTTP responder.' : 'Depois dos documentos, consolidando os dados extraídos…'}</p>
                         </div>
                       )
                     })()}
