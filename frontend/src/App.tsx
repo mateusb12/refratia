@@ -30,6 +30,7 @@ import {
 import patientData from '../data/paciente_compilado.json'
 import RoadmapPage from './components/roadmap/RoadmapPage'
 import { isIntakePreview, normalizeSavedAnalysis, type IntakeAnalysis, type IntakePreview } from './contracts/patient-analysis'
+import { assessExamContract } from './contracts/exam-contracts'
 
 type Theme = 'light' | 'dark'
 type CaseKind = 'demo' | 'real'
@@ -232,6 +233,7 @@ function IntakeDocumentsDebug({ preview, localPreviews }: { preview: IntakePrevi
           const isPdf = file.contentType === 'application/pdf' || file.filename.toLowerCase().endsWith('.pdf')
           const isImage = file.contentType.startsWith('image/')
           const fields = extractedPreviewFields(source)
+          const contractAssessment = source ? assessExamContract(preview.analysis, source) : null
           return (
             <article className="overflow-hidden rounded-xl border border-border bg-surface-muted" key={`${file.filename}-${file.sha256}`}>
               <div className="grid min-h-[190px] place-items-center border-b border-border bg-black/[.04] p-3 dark:bg-white/[.03]">
@@ -252,8 +254,24 @@ function IntakeDocumentsDebug({ preview, localPreviews }: { preview: IntakePrevi
                     <strong className="block truncate text-sm" title={file.filename}>{file.filename}</strong>
                     <span className="mt-1 block text-xs text-text-muted">{(file.size / 1024 / 1024).toFixed(2)} MB · {source?.exam ? String(source.exam) : 'tipo não identificado'}{source?.eye ? ` · ${String(source.eye)}` : ''}</span>
                   </div>
-                  <StatusBadge tone={fields.length ? 'success' : 'warning'}>{fields.length ? 'Extraído' : 'Sem campos'}</StatusBadge>
+                  <StatusBadge tone={contractAssessment?.missing.length ? 'warning' : 'success'}>
+                    {contractAssessment ? `${contractAssessment.extracted.length}/${contractAssessment.contract.fields.length} campos` : fields.length ? 'Extraído' : 'Sem campos'}
+                  </StatusBadge>
                 </div>
+                {contractAssessment && (
+                  <div className="mt-3 grid gap-2 text-xs">
+                    <div className="rounded-lg border border-success/30 bg-success-soft p-2.5">
+                      <strong className="text-success">Extraídos ({contractAssessment.extracted.length})</strong>
+                      <p className="mb-0 mt-1 leading-relaxed text-text-secondary">{contractAssessment.extracted.length ? contractAssessment.extracted.map((field) => field.label).join(' · ') : 'Nenhum campo do contrato identificado.'}</p>
+                    </div>
+                    {contractAssessment.missing.length > 0 && (
+                      <div className="rounded-lg border border-warning/30 bg-warning-soft p-2.5">
+                        <strong className="text-warning">Faltantes ({contractAssessment.missing.length})</strong>
+                        <p className="mb-0 mt-1 leading-relaxed text-text-secondary">{contractAssessment.missing.map((field) => field.label).join(' · ')}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
                 <details className="mt-3 rounded-lg border border-border bg-surface">
                   <summary className="cursor-pointer px-3 py-2 text-xs font-bold text-primary">Ver campos identificados ({fields.length})</summary>
                   <div className="border-t border-border px-3 py-2">
@@ -1375,6 +1393,7 @@ function App() {
   const [intakeLocalPreviews, setIntakeLocalPreviews] = useState<Record<string, string>>({})
   const [intakePreview, setIntakePreview] = useState<IntakePreview | null>(null)
   const [intakeBusy, setIntakeBusy] = useState(false)
+  const [intakeProgress, setIntakeProgress] = useState(0)
   const [intakeMessage, setIntakeMessage] = useState('')
   const [savedCases, setSavedCases] = useState<SavedCase[]>([])
   const [storedCase, setStoredCase] = useState<StoredCase | null>(null)
@@ -1388,6 +1407,15 @@ function App() {
   const activeExtractedData = reportData ? getReportExtractedData(reportData) : extractedData
   const activeMetrics = reportData ? getReportMetrics(reportData, activeExtractedData) : metrics
   const activeDocuments = reportData ? getReportDocuments(reportData) : documents
+
+  useEffect(() => {
+    if (!intakeBusy || !intakeFiles.length) return
+    setIntakeProgress(4)
+    const timer = window.setInterval(() => {
+      setIntakeProgress((progress) => progress >= 94 ? progress : progress + (progress < 65 ? 4 : 1))
+    }, 650)
+    return () => window.clearInterval(timer)
+  }, [intakeBusy, intakeFiles.length])
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
@@ -1467,6 +1495,7 @@ function App() {
       return
     }
     setIntakeBusy(true)
+    setIntakeProgress(4)
     setIntakeMessage('')
     try {
       const body = new FormData()
@@ -1488,6 +1517,7 @@ function App() {
       if (!isIntakePreview(result)) throw new Error('A API de análise está desatualizada. Reinicie o backend e tente novamente.')
       setIntakePreview(result)
       setIntakeFiles([])
+      setIntakeProgress(100)
     } catch (error) {
       if (error instanceof TypeError) {
         setIntakeMessage(`NetworkError: não foi possível conectar ao backend em ${API_URL}. Verifique se o container backend está ativo e se a porta 3000 está publicada.`)
@@ -1936,6 +1966,26 @@ function App() {
                         {intakeBusy ? 'Analisando…' : 'Analisar arquivos'}
                       </PrimaryButton>
                     </div>
+                    {intakeBusy && (() => {
+                      const currentIndex = Math.min(intakeFiles.length - 1, Math.floor((intakeProgress / 100) * intakeFiles.length))
+                      const currentFile = intakeFiles[currentIndex]
+                      return (
+                        <div aria-live="polite" className="mt-4 rounded-xl border border-primary-border bg-primary-soft p-4">
+                          <div className="flex items-center justify-between gap-3 text-xs font-bold">
+                            <span className="text-primary">Analisando documento {currentIndex + 1}/{intakeFiles.length}</span>
+                            <span className="text-text-secondary">{intakeProgress}%</span>
+                          </div>
+                          <div aria-hidden="true" className="mt-2 h-2 overflow-hidden rounded-full bg-surface">
+                            <div className="h-full rounded-full bg-primary transition-[width] duration-500" style={{ width: `${intakeProgress}%` }} />
+                          </div>
+                          <div className="mt-2 flex items-center gap-2 text-xs text-text-secondary">
+                            <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-primary" />
+                            <span className="truncate" title={currentFile?.name}>{currentFile?.name}</span>
+                          </div>
+                          <p className="mb-0 mt-2 text-[11px] text-text-muted">Depois dos documentos, consolidando os dados extraídos…</p>
+                        </div>
+                      )
+                    })()}
                     <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                       {intakeFiles.map((file) => (
                         <div

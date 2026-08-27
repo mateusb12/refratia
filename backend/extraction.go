@@ -28,6 +28,13 @@ Organize o resultado como paciente_compilado.json:
 - exams: use exatamente as chaves fundus_retinography, iol_calculation, pentacam_corneal_tomography e specular_microscopy quando aplicáveis. Inclua SOMENTE exames realmente evidenciados pelos arquivos; não crie chaves para exames ausentes. Cada exame deve ter source com os nomes dos arquivos correspondentes. Preserve aparelho, software, data/hora, qualidade, alertas, fonte e TODOS os campos, índices, medições, eixos, tabelas e cálculos legíveis. Separe olhos em eyes.OD e eyes.OS (ou AO quando realmente conjunto). Use nomes de campos técnicos em snake_case e inclua unidades no nome quando isso remover ambiguidade; não substitua a hierarquia específica do equipamento por um modelo genérico;
 - extraction_notes: method, scope, not_encoded e clinical_use_warning.
 
+Contrato mínimo de campos por exame (não invente valores; quando não estiver no arquivo, registre como ausente):
+- pentacam_corneal_tomography: K1, K2, Km, astigmatismo corneano anterior, paquimetria do ponto mais fino, BAD-D, ARTmax, ISV, IVA, IHA, KI, CKI, TKC, coma Z31 zona 5 mm, ACD e Z40 zona 6 mm;
+- iol_calculation: comprimento axial, K1, K2, Km, astigmatismo e eixo da biometria, ACD, espessura do cristalino, white-to-white e refração alvo;
+- specular_microscopy: contagem/densidade endotelial;
+- fundus_retinography: ID do paciente, data/hora e achados/observações da imagem.
+Não inclua um exame no objeto "exams" apenas porque ele é esperado pelo protocolo: inclua somente exames evidenciados pelos arquivos enviados.
+
 Confronte identidade, datas e lateralidade entre os arquivos. Preserve avisos do equipamento e divergências do documento. Não resuma tabelas nem omita linhas repetidas por modelo de lente. Retorne somente um objeto JSON.`
 
 const pentacamRepairPrompt = `Analise somente os PDFs do Pentacam enviados e extraia os campos abaixo. Cada PDF pode ter várias páginas: examine todas, especialmente a página "Ectasia Reforçada Belin / Ambrósio".
