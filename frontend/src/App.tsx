@@ -2049,7 +2049,7 @@ function App() {
                       <div>
                         <strong className="text-sm">{intakePreview.analysis.patient?.full_name || 'Paciente não identificado'}</strong>
                         <p className="mb-0 mt-1 text-xs text-text-secondary">
-                          {intakePreview.analysis.patient?.birth_date || 'Nascimento não identificado'} · {Object.keys(intakePreview.analysis.exams ?? {}).length} tipo(s) de exame
+                          {readableBirthDate(intakePreview.analysis.patient?.birth_date)} · {Object.keys(intakePreview.analysis.exams ?? {}).length} tipo(s) de exame
                         </p>
                       </div>
                       <StatusBadge tone="success">JSON extraído</StatusBadge>

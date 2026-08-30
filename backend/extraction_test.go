@@ -73,6 +73,19 @@ func TestDecodeAnalysisAllowsSingleExamWithMalformedAbsentExam(t *testing.T) {
 	}
 }
 
+func TestDecodeAnalysisMovesExtractionNotesOutOfExams(t *testing.T) {
+	analysis, err := decodeAnalysis(`{"patient":{"full_name":"Paciente"},"exams":{"pentacam_corneal_tomography":{"source":[]},"extraction_notes":{"method":"vision"}}}`)
+	if err != nil {
+		t.Fatalf("expected misplaced metadata to be normalized: %v", err)
+	}
+	if _, ok := analysis["extraction_notes"]; !ok {
+		t.Fatal("expected extraction_notes at the root")
+	}
+	if _, ok := analysis["exams"].(map[string]any)["extraction_notes"]; ok {
+		t.Fatal("expected extraction_notes to be removed from exams")
+	}
+}
+
 func TestPentacamRepairFillsOnlyMissingMetrics(t *testing.T) {
 	analysis := map[string]any{"exams": map[string]any{
 		"pentacam_corneal_tomography": map[string]any{
@@ -96,11 +109,17 @@ func TestPentacamRepairFillsOnlyMissingMetrics(t *testing.T) {
 
 	mergePentacamRepair(analysis, map[string]any{"eyes": map[string]any{
 		"OD": map[string]any{
-			"general":        map[string]any{"k_max_anterior_diopters": 99.0},
-			"belin_ambrosio": map[string]any{"d": 0.65, "art_max": 416.0},
+			"general":                map[string]any{"k_max_anterior_diopters": 99.0},
+			"belin_ambrosio":         map[string]any{"d": 0.65, "art_max": 416.0},
+			"topometric_indices_8mm": map[string]any{"isv": 10.0, "iva": 0.09, "iha": 4.2, "ki": 1.01, "cki": 1.0},
+			"corneal_rings":          map[string]any{"zernike": map[string]any{"5mm": map[string]any{"z31_coma": 0.097}}},
+			"cataract_preop":         map[string]any{"total_corneal_z40_6mm_um": 0.287},
 		},
 		"OS": map[string]any{
-			"belin_ambrosio": map[string]any{"d": 2.27, "art_max": 366.0},
+			"belin_ambrosio":         map[string]any{"d": 2.27, "art_max": 366.0},
+			"topometric_indices_8mm": map[string]any{"isv": 20.0, "iva": 0.18, "iha": 12.8, "ki": 1.01, "cki": 0.98},
+			"corneal_rings":          map[string]any{"zernike": map[string]any{"5mm": map[string]any{"z31_coma": 0.299}}},
+			"cataract_preop":         map[string]any{"total_corneal_z40_6mm_um": 0.602},
 		},
 	}})
 

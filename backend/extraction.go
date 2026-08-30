@@ -26,7 +26,7 @@ Organize o resultado como paciente_compilado.json:
 - conventions: OD, OS, AO, significado de null e separador decimal normalizado;
 - source_files: um item por arquivo com path igual ao nome recebido, exam, eye, páginas/dimensões e conteúdo por página quando identificável;
 - exams: use exatamente as chaves fundus_retinography, iol_calculation, oct_retina, pentacam_corneal_tomography e specular_microscopy quando aplicáveis. Inclua SOMENTE exames realmente evidenciados pelos arquivos; não crie chaves para exames ausentes. Cada exame deve ter source com os nomes dos arquivos correspondentes. Preserve aparelho, software, data/hora, qualidade, alertas, fonte e TODOS os campos, índices, medições, eixos, tabelas e cálculos legíveis. Separe olhos em eyes.OD e eyes.OS (ou AO quando realmente conjunto). Use nomes de campos técnicos em snake_case e inclua unidades no nome quando isso remover ambiguidade; não substitua a hierarquia específica do equipamento por um modelo genérico;
-- extraction_notes: method, scope, not_encoded e clinical_use_warning.
+- extraction_notes: method, scope, not_encoded e clinical_use_warning. Esta chave fica no nível raiz, irmã de "exams", nunca dentro de "exams";
 - verificacao_identidade: uma entrada por documento, com nome/nascimento/timestamp lidos, confiança e método da comparação. Divergência de identidade deve ser explícita e nunca omitida.
 
 Contrato mínimo de campos por exame (não invente valores; quando não estiver no arquivo, registre como ausente):
@@ -39,12 +39,12 @@ Não inclua um exame no objeto "exams" apenas porque ele é esperado pelo protoc
 
 Confronte identidade, datas e lateralidade entre os arquivos. Preserve avisos do equipamento e divergências do documento. Não resuma tabelas nem omita linhas repetidas por modelo de lente. Retorne somente um objeto JSON.`
 
-const pentacamRepairPrompt = `Analise somente os PDFs do Pentacam enviados e extraia os campos abaixo. Cada PDF pode ter várias páginas: examine todas, especialmente a página "Ectasia Reforçada Belin / Ambrósio".
+const pentacamRepairPrompt = `Analise somente as imagens dos PDFs do Pentacam enviados. Cada PDF pode ter 9 páginas; examine todas as páginas e associe cada valor ao arquivo/lateralidade correta. Esta é uma segunda leitura focada nos campos que frequentemente ficam em tabelas ou imagens pequenas.
 
 Retorne somente este objeto JSON, mantendo null apenas quando o valor realmente não estiver legível em nenhuma página:
-{"eyes":{"OD":{"general":{"pachymetry_thinnest_um":null,"k_max_anterior_diopters":null},"belin_ambrosio":{"d":null,"art_max":null}},"OS":{"general":{"pachymetry_thinnest_um":null,"k_max_anterior_diopters":null},"belin_ambrosio":{"d":null,"art_max":null}}}}
+{"eyes":{"OD":{"anterior_cornea":{"k1_d":null,"k2_d":null,"km_d":null,"astigmatism_d":null,"axis_deg":null,"kmax_d":null},"pachymetry":{"thinnest_um":null},"belin_ambrosio":{"d":null,"art_max":null},"topometric_indices_8mm":{"isv":null,"iva":null,"iha":null,"ki":null,"cki":null,"tkc":null},"corneal_rings":{"zernike":{"5mm":{"z31_coma":null},"6mm":{"z31_coma":null}}},"anterior_segment":{"internal_anterior_chamber_depth_mm":null},"cataract_preop":{"total_corneal_z40_6mm_um":null}},"OS":{"anterior_cornea":{"k1_d":null,"k2_d":null,"km_d":null,"astigmatism_d":null,"axis_deg":null,"kmax_d":null},"pachymetry":{"thinnest_um":null},"belin_ambrosio":{"d":null,"art_max":null},"topometric_indices_8mm":{"isv":null,"iva":null,"iha":null,"ki":null,"cki":null,"tkc":null},"corneal_rings":{"zernike":{"5mm":{"z31_coma":null},"6mm":{"z31_coma":null}}},"anterior_segment":{"internal_anterior_chamber_depth_mm":null},"cataract_preop":{"total_corneal_z40_6mm_um":null}}}}
 
-Use a lateralidade impressa no documento. Em "Ectasia Reforçada Belin / Ambrósio", leia D no rodapé direito e ARTmax no quadro "Índice de Progressão". Não confunda ARTmax com os valores Mín, Méd ou Máx.`
+Use a lateralidade impressa no documento. Não misture OD e OS. Em "Ectasia Reforçada Belin / Ambrósio", leia D no rodapé direito e ARTmax no quadro "Índice de Progressão"; não confunda ARTmax com Mín, Méd ou Máx. Em "Topométrico / Estadiamento KC", leia ISV, IVA, IHA, KI, CKI e TKC. Em "Paquimétrico", leia a espessura do ponto mais fino. Em "Anéis Corneanos", leia Z31 coma nas zonas 5 mm e 6 mm. Em "Cataract Pre-OP", leia Z40 na zona 6 mm. Preserve TKC como null quando o documento mostrar traço ou ausência.`
 
 type uploadedFile struct {
 	Metadata intakeFile
@@ -275,6 +275,27 @@ func pentacamNeedsRepair(exam map[string]any) bool {
 			[]string{"belin_ambrosio", "indice_de_progressao", "art_max"},
 			[]string{"ectasia_reforcada_belin_ambrosio", "art_max"},
 			[]string{"ectasia_reforcada_belin_ambrosio", "indice_de_progressao", "art_max"},
+		) || !hasNumberAtAnyPath(eye,
+			[]string{"topometric_indices_8mm", "isv"},
+			[]string{"indices_zona_8mm", "isv"},
+		) || !hasNumberAtAnyPath(eye,
+			[]string{"topometric_indices_8mm", "iva"},
+			[]string{"indices_zona_8mm", "iva"},
+		) || !hasNumberAtAnyPath(eye,
+			[]string{"topometric_indices_8mm", "iha"},
+			[]string{"indices_zona_8mm", "iha"},
+		) || !hasNumberAtAnyPath(eye,
+			[]string{"topometric_indices_8mm", "ki"},
+			[]string{"indices_zona_8mm", "ki"},
+		) || !hasNumberAtAnyPath(eye,
+			[]string{"topometric_indices_8mm", "cki"},
+			[]string{"indices_zona_8mm", "cki"},
+		) || !hasNumberAtAnyPath(eye,
+			[]string{"corneal_rings", "zernike", "5mm", "z31_coma"},
+			[]string{"anéis_corneanos", "total_corneal_wfa_components_of_zernike", "diam_zone_5_mm", "z31_coma_um"},
+		) || !hasNumberAtAnyPath(eye,
+			[]string{"cataract_preop", "total_corneal_z40_6mm_um"},
+			[]string{"cataract_pre_op", "total_corneal_z40_6mm_um"},
 		) {
 			return true
 		}
@@ -347,6 +368,7 @@ func decodeAnalysis(raw string) (map[string]any, error) {
 	if json.Unmarshal([]byte(raw), &analysis) != nil || analysis == nil {
 		return nil, errors.New("o serviço de extração não retornou um JSON válido")
 	}
+	normalizeExtractionNotes(analysis)
 	dropMalformedOptionalExams(analysis)
 	normalized, err := json.Marshal(analysis)
 	if err != nil {
@@ -356,6 +378,21 @@ func decodeAnalysis(raw string) (map[string]any, error) {
 		return nil, err
 	}
 	return analysis, nil
+}
+
+// Models sometimes place the envelope metadata inside exams despite the
+// prompt. Move it back before validating the official exam keys.
+func normalizeExtractionNotes(analysis map[string]any) {
+	exams, ok := analysis["exams"].(map[string]any)
+	if !ok {
+		return
+	}
+	if notes, exists := exams["extraction_notes"]; exists {
+		if _, alreadyAtRoot := analysis["extraction_notes"]; !alreadyAtRoot {
+			analysis["extraction_notes"] = notes
+		}
+		delete(exams, "extraction_notes")
+	}
 }
 
 // A resposta de um exame isolado pode conter um payload vazio para outros
