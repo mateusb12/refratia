@@ -3,6 +3,7 @@ export type Eye = 'OD' | 'OS' | 'AO'
 export type ExamKey =
   | 'fundus_retinography'
   | 'iol_calculation'
+  | 'oct_retina'
   | 'pentacam_corneal_tomography'
   | 'specular_microscopy'
 
@@ -39,9 +40,9 @@ export interface IntakePreview {
 
 export function normalizeSavedAnalysis(analysis: IntakeAnalysis): IntakeAnalysis {
   const raw = analysis as any
-  const pentacam = raw.exams.pentacam_corneal_tomography
-  const iol = raw.exams.iol_calculation
-  const microscopy = raw.exams.specular_microscopy
+  const pentacam = raw.exams.pentacam_corneal_tomography ?? { source: [] }
+  const iol = raw.exams.iol_calculation ?? { source: [] }
+  const microscopy = raw.exams.specular_microscopy ?? { source: [] }
   const eyes = Object.fromEntries((['OD', 'OS'] as const).map((eye, index) => {
     const cornea = pentacam.eyes?.[eye] ?? {}
     const ectasia = cornea.belin_ambrosio ?? cornea.ectasia_reforcada_belin_ambrosio ?? {}
@@ -88,9 +89,9 @@ export function normalizeSavedAnalysis(analysis: IntakeAnalysis): IntakeAnalysis
         axial_length_mm: biometry.axial_length_mm ?? biometry.biometry?.al_mm,
         keratometry: {
           ...biometry.keratometry,
-          astigmatism_d: biometry.keratometry?.astigmatism_d
-            ?? biometry.anterior_cornea?.astig_diopters
-            ?? Number.parseFloat(biometry.anterior_cornea?.ast_d_deg),
+          // O protocolo proíbe usar Pentacam como fallback para o
+          // astigmatismo da biometria no Fluxo C.
+          astigmatism_d: biometry.keratometry?.astigmatism_d,
         },
       },
       endothelium: {

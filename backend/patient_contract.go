@@ -9,15 +9,9 @@ import (
 var officialExamKeys = map[string]bool{
 	"fundus_retinography":         true,
 	"iol_calculation":             true,
+	"oct_retina":                  true,
 	"pentacam_corneal_tomography": true,
 	"specular_microscopy":         true,
-}
-
-var requiredExamKeys = []string{
-	"fundus_retinography",
-	"iol_calculation",
-	"pentacam_corneal_tomography",
-	"specular_microscopy",
 }
 
 // patientJSONContract is the backend output contract. Exam payloads remain
@@ -59,15 +53,4 @@ func validatePatientJSON(raw string) error {
 		}
 	}
 	return nil
-}
-
-func missingRequiredExams(analysis map[string]any) []string {
-	exams, _ := analysis["exams"].(map[string]any)
-	missing := make([]string, 0)
-	for _, key := range requiredExamKeys {
-		if _, ok := exams[key]; !ok {
-			missing = append(missing, key)
-		}
-	}
-	return missing
 }

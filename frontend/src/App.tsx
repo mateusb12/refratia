@@ -83,24 +83,20 @@ function fileIcon(fileName: string) {
 const examLabels: Record<string, string> = {
   fundus_retinography: 'Retinografia de fundo de olho',
   iol_calculation: 'Cálculo de lente intraocular',
+  oct_retina: 'OCT de retina',
   pentacam_corneal_tomography: 'Tomografia corneana Pentacam',
   specular_microscopy: 'Microscopia especular',
 }
 
-const requiredIntakeExams = Object.keys(examLabels)
-
-function missingRequiredIntakeExams(analysis: IntakeAnalysis) {
-  return requiredIntakeExams.filter((key) => !analysis.exams?.[key as keyof IntakeAnalysis['exams']])
-}
-
 function IntakeCompletenessNotice({ analysis }: { analysis: IntakeAnalysis }) {
-  const missing = missingRequiredIntakeExams(analysis)
+  const found = Object.keys(analysis.exams ?? {})
+  const missing = Object.entries(examLabels).filter(([key]) => !found.includes(key)).map(([key, label]) => ({ key, label }))
   if (!missing.length) return null
   return (
     <div className="mt-4 rounded-xl border border-warning/40 bg-warning-soft p-4 text-sm text-text-secondary">
-      <strong className="text-warning">Análise parcial: faltam exames obrigatórios.</strong>
+      <strong className="text-warning">Análise parcial — dados não enviados.</strong>
       <p className="mb-0 mt-1 leading-relaxed">
-        O arquivo enviado foi analisado, mas este paciente não pode ser confirmado ainda. Faltam: {missing.map((key) => examLabels[key] ?? key).join(' · ')}.
+        Não é erro de contrato. Estes exames não foram identificados: {missing.map(({ label }) => label).join(' · ')}. A ausência limita apenas as etapas que dependem deles; a retinografia e o OCT são informativos conforme o fluxo.
       </p>
     </div>
   )
@@ -180,6 +176,17 @@ function IntakeAnalysisSummary({ analysis }: { analysis: IntakeAnalysis }) {
       {typeof notes.clinical_use_warning === 'string' && (
         <div className="rounded-xl border border-warning/30 bg-warning-soft p-4 text-sm text-text-secondary">
           <strong className="text-warning">Atenção:</strong> {notes.clinical_use_warning}
+        </div>
+      )}
+      {Array.isArray(notes.invalid_exams) && notes.invalid_exams.length > 0 && (
+        <div className="rounded-xl border border-danger/30 bg-danger-soft p-4 text-sm text-text-secondary">
+          <strong className="text-danger">Exames com estrutura incompleta:</strong>
+          <ul className="mb-0 mt-2 list-disc pl-5">
+            {notes.invalid_exams.map((item, index) => {
+              const invalid = item as Record<string, unknown>
+              return <li key={`${String(invalid.exam)}-${index}`}>{String(invalid.exam ?? 'Exame')} — {String(invalid.reason ?? 'motivo não informado')}</li>
+            })}
+          </ul>
         </div>
       )}
     </div>
@@ -271,11 +278,16 @@ function IntakeDocumentsDebug({ preview, localPreviews }: { preview: IntakePrevi
                       <tbody>
                         {contractAssessment.contract.fields.map((field) => {
                           const extracted = contractAssessment.extracted.includes(field)
+                          const informative = contractAssessment.contract.key === 'fundus_retinography'
+                            || contractAssessment.contract.key === 'oct_retina'
+                            || ['coma', 'z40'].includes(field.key)
+                          const conditional = ['acd', 'cell_density', 'astigmatism', 'astigmatism_axis'].includes(field.key)
+                          const missingTone = informative ? 'bg-surface-muted' : conditional ? 'bg-warning-soft/60' : 'bg-danger-soft/60'
                           return (
-                            <tr className={extracted ? 'bg-success-soft/60' : 'bg-danger-soft/60'} key={field.key}>
-                              <td className="px-3 py-2 text-base" title={extracted ? 'Campo extraído' : 'Campo ausente'}>{extracted ? '✅' : '❌'}</td>
-                              <td className={clsx('px-3 py-2 font-semibold', extracted ? 'text-success' : 'text-danger')}>{field.label}</td>
-                              <td className="max-w-[180px] truncate px-3 py-2 text-text-secondary">{extracted ? 'Identificado' : 'Não encontrado'}</td>
+                            <tr className={extracted ? 'bg-success-soft/60' : missingTone} key={field.key}>
+                              <td className="px-3 py-2 text-base" title={extracted ? 'Campo extraído' : informative ? 'Campo informativo ausente' : conditional ? 'Campo condicional ausente' : 'Campo ausente'}>{extracted ? '✅' : informative ? 'ℹ️' : conditional ? '⚠️' : '❌'}</td>
+                              <td className={clsx('px-3 py-2 font-semibold', extracted ? 'text-success' : informative ? 'text-text-secondary' : conditional ? 'text-warning' : 'text-danger')}>{field.label}</td>
+                              <td className="max-w-[180px] truncate px-3 py-2 text-text-secondary">{extracted ? 'Identificado' : informative ? 'Não avaliado' : conditional ? 'Depende do fluxo' : 'Não encontrado'}</td>
                             </tr>
                           )
                         })}
@@ -1558,11 +1570,6 @@ function App() {
 
   async function confirmIntake() {
     if (!intakePreview) return
-    const missing = missingRequiredIntakeExams(intakePreview.analysis)
-    if (missing.length) {
-      setIntakeMessage(`Análise parcial. Faltam: ${missing.map((key) => examLabels[key] ?? key).join(', ')}.`)
-      return
-    }
     setIntakeBusy(true)
     setIntakeMessage('')
     try {
@@ -2056,7 +2063,7 @@ function App() {
                       <pre className="m-0 max-h-[520px] overflow-auto border-t border-border p-3 text-xs leading-relaxed text-text-secondary">{JSON.stringify(intakePreview.analysis, null, 2)}</pre>
                     </details>
                     <div className="mt-4 flex flex-wrap gap-3">
-                      <PrimaryButton disabled={intakeBusy || missingRequiredIntakeExams(intakePreview.analysis).length > 0} onClick={confirmIntake}>{intakeBusy ? 'Salvando…' : 'Confirmar criação do caso'}</PrimaryButton>
+                      <PrimaryButton disabled={intakeBusy} onClick={confirmIntake}>{intakeBusy ? 'Salvando…' : 'Confirmar criação do caso'}</PrimaryButton>
                       <button className="rounded-[9px] border border-border-strong bg-surface px-4 py-[11px] text-sm font-semibold hover:border-danger hover:text-danger" disabled={intakeBusy} onClick={discardIntake} type="button">Descartar</button>
                     </div>
                   </div>

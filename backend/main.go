@@ -384,10 +384,6 @@ func confirmIntakeHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "rascunho inválido ou expirado")
 		return
 	}
-	if missing := missingRequiredExams(draft.Analysis); len(missing) > 0 {
-		writeError(w, http.StatusUnprocessableEntity, "análise parcial: faltam os exames " + strings.Join(missing, ", ") + ". O caso não pode ser confirmado ainda")
-		return
-	}
 	result := make([]intakeFile, 0, len(draft.Files))
 	keys := make([]string, 0, len(draft.Files))
 	for _, file := range draft.Files {

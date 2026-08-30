@@ -25,14 +25,16 @@ Organize o resultado como paciente_compilado.json:
 - facility: nome, descrição, endereço e telefone quando existirem;
 - conventions: OD, OS, AO, significado de null e separador decimal normalizado;
 - source_files: um item por arquivo com path igual ao nome recebido, exam, eye, páginas/dimensões e conteúdo por página quando identificável;
-- exams: use exatamente as chaves fundus_retinography, iol_calculation, pentacam_corneal_tomography e specular_microscopy quando aplicáveis. Inclua SOMENTE exames realmente evidenciados pelos arquivos; não crie chaves para exames ausentes. Cada exame deve ter source com os nomes dos arquivos correspondentes. Preserve aparelho, software, data/hora, qualidade, alertas, fonte e TODOS os campos, índices, medições, eixos, tabelas e cálculos legíveis. Separe olhos em eyes.OD e eyes.OS (ou AO quando realmente conjunto). Use nomes de campos técnicos em snake_case e inclua unidades no nome quando isso remover ambiguidade; não substitua a hierarquia específica do equipamento por um modelo genérico;
+- exams: use exatamente as chaves fundus_retinography, iol_calculation, oct_retina, pentacam_corneal_tomography e specular_microscopy quando aplicáveis. Inclua SOMENTE exames realmente evidenciados pelos arquivos; não crie chaves para exames ausentes. Cada exame deve ter source com os nomes dos arquivos correspondentes. Preserve aparelho, software, data/hora, qualidade, alertas, fonte e TODOS os campos, índices, medições, eixos, tabelas e cálculos legíveis. Separe olhos em eyes.OD e eyes.OS (ou AO quando realmente conjunto). Use nomes de campos técnicos em snake_case e inclua unidades no nome quando isso remover ambiguidade; não substitua a hierarquia específica do equipamento por um modelo genérico;
 - extraction_notes: method, scope, not_encoded e clinical_use_warning.
+- verificacao_identidade: uma entrada por documento, com nome/nascimento/timestamp lidos, confiança e método da comparação. Divergência de identidade deve ser explícita e nunca omitida.
 
 Contrato mínimo de campos por exame (não invente valores; quando não estiver no arquivo, registre como ausente):
 - pentacam_corneal_tomography: K1, K2, Km, astigmatismo corneano anterior, paquimetria do ponto mais fino, BAD-D, ARTmax, ISV, IVA, IHA, KI, CKI, TKC, coma Z31 zona 5 mm, ACD e Z40 zona 6 mm;
 - iol_calculation: comprimento axial, K1, K2, Km, astigmatismo e eixo da biometria, ACD, espessura do cristalino, white-to-white e refração alvo;
 - specular_microscopy: contagem/densidade endotelial;
 - fundus_retinography: ID do paciente, data/hora e achados/observações da imagem.
+- oct_retina: identificação, data/hora e achados/observações do OCT; é informativo e exclusivo do Fluxo C.
 Não inclua um exame no objeto "exams" apenas porque ele é esperado pelo protocolo: inclua somente exames evidenciados pelos arquivos enviados.
 
 Confronte identidade, datas e lateralidade entre os arquivos. Preserve avisos do equipamento e divergências do documento. Não resuma tabelas nem omita linhas repetidas por modelo de lente. Retorne somente um objeto JSON.`
@@ -339,13 +341,25 @@ func dropMalformedOptionalExams(analysis map[string]any) {
 		}
 		exam, ok := rawExam.(map[string]any)
 		if !ok {
+			recordMalformedExam(analysis, key, "payload não é um objeto")
 			delete(exams, key)
 			continue
 		}
 		if _, ok := exam["source"].([]any); !ok {
+			recordMalformedExam(analysis, key, "source ausente ou inválido")
 			delete(exams, key)
 		}
 	}
+}
+
+func recordMalformedExam(analysis map[string]any, examKey, reason string) {
+	notes, _ := analysis["extraction_notes"].(map[string]any)
+	if notes == nil {
+		notes = map[string]any{}
+		analysis["extraction_notes"] = notes
+	}
+	items, _ := notes["invalid_exams"].([]any)
+	notes["invalid_exams"] = append(items, map[string]any{"exam": examKey, "reason": reason})
 }
 
 func enrichSourceFiles(analysis map[string]any, files []uploadedFile) {

@@ -69,6 +69,15 @@ export const examContracts: Record<string, ExamContract> = {
       { key: 'timestamp', label: 'Data/hora do exame', paths: [['timestamp'], ['exam_datetime'], ['performed_at']] },
     ],
   },
+  oct_retina: {
+    key: 'oct_retina',
+    label: 'OCT de retina',
+    fields: [
+      { key: 'patient', label: 'Identificação do paciente', paths: [['patient'], ['patient_name'], ['identification', 'name'], ['id']] },
+      { key: 'findings', label: 'Achados / observações', paths: [['findings'], ['observations'], ['observacoes'], ['content', 'findings']] },
+      { key: 'timestamp', label: 'Data/hora do exame', paths: [['timestamp'], ['exam_datetime'], ['performed_at']] },
+    ],
+  },
 }
 
 function hasValue(value: unknown) {
@@ -93,9 +102,13 @@ export function assessExamContract(analysis: IntakeAnalysis, source: Record<stri
   if (!contract) return null
   const exam = analysis.exams[contract.key as keyof IntakeAnalysis['exams']]
   const eye = typeof source.eye === 'string' ? source.eye : undefined
-  const payload = eye && exam?.eyes?.[eye as keyof NonNullable<typeof exam.eyes>]
-    ? exam.eyes[eye as keyof NonNullable<typeof exam.eyes>]
-    : exam
+  const eyePayload = eye && exam?.eyes?.[eye as keyof NonNullable<typeof exam.eyes>]
+  // Biometria AO frequentemente entrega OD e OS separados, sem um bloco AO.
+  // Para auditoria de um arquivo AO, considerar os dois olhos evita falso
+  // negativo sem misturar valores em um único olho.
+  const payload = eyePayload ?? (eye === 'AO' && exam?.eyes
+    ? Object.values(exam.eyes).reduce<Record<string, unknown>>((merged, value) => ({ ...merged, ...(value ?? {}) }), {})
+    : exam)
   const extracted = contract.fields.filter((field) => field.paths.some((path) => hasValue(valueAtPath(payload, path))))
   return { contract, extracted, missing: contract.fields.filter((field) => !extracted.includes(field)) }
 }

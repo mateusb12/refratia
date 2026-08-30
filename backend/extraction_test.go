@@ -58,15 +58,6 @@ func TestDecodeAnalysisAllowsSingleExamWithMalformedAbsentExam(t *testing.T) {
 	}
 }
 
-func TestMissingRequiredExamsMarksPartialAnalysis(t *testing.T) {
-	missing := missingRequiredExams(map[string]any{"exams": map[string]any{
-		"fundus_retinography": map[string]any{"source": []any{"olho.jpeg"}},
-	}})
-	if len(missing) != 3 {
-		t.Fatalf("expected three missing exams, got %v", missing)
-	}
-}
-
 func TestPentacamRepairFillsOnlyMissingMetrics(t *testing.T) {
 	analysis := map[string]any{"exams": map[string]any{
 		"pentacam_corneal_tomography": map[string]any{
