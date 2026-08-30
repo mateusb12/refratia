@@ -101,11 +101,25 @@ function IntakeCompletenessNotice({ analysis }: { analysis: IntakeAnalysis }) {
   const found = Object.keys(analysis.exams ?? {})
   const missing = Object.entries(examLabels).filter(([key]) => !found.includes(key)).map(([key, label]) => ({ key, label }))
   if (!missing.length) return null
+  const informativeKeys = new Set(['fundus_retinography', 'oct_retina'])
+  const missingRequired = missing.filter(({ key }) => !informativeKeys.has(key))
+  const missingInformative = missing.filter(({ key }) => informativeKeys.has(key))
+  if (!missingRequired.length) {
+    return (
+      <div className="mt-4 rounded-xl border border-border bg-surface-muted p-4 text-sm text-text-secondary">
+        <strong className="text-primary">Dados informativos pendentes.</strong>
+        <p className="mb-0 mt-1 leading-relaxed">
+          Não foram enviados: {missingInformative.map(({ label }) => label).join(' · ')}. Conforme o protocolo, esses exames são informativos e sua ausência não altera a conduta cirúrgica.
+        </p>
+      </div>
+    )
+  }
   return (
     <div className="mt-4 rounded-xl border border-warning/40 bg-warning-soft p-4 text-sm text-text-secondary">
-      <strong className="text-warning">Análise parcial — dados não enviados.</strong>
+      <strong className="text-warning">Análise parcial — dados necessários não enviados.</strong>
       <p className="mb-0 mt-1 leading-relaxed">
-        Não é erro de contrato. Estes exames não foram identificados: {missing.map(({ label }) => label).join(' · ')}. A ausência limita apenas as etapas que dependem deles; a retinografia e o OCT são informativos conforme o fluxo.
+        Estes exames não foram identificados: {missingRequired.map(({ label }) => label).join(' · ')}. A ausência limita apenas as etapas que dependem deles.
+        {missingInformative.length > 0 && ` Também não foram enviados os exames informativos: ${missingInformative.map(({ label }) => label).join(' · ')}; isso não altera a conduta cirúrgica.`}
       </p>
     </div>
   )
