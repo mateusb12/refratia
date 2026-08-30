@@ -62,6 +62,15 @@ function formatNumber(value: unknown, options?: Intl.NumberFormatOptions) {
   return typeof value === 'number' && Number.isFinite(value) ? value.toLocaleString('pt-BR', options) : 'não informado'
 }
 
+function formatContractValue(value: unknown) {
+  if (value === null || value === undefined || value === '') return 'não informado'
+  if (typeof value === 'object') {
+    if ('normalized' in value) return String((value as { normalized?: unknown }).normalized ?? 'não informado')
+    return JSON.stringify(value)
+  }
+  return String(value)
+}
+
 function normalizeSavedReport(analysis: IntakeAnalysis): ReportData {
   const raw = normalizeSavedAnalysis(analysis) as any
 
@@ -287,7 +296,7 @@ function IntakeDocumentsDebug({ preview, localPreviews }: { preview: IntakePrevi
                             <tr className={extracted ? 'bg-success-soft/60' : missingTone} key={field.key}>
                               <td className="px-3 py-2 text-base" title={extracted ? 'Campo extraído' : informative ? 'Campo informativo ausente' : conditional ? 'Campo condicional ausente' : 'Campo ausente'}>{extracted ? '✅' : informative ? 'ℹ️' : conditional ? '⚠️' : '❌'}</td>
                               <td className={clsx('px-3 py-2 font-semibold', extracted ? 'text-success' : informative ? 'text-text-secondary' : conditional ? 'text-warning' : 'text-danger')}>{field.label}</td>
-                              <td className="max-w-[180px] truncate px-3 py-2 text-text-secondary">{extracted ? 'Identificado' : informative ? 'Não avaliado' : conditional ? 'Depende do fluxo' : 'Não encontrado'}</td>
+                              <td className="max-w-[180px] truncate px-3 py-2 text-text-secondary" title={extracted ? formatContractValue(contractAssessment.values[field.key]) : undefined}>{extracted ? formatContractValue(contractAssessment.values[field.key]) : informative ? 'Não avaliado' : conditional ? 'Depende do fluxo' : 'Não encontrado'}</td>
                             </tr>
                           )
                         })}

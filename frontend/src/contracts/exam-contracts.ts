@@ -114,6 +114,10 @@ export function assessExamContract(analysis: IntakeAnalysis, source: Record<stri
           ...Object.values(exam.eyes).reduce<Record<string, unknown>>((merged, value) => ({ ...merged, ...(value ?? {}) }), {}),
         }
       : exam
-  const extracted = contract.fields.filter((field) => field.paths.some((path) => hasValue(valueAtPath(payload, path))))
-  return { contract, extracted, missing: contract.fields.filter((field) => !extracted.includes(field)) }
+  const values = Object.fromEntries(contract.fields.map((field) => [
+    field.key,
+    field.paths.map((path) => valueAtPath(payload, path)).find(hasValue),
+  ]))
+  const extracted = contract.fields.filter((field) => hasValue(values[field.key]))
+  return { contract, extracted, values, missing: contract.fields.filter((field) => !extracted.includes(field)) }
 }
