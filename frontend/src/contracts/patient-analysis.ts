@@ -48,7 +48,8 @@ export function normalizeSavedAnalysis(analysis: IntakeAnalysis): IntakeAnalysis
     const ectasia = cornea.belin_ambrosio ?? cornea.ectasia_reforcada_belin_ambrosio ?? {}
     const biometry = iol.eyes?.[eye] ?? iol.eyes?.AO?.[eye] ?? {}
     const endothelium = microscopy.eyes?.[eye] ?? {}
-    const coma = cornea.anéis_corneanos?.total_corneal_wfa_components_of_zernike?.diam_zone_5_mm?.z31_coma_um
+    const coma = cornea.corneal_rings?.zernike?.['5mm']?.z31_coma
+      ?? cornea.anéis_corneanos?.total_corneal_wfa_components_of_zernike?.diam_zone_5_mm?.z31_coma_um
 
     return [eye, {
       ...cornea,

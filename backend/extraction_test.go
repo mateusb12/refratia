@@ -1,10 +1,25 @@
 package main
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 )
+
+func TestPreparedPromptLabelIncludesPDFPage(t *testing.T) {
+	label := preparedPromptLabel(preparedFile{File: uploadedFile{Metadata: intakeFile{Filename: "exame.pdf"}}, Page: 8})
+	if label != "Arquivo: exame.pdf — página 8" {
+		t.Fatalf("unexpected page label: %q", label)
+	}
+}
+
+func TestPrepareExtractionFilesRejectsInvalidPDF(t *testing.T) {
+	_, err := prepareExtractionFiles(context.Background(), []uploadedFile{{Metadata: intakeFile{Filename: "exame.pdf", ContentType: "application/pdf"}, Data: []byte("not a pdf")}})
+	if err == nil {
+		t.Fatal("expected invalid PDF to fail during preprocessing")
+	}
+}
 
 func TestStoredAnalysisRejectsDifferentFile(t *testing.T) {
 	files := []intakeFile{{Filename: "exame.pdf", SHA256: "hash-correto", Key: "drafts/intake/exame.pdf"}}

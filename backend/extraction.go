@@ -96,7 +96,11 @@ func intakeMetadata(files []uploadedFile) []intakeFile {
 }
 
 func extractPatient(ctx context.Context, files []uploadedFile) (map[string]any, error) {
-	output, err := requestOpenAIJSON(ctx, files, extractionPrompt, 40000)
+	prepared, err := prepareExtractionFiles(ctx, files)
+	if err != nil {
+		return nil, err
+	}
+	output, err := requestOpenAIPreparedJSON(ctx, prepared, extractionPrompt, 40000)
 	if err != nil {
 		return nil, err
 	}
@@ -105,7 +109,7 @@ func extractPatient(ctx context.Context, files []uploadedFile) (map[string]any, 
 		return nil, err
 	}
 	if repairFiles := pentacamFilesNeedingRepair(analysis, files); len(repairFiles) > 0 {
-		if repairOutput, repairErr := requestOpenAIJSON(ctx, repairFiles, pentacamRepairPrompt, 5000); repairErr == nil {
+		if repairOutput, repairErr := requestOpenAIPreparedJSON(ctx, prepareRepairFiles(repairFiles, prepared), pentacamRepairPrompt, 5000); repairErr == nil {
 			var repair map[string]any
 			if json.Unmarshal([]byte(repairOutput), &repair) == nil {
 				mergePentacamRepair(analysis, repair)
@@ -116,7 +120,29 @@ func extractPatient(ctx context.Context, files []uploadedFile) (map[string]any, 
 	return analysis, nil
 }
 
+func prepareRepairFiles(files []uploadedFile, prepared []preparedFile) []preparedFile {
+	wanted := map[string]bool{}
+	for _, file := range files {
+		wanted[file.Metadata.Filename] = true
+	}
+	result := make([]preparedFile, 0)
+	for _, file := range prepared {
+		if wanted[file.File.Metadata.Filename] {
+			result = append(result, file)
+		}
+	}
+	return result
+}
+
 func requestOpenAIJSON(ctx context.Context, files []uploadedFile, prompt string, maxOutputTokens int) (string, error) {
+	prepared := make([]preparedFile, 0, len(files))
+	for _, file := range files {
+		prepared = append(prepared, preparedFile{File: file})
+	}
+	return requestOpenAIPreparedJSON(ctx, prepared, prompt, maxOutputTokens)
+}
+
+func requestOpenAIPreparedJSON(ctx context.Context, files []preparedFile, prompt string, maxOutputTokens int) (string, error) {
 	apiKey := os.Getenv("OPENAI_API_KEY")
 	if apiKey == "" {
 		return "", errors.New("extração indisponível: OPENAI_API_KEY não configurada")
@@ -124,8 +150,13 @@ func requestOpenAIJSON(ctx context.Context, files []uploadedFile, prompt string,
 
 	content := make([]map[string]any, 0, len(files)*2+1)
 	content = append(content, map[string]any{"type": "input_text", "text": prompt})
-	for _, file := range files {
-		content = append(content, map[string]any{"type": "input_text", "text": "Arquivo seguinte: " + file.Metadata.Filename})
+	for _, prepared := range files {
+		file := prepared.File
+		content = append(content, map[string]any{"type": "input_text", "text": preparedPromptLabel(prepared)})
+		if prepared.TextLayer != "" {
+			content = append(content, map[string]any{"type": "input_text", "text": "Camada textual extraída deste documento:\n" + prepared.TextLayer})
+			continue
+		}
 		dataURL := "data:" + file.Metadata.ContentType + ";base64," + base64.StdEncoding.EncodeToString(file.Data)
 		if strings.HasPrefix(file.Metadata.ContentType, "image/") {
 			content = append(content, map[string]any{"type": "input_image", "image_url": dataURL, "detail": "high"})

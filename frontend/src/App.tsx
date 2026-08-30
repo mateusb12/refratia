@@ -1704,7 +1704,7 @@ function App() {
             </div>
             <p className="mb-0 mt-1.5 max-w-[690px] text-sm leading-relaxed text-text-secondary">
               {reportData
-                ? `Nascimento: ${isRealCase ? '12/05/1967' : reportData.patient.birth_date} · Dados clínicos importados`
+                ? `Nascimento: ${isRealCase ? '12/05/1967' : readableBirthDate(reportData.patient.birth_date)} · Dados clínicos importados`
                 : 'Confira documentos, dados extraídos, cálculos e a justificativa da recomendação preliminar.'}
             </p>
           </div>

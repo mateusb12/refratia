@@ -33,7 +33,7 @@ export const examContracts: Record<string, ExamContract> = {
       { key: 'cki', label: 'CKI', paths: [['topometric_indices_8mm', 'cki'], ['indices_zona_8mm', 'cki']] },
       { key: 'tkc', label: 'TKC', paths: [['topometric_indices_8mm', 'tkc'], ['indices_zona_8mm', 'tkc']] },
       { key: 'coma', label: 'Coma Z31 — zona 5 mm', paths: [['corneal_rings', 'zernike', '5mm', 'z31_coma'], ['anéis_corneanos', 'total_corneal_wfa_components_of_zernike', 'diam_zone_5_mm', 'z31_coma_um']] },
-      { key: 'acd', label: 'ACD — Cataract Pre-OP', paths: [['cataract_preop', 'acd_internal_external_mm'], ['cataract_preop', 'acd_mm'], ['cataract_pre_op', 'acd_mm']] },
+      { key: 'acd', label: 'ACD — Cataract Pre-OP', paths: [['cataract_preop', 'acd_internal_external_mm'], ['cataract_preop', 'acd_mm'], ['cataract_pre_op', 'acd_mm'], ['anterior_segment', 'internal_anterior_chamber_depth_mm']] },
       { key: 'z40', label: 'Z40 — zona 6 mm', paths: [['cataract_preop', 'total_corneal_z40_6mm_um'], ['cataract_pre_op', 'total_corneal_z40_6mm_um']] },
     ],
   },
@@ -64,9 +64,9 @@ export const examContracts: Record<string, ExamContract> = {
     key: 'fundus_retinography',
     label: 'Retinografia',
     fields: [
-      { key: 'id', label: 'ID do paciente', paths: [['id'], ['patient_id'], ['identification', 'id']] },
+      { key: 'id', label: 'Nome/ID do paciente', paths: [['id'], ['patient_id'], ['identification', 'id'], ['identification', 'name']] },
       { key: 'findings', label: 'Achados / observações', paths: [['findings'], ['observations'], ['observacoes'], ['content', 'findings']] },
-      { key: 'timestamp', label: 'Data/hora do exame', paths: [['timestamp'], ['exam_datetime'], ['performed_at']] },
+      { key: 'timestamp', label: 'Data/hora do exame', paths: [['timestamp'], ['exam_datetime'], ['performed_at'], ['time'], ['metadata', 'time']] },
     ],
   },
   oct_retina: {
