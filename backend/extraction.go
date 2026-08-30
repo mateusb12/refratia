@@ -46,6 +46,13 @@ Retorne somente este objeto JSON, mantendo null apenas quando o valor realmente 
 
 Use a lateralidade impressa no documento. Não misture OD e OS. Em "Ectasia Reforçada Belin / Ambrósio", leia D no rodapé direito e ARTmax no quadro "Índice de Progressão"; não confunda ARTmax com Mín, Méd ou Máx. Em "Topométrico / Estadiamento KC", leia ISV, IVA, IHA, KI, CKI e TKC. Em "Paquimétrico", leia a espessura do ponto mais fino. Em "Anéis Corneanos", leia Z31 coma nas zonas 5 mm e 6 mm. Em "Cataract Pre-OP", leia Z40 na zona 6 mm. Se TKC estiver visivelmente impresso como traço, retorne "—" para registrar que o campo foi localizado, mas não há classificação; use null somente se o campo não puder ser localizado.`
 
+const iolRepairPrompt = `Analise somente as imagens do PDF de biometria/cálculo de LIO enviado. Examine todas as páginas, principalmente a página que contém os blocos OD e OS no topo. Extraia os valores impressos separadamente para cada olho. Não use valores do Pentacam nem faça cálculos.
+
+Retorne somente este objeto JSON, usando null apenas quando o campo não estiver legível:
+{"eyes":{"OD":{"axial_length_mm":null,"keratometry":{"k1_d":null,"k1_axis_deg":null,"k2_d":null,"k2_axis_deg":null,"mean_k_d":null,"astigmatism_d":null,"astigmatism_axis_deg":null},"anterior_chamber_depth_mm":null,"aqueous_depth_mm":null,"lens_thickness_mm":null,"white_to_white_mm":null,"target_refraction_d":null},"OS":{"axial_length_mm":null,"keratometry":{"k1_d":null,"k1_axis_deg":null,"k2_d":null,"k2_axis_deg":null,"mean_k_d":null,"astigmatism_d":null,"astigmatism_axis_deg":null},"anterior_chamber_depth_mm":null,"aqueous_depth_mm":null,"lens_thickness_mm":null,"white_to_white_mm":null,"target_refraction_d":null}}}
+
+No documento EyeSuite, leia AL como comprimento axial, K1/K2/K como ceratometria, -AST como astigmatismo, ACD, LT, WTW e Target Refraction. Preserve sinais negativos, casas decimais e eixos. A refração alvo pode estar impressa uma vez para cada olho ou uma vez para o exame; nesse caso replique o mesmo valor nos dois olhos.`
+
 type uploadedFile struct {
 	Metadata intakeFile
 	Data     []byte
@@ -113,6 +120,14 @@ func extractPatient(ctx context.Context, files []uploadedFile) (map[string]any, 
 			var repair map[string]any
 			if json.Unmarshal([]byte(repairOutput), &repair) == nil {
 				mergePentacamRepair(analysis, repair)
+			}
+		}
+	}
+	if repairFiles := iolFilesNeedingRepair(analysis, files); len(repairFiles) > 0 {
+		if repairOutput, repairErr := requestOpenAIPreparedJSON(ctx, prepareRepairFiles(repairFiles, prepared), iolRepairPrompt, 5000); repairErr == nil {
+			var repair map[string]any
+			if json.Unmarshal([]byte(repairOutput), &repair) == nil {
+				mergeIOLRepair(analysis, repair)
 			}
 		}
 	}
@@ -246,6 +261,64 @@ func pentacamFilesNeedingRepair(analysis map[string]any, files []uploadedFile) [
 		}
 	}
 	return result
+}
+
+func iolFilesNeedingRepair(analysis map[string]any, files []uploadedFile) []uploadedFile {
+	exams, _ := analysis["exams"].(map[string]any)
+	exam, _ := exams["iol_calculation"].(map[string]any)
+	if exam == nil || !iolNeedsRepair(exam) {
+		return nil
+	}
+	wanted := map[string]bool{}
+	if sources, ok := exam["source"].([]any); ok {
+		for _, source := range sources {
+			wanted[filepath.Base(fmt.Sprint(source))] = true
+		}
+	}
+	result := make([]uploadedFile, 0, len(wanted))
+	for _, file := range files {
+		if wanted[file.Metadata.Filename] {
+			result = append(result, file)
+		}
+	}
+	return result
+}
+
+func iolNeedsRepair(exam map[string]any) bool {
+	eyes, _ := exam["eyes"].(map[string]any)
+	for _, eyeName := range []string{"OD", "OS"} {
+		eye, _ := eyes[eyeName].(map[string]any)
+		if !hasNumberAtAnyPath(eye, []string{"axial_length_mm"}) ||
+			!hasNumberAtAnyPath(eye, []string{"keratometry", "k1_d"}) ||
+			!hasNumberAtAnyPath(eye, []string{"keratometry", "k2_d"}) ||
+			!hasNumberAtAnyPath(eye, []string{"keratometry", "mean_k_d"}) ||
+			!hasNumberAtAnyPath(eye, []string{"keratometry", "astigmatism_d"}) ||
+			!hasNumberAtAnyPath(eye, []string{"keratometry", "astigmatism_axis_deg"}) ||
+			(!hasNumberAtAnyPath(eye, []string{"anterior_chamber_depth_mm"}) && !hasNumberAtAnyPath(eye, []string{"aqueous_depth_mm"})) ||
+			!hasNumberAtAnyPath(eye, []string{"lens_thickness_mm"}) ||
+			!hasNumberAtAnyPath(eye, []string{"white_to_white_mm"}) ||
+			!hasNumberAtAnyPath(eye, []string{"target_refraction_d"}) {
+			return true
+		}
+	}
+	return false
+}
+
+func mergeIOLRepair(analysis, repair map[string]any) {
+	exams, _ := analysis["exams"].(map[string]any)
+	target, _ := exams["iol_calculation"].(map[string]any)
+	targetEyes, _ := target["eyes"].(map[string]any)
+	repairEyes, _ := repair["eyes"].(map[string]any)
+	if targetEyes == nil || repairEyes == nil {
+		return
+	}
+	for _, eyeName := range []string{"OD", "OS"} {
+		targetEye, _ := targetEyes[eyeName].(map[string]any)
+		repairEye, _ := repairEyes[eyeName].(map[string]any)
+		if targetEye != nil && repairEye != nil {
+			mergeMissingValues(targetEye, repairEye)
+		}
+	}
 }
 
 func pentacamExam(analysis map[string]any) map[string]any {

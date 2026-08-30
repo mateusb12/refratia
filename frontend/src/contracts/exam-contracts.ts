@@ -106,9 +106,14 @@ export function assessExamContract(analysis: IntakeAnalysis, source: Record<stri
   // Biometria AO frequentemente entrega OD e OS separados, sem um bloco AO.
   // Para auditoria de um arquivo AO, considerar os dois olhos evita falso
   // negativo sem misturar valores em um único olho.
-  const payload = eyePayload ?? (eye === 'AO' && exam?.eyes
-    ? Object.values(exam.eyes).reduce<Record<string, unknown>>((merged, value) => ({ ...merged, ...(value ?? {}) }), {})
-    : exam)
+  const payload = eyePayload
+    ? { ...exam, ...eyePayload }
+    : eye === 'AO' && exam?.eyes
+      ? {
+          ...exam,
+          ...Object.values(exam.eyes).reduce<Record<string, unknown>>((merged, value) => ({ ...merged, ...(value ?? {}) }), {}),
+        }
+      : exam
   const extracted = contract.fields.filter((field) => field.paths.some((path) => hasValue(valueAtPath(payload, path))))
   return { contract, extracted, missing: contract.fields.filter((field) => !extracted.includes(field)) }
 }

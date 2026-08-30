@@ -132,3 +132,26 @@ func TestPentacamRepairFillsOnlyMissingMetrics(t *testing.T) {
 		t.Fatal("repair must not overwrite an existing extracted value")
 	}
 }
+
+func TestIOLRepairFillsMissingMetricsWithoutOverwriting(t *testing.T) {
+	analysis := map[string]any{"exams": map[string]any{
+		"iol_calculation": map[string]any{
+			"source": []any{"bio.pdf"},
+			"eyes": map[string]any{
+				"OD": map[string]any{"axial_length_mm": 24.6},
+				"OS": map[string]any{},
+			},
+		},
+	}}
+	if !iolNeedsRepair(analysis["exams"].(map[string]any)["iol_calculation"].(map[string]any)) {
+		t.Fatal("expected incomplete IOL payload to need repair")
+	}
+	mergeIOLRepair(analysis, map[string]any{"eyes": map[string]any{
+		"OD": map[string]any{"axial_length_mm": 99.0, "keratometry": map[string]any{"k1_d": 43.68}},
+		"OS": map[string]any{"axial_length_mm": 24.74},
+	}})
+	od := analysis["exams"].(map[string]any)["iol_calculation"].(map[string]any)["eyes"].(map[string]any)["OD"].(map[string]any)
+	if od["axial_length_mm"] != 24.6 || od["keratometry"].(map[string]any)["k1_d"] != 43.68 {
+		t.Fatal("IOL repair should preserve existing values and fill missing ones")
+	}
+}
