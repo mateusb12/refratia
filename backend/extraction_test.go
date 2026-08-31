@@ -155,3 +155,38 @@ func TestIOLRepairFillsMissingMetricsWithoutOverwriting(t *testing.T) {
 		t.Fatal("IOL repair should preserve existing values and fill missing ones")
 	}
 }
+
+func TestNormalizeExtractionMetadataMovesIdentityVerification(t *testing.T) {
+	analysis := map[string]any{
+		"exams": map[string]any{
+			"pentacam_corneal_tomography": map[string]any{
+				"source": []any{"pentacam.pdf"},
+			},
+			"verificacao_identidade": []any{
+				map[string]any{
+					"nome":       "ROLMEY ARANTES SILVA",
+					"nascimento": "05/12/1967",
+				},
+			},
+		},
+	}
+
+	normalizeExtractionMetadata(analysis)
+
+	if _, exists := analysis["verificacao_identidade"]; !exists {
+		t.Fatal("verificacao_identidade deveria ter sido movida para a raiz")
+	}
+
+	exams, ok := analysis["exams"].(map[string]any)
+	if !ok {
+		t.Fatal("exams deveria continuar sendo um objeto")
+	}
+
+	if _, exists := exams["verificacao_identidade"]; exists {
+		t.Fatal("verificacao_identidade não pode permanecer dentro de exams")
+	}
+
+	if _, exists := exams["pentacam_corneal_tomography"]; !exists {
+		t.Fatal("o exame real não pode ser removido pela normalização")
+	}
+}

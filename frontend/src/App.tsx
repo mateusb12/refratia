@@ -1609,7 +1609,11 @@ function App() {
         analysisKey: result.analysisKey,
       }
       setSavedCases((cases) => [newCase, ...cases.filter((item) => item.caseId !== newCase.caseId)])
-      setIntakeMessage(`Caso criado (${result.caseId}). Arquivos e paciente_compilado.json salvos no Tigris.`)
+      setIntakeMessage(
+        result.action === 'updated'
+          ? `Paciente atualizado (${result.caseId}). Os novos exames foram incorporados ao caso existente.`
+          : `Novo paciente criado (${result.caseId}). Arquivos e paciente_compilado.json salvos no Tigris.`,
+      )
       setIntakeFiles([])
       setIntakeLocalPreviews((current) => {
         Object.values(current).forEach((url) => URL.revokeObjectURL(url))

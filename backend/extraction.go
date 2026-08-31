@@ -441,7 +441,8 @@ func decodeAnalysis(raw string) (map[string]any, error) {
 	if json.Unmarshal([]byte(raw), &analysis) != nil || analysis == nil {
 		return nil, errors.New("o serviço de extração não retornou um JSON válido")
 	}
-	normalizeExtractionNotes(analysis)
+	normalizeExtractionMetadata(analysis)
+	normalizePatientIdentityFields(analysis)
 	dropMalformedOptionalExams(analysis)
 	normalized, err := json.Marshal(analysis)
 	if err != nil {
@@ -455,16 +456,26 @@ func decodeAnalysis(raw string) (map[string]any, error) {
 
 // Models sometimes place the envelope metadata inside exams despite the
 // prompt. Move it back before validating the official exam keys.
-func normalizeExtractionNotes(analysis map[string]any) {
+func normalizeExtractionMetadata(analysis map[string]any) {
 	exams, ok := analysis["exams"].(map[string]any)
 	if !ok {
 		return
 	}
-	if notes, exists := exams["extraction_notes"]; exists {
-		if _, alreadyAtRoot := analysis["extraction_notes"]; !alreadyAtRoot {
-			analysis["extraction_notes"] = notes
+
+	for _, key := range []string{
+		"extraction_notes",
+		"verificacao_identidade",
+	} {
+		value, exists := exams[key]
+		if !exists {
+			continue
 		}
-		delete(exams, "extraction_notes")
+
+		if _, alreadyAtRoot := analysis[key]; !alreadyAtRoot {
+			analysis[key] = value
+		}
+
+		delete(exams, key)
 	}
 }
 

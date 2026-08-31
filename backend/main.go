@@ -359,60 +359,158 @@ func confirmIntakeHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "rascunho inválido")
 		return
 	}
-	caseID := "case-" + strings.TrimPrefix(request.IntakeID, "intake-")
-	analysisKey := fmt.Sprintf("cases/%s/paciente_compilado.json", caseID)
+
 	client, storageErr := storageClient(r.Context())
 	if storageErr != nil {
 		writeError(w, http.StatusInternalServerError, "storage indisponível")
 		return
 	}
+
 	bucket := os.Getenv("BUCKET_NAME")
+
+	// Retry da mesma confirmação deve devolver exatamente o case já resolvido,
+	// inclusive quando aquele intake foi incorporado em um paciente preexistente.
+	if receipt, ok := loadConfirmationReceipt(r.Context(), client, bucket, request.IntakeID); ok {
+		writeConfirmation(w, receipt.CaseID, receipt.AnalysisKey, receipt.Action)
+		return
+	}
+
+	defaultCaseID := "case-" + strings.TrimPrefix(request.IntakeID, "intake-")
+	defaultAnalysisKey := fmt.Sprintf("cases/%s/paciente_compilado.json", defaultCaseID)
 	draftKey := fmt.Sprintf("drafts/%s/intake.json", request.IntakeID)
-	object, getErr := client.GetObject(r.Context(), &s3.GetObjectInput{Bucket: aws.String(bucket), Key: aws.String(draftKey)})
+
+	object, getErr := client.GetObject(r.Context(), &s3.GetObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(draftKey),
+	})
 	if getErr != nil {
-		if _, headErr := client.HeadObject(r.Context(), &s3.HeadObjectInput{Bucket: aws.String(bucket), Key: aws.String(analysisKey)}); headErr == nil {
-			writeConfirmation(w, caseID, analysisKey)
+		// Compatibilidade com confirmações criadas antes do receipt.
+		if _, headErr := client.HeadObject(r.Context(), &s3.HeadObjectInput{
+			Bucket: aws.String(bucket),
+			Key:    aws.String(defaultAnalysisKey),
+		}); headErr == nil {
+			writeConfirmation(w, defaultCaseID, defaultAnalysisKey, "created")
 			return
 		}
+
 		writeError(w, http.StatusNotFound, "rascunho não encontrado")
 		return
 	}
+
 	var draft storedIntake
-	decodeErr := json.NewDecoder(io.LimitReader(object.Body, maxAnalysisSize+(1<<20))).Decode(&draft)
+	decodeErr := json.NewDecoder(
+		io.LimitReader(object.Body, maxAnalysisSize+(1<<20)),
+	).Decode(&draft)
 	object.Body.Close()
-	if decodeErr != nil || time.Since(draft.CreatedAt) > 24*time.Hour || validateStoredAnalysis(draft.Analysis, draft.Files) != nil {
+
+	if decodeErr != nil ||
+		time.Since(draft.CreatedAt) > 24*time.Hour ||
+		validateStoredAnalysis(draft.Analysis, draft.Files) != nil {
 		writeError(w, http.StatusBadRequest, "rascunho inválido ou expirado")
 		return
 	}
+
+	caseID := defaultCaseID
+	analysisKey := defaultAnalysisKey
+	action := "created"
+
+	var existingAnalysis map[string]any
+
+	existingCaseID, existing, found, findErr := findExistingPatientCase(
+		r.Context(),
+		client,
+		bucket,
+		draft.Analysis,
+	)
+	if findErr != nil {
+		writeError(w, http.StatusBadGateway, "não foi possível verificar pacientes existentes")
+		return
+	}
+
+	if found {
+		caseID = existingCaseID
+		analysisKey = fmt.Sprintf("cases/%s/paciente_compilado.json", caseID)
+		existingAnalysis = existing
+		action = "updated"
+	}
+
 	result := make([]intakeFile, 0, len(draft.Files))
-	keys := make([]string, 0, len(draft.Files))
+	copiedKeys := make([]string, 0, len(draft.Files))
+
 	for _, file := range draft.Files {
 		key := fmt.Sprintf("cases/%s/%s", caseID, filepath.Base(file.Key))
+
 		_, copyErr := client.CopyObject(r.Context(), &s3.CopyObjectInput{
-			Bucket: aws.String(bucket), Key: aws.String(key), CopySource: aws.String(url.PathEscape(bucket + "/" + file.Key)), ContentType: aws.String(file.ContentType), MetadataDirective: "REPLACE",
+			Bucket:            aws.String(bucket),
+			Key:               aws.String(key),
+			CopySource:        aws.String(url.PathEscape(bucket + "/" + file.Key)),
+			ContentType:       aws.String(file.ContentType),
+			MetadataDirective: "REPLACE",
 		})
 		if copyErr != nil {
-			cleanupObjects(r.Context(), client, keys)
+			cleanupObjects(r.Context(), client, copiedKeys)
 			writeError(w, http.StatusBadGateway, "não foi possível confirmar os arquivos")
 			return
 		}
-		keys = append(keys, key)
+
+		copiedKeys = append(copiedKeys, key)
 		file.Key = key
 		result = append(result, file)
 	}
+
 	setStoredPaths(draft.Analysis, result)
-	compiled, marshalErr := json.MarshalIndent(draft.Analysis, "", "  ")
+
+	finalAnalysis := draft.Analysis
+	if existingAnalysis != nil {
+		finalAnalysis = mergePatientCase(existingAnalysis, draft.Analysis)
+	}
+
+	compiled, marshalErr := json.MarshalIndent(finalAnalysis, "", "  ")
 	if marshalErr != nil {
-		cleanupObjects(r.Context(), client, keys)
+		cleanupObjects(r.Context(), client, copiedKeys)
 		writeError(w, http.StatusInternalServerError, "não foi possível montar o JSON compilado")
 		return
 	}
+
 	_, putErr := client.PutObject(r.Context(), &s3.PutObjectInput{
-		Bucket: aws.String(bucket), Key: aws.String(analysisKey), Body: bytes.NewReader(compiled), ContentType: aws.String("application/json"),
+		Bucket:      aws.String(bucket),
+		Key:         aws.String(analysisKey),
+		Body:        bytes.NewReader(compiled),
+		ContentType: aws.String("application/json"),
 	})
 	if putErr != nil {
-		cleanupObjects(r.Context(), client, keys)
+		cleanupObjects(r.Context(), client, copiedKeys)
 		writeError(w, http.StatusBadGateway, "não foi possível armazenar o JSON compilado")
+		return
+	}
+
+	// Se exatamente o mesmo arquivo for reenviado, source_files é deduplicado
+	// por SHA-256. Nesse caso não deixamos a cópia redundante órfã no bucket.
+	referenced := referencedSourcePaths(finalAnalysis)
+	orphanedCopies := make([]string, 0)
+
+	for _, key := range copiedKeys {
+		if !referenced[key] {
+			orphanedCopies = append(orphanedCopies, key)
+		}
+	}
+	cleanupObjects(r.Context(), client, orphanedCopies)
+
+	// O receipt precisa existir antes de consumirmos o draft.
+	// Se sua gravação falhar, o case já pode ter sido atualizado, mas o draft
+	// permanece disponível para um retry idempotente da mesma confirmação.
+	if receiptErr := storeConfirmationReceipt(
+		r.Context(),
+		client,
+		bucket,
+		request.IntakeID,
+		confirmationReceipt{
+			CaseID:      caseID,
+			AnalysisKey: analysisKey,
+			Action:      action,
+		},
+	); receiptErr != nil {
+		writeError(w, http.StatusBadGateway, "não foi possível finalizar a confirmação")
 		return
 	}
 
@@ -421,7 +519,8 @@ func confirmIntakeHandler(w http.ResponseWriter, r *http.Request) {
 		draftKeys = append(draftKeys, file.Key)
 	}
 	cleanupObjects(r.Context(), client, append(draftKeys, draftKey))
-	writeConfirmation(w, caseID, analysisKey)
+
+	writeConfirmation(w, caseID, analysisKey, action)
 }
 
 func intakeHandler(w http.ResponseWriter, r *http.Request) {
@@ -464,9 +563,13 @@ func intakeHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func writeConfirmation(w http.ResponseWriter, caseID, analysisKey string) {
+func writeConfirmation(w http.ResponseWriter, caseID, analysisKey, action string) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"caseId": caseID, "analysisKey": analysisKey})
+	json.NewEncoder(w).Encode(map[string]any{
+		"caseId":      caseID,
+		"analysisKey": analysisKey,
+		"action":      action,
+	})
 }
 
 func validIntakeID(id string) bool {
