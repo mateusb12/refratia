@@ -290,6 +290,45 @@ func analyzeIntakeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	cleanupExpiredDrafts(r.Context(), client)
+
+	patientMatch := map[string]any{
+		"status": "unresolved",
+	}
+	var changePreview any
+
+	_, identifiable := patientIdentity(analysis)
+	var existingCaseID string
+	var existingAnalysis map[string]any
+	var foundExisting bool
+
+	if identifiable {
+		patientMatch["status"] = "new"
+
+		var findErr error
+		existingCaseID, existingAnalysis, foundExisting, findErr = findExistingPatientCase(
+			r.Context(),
+			client,
+			os.Getenv("BUCKET_NAME"),
+			analysis,
+		)
+		if findErr != nil {
+			writeError(w, http.StatusBadGateway, "não foi possível verificar pacientes existentes")
+			return
+		}
+	}
+
+	if foundExisting {
+		patientMatch["status"] = "existing"
+		patientMatch["caseId"] = existingCaseID
+		changePreview = buildPatientChangePreview(existingAnalysis, analysis)
+
+		if patient, ok := existingAnalysis["patient"].(map[string]any); ok {
+			if name, ok := patient["full_name"].(string); ok {
+				patientMatch["patientName"] = name
+			}
+		}
+	}
+
 	storedFiles := make([]intakeFile, 0, len(files))
 	keys := make([]string, 0, len(files)+1)
 	for _, uploaded := range files {
@@ -338,10 +377,12 @@ func analyzeIntakeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{
-		"intakeId": intakeID,
-		"files":    previewFiles,
-		"analysis": analysis,
-		"message":  "Documentos e análise armazenados. Confira a extração antes de criar o caso.",
+		"intakeId":      intakeID,
+		"files":         previewFiles,
+		"analysis":      analysis,
+		"patientMatch":  patientMatch,
+		"changePreview": changePreview,
+		"message":       "Documentos e análise armazenados. Confira a extração antes de confirmar.",
 	})
 }
 

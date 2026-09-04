@@ -523,3 +523,174 @@ func TestMergePatientCaseRemovesLegacyBirthDateAlias(t *testing.T) {
 		t.Fatal("legacy birth_date_normalized should be removed during merge")
 	}
 }
+
+func TestBuildPatientChangePreviewChangedField(t *testing.T) {
+	existing := map[string]any{
+		"exams": map[string]any{
+			"pentacam_corneal_tomography": map[string]any{
+				"eyes": map[string]any{
+					"OD": map[string]any{
+						"anterior_cornea": map[string]any{"kmax_d": 44.2},
+					},
+				},
+			},
+		},
+	}
+
+	incoming := map[string]any{
+		"exams": map[string]any{
+			"pentacam_corneal_tomography": map[string]any{
+				"eyes": map[string]any{
+					"OD": map[string]any{
+						"anterior_cornea": map[string]any{"kmax_d": 44.4},
+					},
+				},
+			},
+		},
+	}
+
+	preview := buildPatientChangePreview(existing, incoming)
+
+	if preview.Changed != 1 || preview.Added != 0 || preview.Removed != 0 {
+		t.Fatalf("unexpected counters: %#v", preview)
+	}
+
+	row := preview.Rows[0]
+	if row.Eye != "OD" ||
+		row.Field != "anterior_cornea.kmax_d" ||
+		row.Before != 44.2 ||
+		row.After != 44.4 ||
+		row.Kind != "changed" {
+		t.Fatalf("unexpected row: %#v", row)
+	}
+}
+
+func TestBuildPatientChangePreviewAddsOSWithoutTouchingOD(t *testing.T) {
+	existing := map[string]any{
+		"exams": map[string]any{
+			"pentacam_corneal_tomography": map[string]any{
+				"eyes": map[string]any{
+					"OD": map[string]any{"value": 44.2},
+				},
+			},
+		},
+	}
+
+	incoming := map[string]any{
+		"exams": map[string]any{
+			"pentacam_corneal_tomography": map[string]any{
+				"eyes": map[string]any{
+					"OS": map[string]any{"value": 45.5},
+				},
+			},
+		},
+	}
+
+	preview := buildPatientChangePreview(existing, incoming)
+
+	if preview.Added != 1 ||
+		preview.Changed != 0 ||
+		preview.Removed != 0 {
+		t.Fatalf("unexpected counters: %#v", preview)
+	}
+
+	if len(preview.Rows) != 1 {
+		t.Fatalf("expected only incoming OS changes, got %#v", preview.Rows)
+	}
+
+	row := preview.Rows[0]
+	if row.Eye != "OS" ||
+		row.Field != "value" ||
+		row.Before != nil ||
+		row.After != 45.5 ||
+		row.Kind != "added" {
+		t.Fatalf("unexpected OS row: %#v", row)
+	}
+}
+
+func TestMergePatientCaseExactReuploadKeepsExistingPayload(t *testing.T) {
+	existing := map[string]any{
+		"source_files": []any{
+			map[string]any{
+				"exam": "pentacam_corneal_tomography",
+				"eye":  "OS", "sha256": "same",
+				"path": "cases/x/original.pdf",
+			},
+		},
+		"exams": map[string]any{
+			"pentacam_corneal_tomography": map[string]any{
+				"eyes": map[string]any{
+					"OS": map[string]any{"value": 45.5},
+				},
+			},
+		},
+	}
+
+	incoming := map[string]any{
+		"source_files": []any{
+			map[string]any{
+				"exam": "pentacam_corneal_tomography",
+				"eye":  "OS", "sha256": "same",
+				"path": "copy.pdf",
+			},
+		},
+		"exams": map[string]any{
+			"pentacam_corneal_tomography": map[string]any{
+				"eyes": map[string]any{
+					"OS": map[string]any{"value": 99.9},
+				},
+			},
+		},
+	}
+
+	merged := mergePatientCase(existing, incoming)
+	os := merged["exams"].(map[string]any)["pentacam_corneal_tomography"].(map[string]any)["eyes"].(map[string]any)["OS"].(map[string]any)
+
+	if os["value"] != 45.5 {
+		t.Fatalf("exact reupload must preserve existing payload: %#v", os)
+	}
+}
+
+func TestBuildPatientChangePreviewExactReuploadHasNoChanges(t *testing.T) {
+	existing := map[string]any{
+		"source_files": []any{
+			map[string]any{
+				"exam": "pentacam_corneal_tomography",
+				"eye":  "OS", "sha256": "same",
+			},
+		},
+		"exams": map[string]any{
+			"pentacam_corneal_tomography": map[string]any{
+				"eyes": map[string]any{
+					"OS": map[string]any{"value": 45.5},
+				},
+			},
+		},
+	}
+
+	incoming := map[string]any{
+		"source_files": []any{
+			map[string]any{
+				"exam": "pentacam_corneal_tomography",
+				"eye":  "OS", "sha256": "same",
+			},
+		},
+		"exams": map[string]any{
+			"pentacam_corneal_tomography": map[string]any{
+				"eyes": map[string]any{
+					"OS": map[string]any{"value": 99.9},
+				},
+			},
+		},
+	}
+
+	preview := buildPatientChangePreview(existing, incoming)
+
+	if len(preview.Rows) != 0 ||
+		preview.Added != 0 ||
+		preview.Changed != 0 ||
+		preview.Removed != 0 ||
+		preview.Unchanged != 0 {
+		t.Fatalf("exact reupload must produce empty preview: %#v", preview)
+	}
+}

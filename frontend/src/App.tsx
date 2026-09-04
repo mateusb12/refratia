@@ -92,6 +92,7 @@ function fileIcon(fileName: string) {
 const examLabels: Record<string, string> = {
   fundus_retinography: 'Retinografia de fundo de olho',
   iol_calculation: 'Cálculo de lente intraocular',
+  refractometry: 'Refratometria',
   oct_retina: 'OCT de retina',
   pentacam_corneal_tomography: 'Tomografia corneana Pentacam',
   specular_microscopy: 'Microscopia especular',
@@ -1425,6 +1426,160 @@ function TraceabilityDrawer({ data, onClose }: { data: ExtractedDatum | null; on
   )
 }
 
+function previewExamLabel(exam: string) {
+  const labels: Record<string, string> = {
+    pentacam_corneal_tomography: 'Pentacam',
+    iol_calculation: 'Cálculo de LIO',
+    specular_microscopy: 'Microscopia especular',
+  }
+  return labels[exam] ?? exam.replaceAll('_', ' ')
+}
+
+function previewFieldLabel(field: string) {
+  return field
+    .split('.')
+    .map((part) => part.replaceAll('_', ' '))
+    .join(' › ')
+}
+
+function previewValue(value: unknown) {
+  if (value === null || value === undefined || value === '') return '—'
+  if (typeof value === 'boolean') return value ? 'Sim' : 'Não'
+
+  if (typeof value === 'number') {
+    return value.toLocaleString('pt-BR', { maximumFractionDigits: 4 })
+  }
+
+  if (Array.isArray(value)) {
+    return `${value.length} ${value.length === 1 ? 'item' : 'itens'}`
+  }
+
+  if (typeof value === 'object') {
+    const count = Object.keys(value as Record<string, unknown>).length
+    return `${count} ${count === 1 ? 'campo' : 'campos'}`
+  }
+
+  return String(value)
+}
+
+function previewKindLabel(kind: string) {
+  if (kind === 'added') return 'Novo'
+  if (kind === 'changed') return 'Alterado'
+  if (kind === 'removed') return 'Removido'
+  return 'Inalterado'
+}
+
+function previewKindClass(kind: string) {
+  if (kind === 'added') return 'border-success/30 bg-success-soft text-success'
+  if (kind === 'changed') return 'border-warning/30 bg-warning-soft text-warning'
+  if (kind === 'removed') return 'border-danger/30 bg-danger-soft text-danger'
+  return 'border-border bg-surface-muted text-text-muted'
+}
+
+function IntakeChangeTable({
+  rows,
+}: {
+  rows: NonNullable<IntakePreview['changePreview']>['rows']
+}) {
+  return (
+    <div className="mt-3 overflow-x-auto rounded-xl border border-border">
+      <table className="w-full min-w-[820px] border-collapse text-left text-xs">
+        <thead className="bg-surface-muted text-text-secondary">
+          <tr>
+            <th className="px-3 py-2.5 font-bold">Exame</th>
+            <th className="px-3 py-2.5 font-bold">Olho</th>
+            <th className="px-3 py-2.5 font-bold">Campo</th>
+            <th className="px-3 py-2.5 font-bold">Atual</th>
+            <th className="px-3 py-2.5 font-bold">Novo</th>
+            <th className="px-3 py-2.5 font-bold">Alteração</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, index) => (
+            <tr
+              className="border-t border-border align-top"
+              key={`${row.exam}-${row.eye ?? 'AO'}-${row.field}-${index}`}
+            >
+              <td className="px-3 py-2.5 font-semibold text-text-primary">
+                {previewExamLabel(row.exam)}
+              </td>
+              <td className="px-3 py-2.5 font-mono text-text-secondary">
+                {row.eye || '—'}
+              </td>
+              <td className="max-w-[280px] px-3 py-2.5 text-text-secondary">
+                {previewFieldLabel(row.field)}
+              </td>
+              <td className="max-w-[220px] break-words px-3 py-2.5 font-mono text-text-muted">
+                {previewValue(row.before)}
+              </td>
+              <td className="max-w-[220px] break-words px-3 py-2.5 font-mono text-text-primary">
+                {previewValue(row.after)}
+              </td>
+              <td className="px-3 py-2.5">
+                <span className={`inline-flex rounded-full border px-2 py-1 font-bold ${previewKindClass(row.kind)}`}>
+                  {previewKindLabel(row.kind)}
+                </span>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function PatientChangePreview({ preview }: { preview: IntakePreview }) {
+  const changes = preview.changePreview
+  if (!changes) return null
+
+  const visibleRows = changes.rows.filter((row) => row.kind !== 'unchanged')
+  const unchangedRows = changes.rows.filter((row) => row.kind === 'unchanged')
+  const noChanges = visibleRows.length === 0
+
+  return (
+    <div className="mt-4 rounded-xl border border-border bg-surface p-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <strong className="mr-1 text-sm text-text-primary">Alterações deste upload</strong>
+
+        <span className="rounded-full border border-success/30 bg-success-soft px-2.5 py-1 text-xs font-bold text-success">
+          {changes.added} novos
+        </span>
+
+        <span className="rounded-full border border-warning/30 bg-warning-soft px-2.5 py-1 text-xs font-bold text-warning">
+          {changes.changed} alterados
+        </span>
+
+        <span className="rounded-full border border-danger/30 bg-danger-soft px-2.5 py-1 text-xs font-bold text-danger">
+          {changes.removed} removidos
+        </span>
+
+        {changes.unchanged > 0 && (
+          <span className="rounded-full border border-border bg-surface-muted px-2.5 py-1 text-xs font-bold text-text-muted">
+            {changes.unchanged} inalterados
+          </span>
+        )}
+      </div>
+
+      {noChanges ? (
+        <p className="mb-0 mt-3 rounded-lg bg-surface-muted p-3 text-sm text-text-secondary">
+          Nenhuma alteração clínica detectada. Os arquivos enviados já fazem parte deste paciente.
+        </p>
+      ) : (
+        <IntakeChangeTable rows={visibleRows} />
+      )}
+
+      {unchangedRows.length > 0 && (
+        <details className="mt-3">
+          <summary className="cursor-pointer text-xs font-bold text-primary">
+            Mostrar {unchangedRows.length} campo(s) inalterado(s)
+          </summary>
+          <IntakeChangeTable rows={unchangedRows} />
+        </details>
+      )}
+    </div>
+  )
+}
+
 function App() {
   const [theme, setTheme] = useState<Theme>(getInitialTheme)
   const [route, setRoute] = useState(() => window.location.pathname)
@@ -1979,10 +2134,10 @@ function App() {
                 </button>
               )}
               <section className="mt-5 rounded-2xl border border-primary-border bg-primary-soft/30 p-6 shadow-sm max-[580px]:p-4">
-                <Eyebrow>NOVO CASO</Eyebrow>
+                <Eyebrow>IMPORTAR EXAMES</Eyebrow>
                 <h2 className="mb-0 mt-1 font-display text-xl">Envie os arquivos do paciente</h2>
                 <p className="mb-0 mt-1.5 text-sm leading-relaxed text-text-secondary">
-                  Após a análise, um rascunho é salvo no storage. Ele só vira um caso após sua confirmação.
+                  Após a análise, o sistema identifica o paciente e mostra exatamente o que será criado, adicionado ou alterado antes da confirmação.
                 </p>
                 <label
                   className="mt-5 flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-primary/40 bg-surface p-8 text-center hover:border-primary max-[580px]:p-6"
@@ -2074,14 +2229,48 @@ function App() {
                   <div className="mt-4 rounded-xl border border-success/30 bg-success-soft p-4">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
-                        <strong className="text-sm">{intakePreview.analysis.patient?.full_name || 'Paciente não identificado'}</strong>
+                        <strong className="text-sm">
+                          {intakePreview.patientMatch.status === 'existing'
+                            ? 'Paciente já cadastrado'
+                            : intakePreview.patientMatch.status === 'new'
+                              ? 'Novo paciente'
+                              : 'Identidade precisa de revisão'}
+                        </strong>
+                        <p className="mb-0 mt-1 text-sm font-semibold text-text-primary">
+                          {intakePreview.patientMatch.status === 'existing'
+                            ? intakePreview.patientMatch.patientName
+                              ?? intakePreview.analysis.patient?.full_name
+                              ?? 'Paciente não identificado'
+                            : intakePreview.analysis.patient?.full_name
+                              ?? 'Paciente não identificado'}
+                        </p>
                         <p className="mb-0 mt-1 text-xs text-text-secondary">
-                          {readableBirthDate(intakePreview.analysis.patient?.birth_date)} · {Object.keys(intakePreview.analysis.exams ?? {}).length} tipo(s) de exame
+                          {readableBirthDate(intakePreview.analysis.patient?.birth_date)}
+                          {' · '}
+                          {Object.keys(intakePreview.analysis.exams ?? {}).length} tipo(s) de exame
+                          {intakePreview.patientMatch.status === 'existing'
+                            ? ` · ${intakePreview.patientMatch.caseId}`
+                            : ''}
                         </p>
                       </div>
-                      <StatusBadge tone="success">JSON extraído</StatusBadge>
+                      <StatusBadge tone="success">
+                        {intakePreview.patientMatch.status === 'existing'
+                          ? 'Atualização'
+                          : intakePreview.patientMatch.status === 'new'
+                            ? 'Novo cadastro'
+                            : 'Revisar identidade'}
+                      </StatusBadge>
                     </div>
-                    <p className="mb-0 mt-2 text-sm leading-relaxed text-text-secondary">{intakePreview.message}</p>
+
+                    <p className="mb-0 mt-2 text-sm leading-relaxed text-text-secondary">
+                      {intakePreview.patientMatch.status === 'existing'
+                        ? 'Os exames enviados serão incorporados ao registro existente somente após sua confirmação.'
+                        : intakePreview.patientMatch.status === 'new'
+                          ? 'Este paciente ainda não possui um caso correspondente e será criado somente após sua confirmação.'
+                          : 'Não foi possível determinar com segurança se este paciente já possui cadastro. Revise a identidade antes de confirmar.'}
+                    </p>
+
+                    <PatientChangePreview preview={intakePreview} />
                     <IntakeDocumentsDebug localPreviews={intakeLocalPreviews} preview={intakePreview} />
                     <IntakeCompletenessNotice analysis={intakePreview.analysis} />
                     <IntakeAnalysisSummary analysis={intakePreview.analysis} />
@@ -2090,7 +2279,15 @@ function App() {
                       <pre className="m-0 max-h-[520px] overflow-auto border-t border-border p-3 text-xs leading-relaxed text-text-secondary">{JSON.stringify(intakePreview.analysis, null, 2)}</pre>
                     </details>
                     <div className="mt-4 flex flex-wrap gap-3">
-                      <PrimaryButton disabled={intakeBusy} onClick={confirmIntake}>{intakeBusy ? 'Salvando…' : 'Confirmar criação do caso'}</PrimaryButton>
+                      <PrimaryButton disabled={intakeBusy} onClick={confirmIntake}>
+                        {intakeBusy
+                          ? 'Salvando…'
+                          : intakePreview.patientMatch.status === 'existing'
+                            ? 'Atualizar paciente'
+                            : intakePreview.patientMatch.status === 'new'
+                              ? 'Criar paciente'
+                              : 'Revisar identidade'}
+                      </PrimaryButton>
                       <button className="rounded-[9px] border border-border-strong bg-surface px-4 py-[11px] text-sm font-semibold hover:border-danger hover:text-danger" disabled={intakeBusy} onClick={discardIntake} type="button">Descartar</button>
                     </div>
                   </div>

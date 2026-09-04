@@ -37,6 +37,15 @@ export const examContracts: Record<string, ExamContract> = {
       { key: 'z40', label: 'Z40 — zona 6 mm', paths: [['cataract_preop', 'total_corneal_z40_6mm_um'], ['cataract_pre_op', 'total_corneal_z40_6mm_um']] },
     ],
   },
+  refractometry: {
+    key: 'refractometry',
+    label: 'Refratometria',
+    fields: [
+      { key: 'sphere', label: 'Esfera', paths: [['sphere_d'], ['refraction', 'sphere_d']] },
+      { key: 'cylinder', label: 'Cilindro', paths: [['cylinder_d'], ['refraction', 'cylinder_d']] },
+      { key: 'axis', label: 'Eixo', paths: [['axis_deg'], ['refraction', 'axis_deg']] },
+    ],
+  },
   iol_calculation: {
     key: 'iol_calculation',
     label: 'Biometria / cálculo de LIO',
@@ -118,6 +127,9 @@ export function assessExamContract(analysis: IntakeAnalysis, source: Record<stri
     field.key,
     field.paths.map((path) => valueAtPath(payload, path)).find(hasValue),
   ]))
+  if (contract.key === 'refractometry' && Number(values.cylinder) === 0 && !hasValue(values.axis)) {
+    values.axis = 'não aplicável — cilindro 0,00 D'
+  }
   const extracted = contract.fields.filter((field) => hasValue(values[field.key]))
   return { contract, extracted, values, missing: contract.fields.filter((field) => !extracted.includes(field)) }
 }

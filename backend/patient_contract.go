@@ -9,6 +9,7 @@ import (
 var officialExamKeys = map[string]bool{
 	"fundus_retinography":         true,
 	"iol_calculation":             true,
+	"refractometry":               true,
 	"oct_retina":                  true,
 	"pentacam_corneal_tomography": true,
 	"specular_microscopy":         true,

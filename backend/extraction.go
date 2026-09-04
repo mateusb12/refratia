@@ -25,12 +25,13 @@ Organize o resultado como paciente_compilado.json:
 - facility: nome, descrição, endereço e telefone quando existirem;
 - conventions: OD, OS, AO, significado de null e separador decimal normalizado;
 - source_files: um item por arquivo com path igual ao nome recebido, exam, eye, páginas/dimensões e conteúdo por página quando identificável;
-- exams: use exatamente as chaves fundus_retinography, iol_calculation, oct_retina, pentacam_corneal_tomography e specular_microscopy quando aplicáveis. Inclua SOMENTE exames realmente evidenciados pelos arquivos; não crie chaves para exames ausentes. Cada exame deve ter source com os nomes dos arquivos correspondentes. Preserve aparelho, software, data/hora, qualidade, alertas, fonte e TODOS os campos, índices, medições, eixos, tabelas e cálculos legíveis. Separe olhos em eyes.OD e eyes.OS (ou AO quando realmente conjunto). Use nomes de campos técnicos em snake_case e inclua unidades no nome quando isso remover ambiguidade; não substitua a hierarquia específica do equipamento por um modelo genérico;
+- exams: use exatamente as chaves fundus_retinography, refractometry, iol_calculation, oct_retina, pentacam_corneal_tomography e specular_microscopy quando aplicáveis. Inclua SOMENTE exames realmente evidenciados pelos arquivos; não crie chaves para exames ausentes. Cada exame deve ter source com os nomes dos arquivos correspondentes. Preserve aparelho, software, data/hora, qualidade, alertas, fonte e TODOS os campos, índices, medições, eixos, tabelas e cálculos legíveis. Separe olhos em eyes.OD e eyes.OS (ou AO quando realmente conjunto). Use nomes de campos técnicos em snake_case e inclua unidades no nome quando isso remover ambiguidade; não substitua a hierarquia específica do equipamento por um modelo genérico;
 - extraction_notes: method, scope, not_encoded e clinical_use_warning. Esta chave fica no nível raiz, irmã de "exams", nunca dentro de "exams";
 - verificacao_identidade: uma entrada por documento, com nome/nascimento/timestamp lidos, confiança e método da comparação. Divergência de identidade deve ser explícita e nunca omitida.
 
 Contrato mínimo de campos por exame (não invente valores; quando não estiver no arquivo, registre como ausente):
 - pentacam_corneal_tomography: K1, K2, Km, astigmatismo corneano anterior, paquimetria do ponto mais fino, BAD-D, ARTmax, ISV, IVA, IHA, KI, CKI, TKC, coma Z31 zona 5 mm, ACD e Z40 zona 6 mm;
+- refractometry: refração por olho, com esfera, cilindro e eixo. Preserve sinais. Se o laudo de refratometria claramente omitir cilindro/eixo, registre cylinder_d como 0 e axis_deg como null conforme a convenção clínica do protocolo; se houver dúvida de leitura, use null e não infira;
 - iol_calculation: comprimento axial, K1, K2, Km, astigmatismo e eixo da biometria, ACD, espessura do cristalino, white-to-white e refração alvo;
 - specular_microscopy: contagem/densidade endotelial;
 - fundus_retinography: ID do paciente, data/hora e achados/observações da imagem.
@@ -438,8 +439,16 @@ func decodeAnalysis(raw string) (map[string]any, error) {
 		return nil, errors.New("o serviço de extração não retornou um JSON válido")
 	}
 	var analysis map[string]any
-	if json.Unmarshal([]byte(raw), &analysis) != nil || analysis == nil {
-		return nil, errors.New("o serviço de extração não retornou um JSON válido")
+	if err := json.Unmarshal([]byte(raw), &analysis); err != nil {
+		return nil, fmt.Errorf(
+			"o serviço de extração não retornou um JSON válido: %w",
+			err,
+		)
+	}
+	if analysis == nil {
+		return nil, errors.New(
+			"o serviço de extração não retornou um JSON válido: objeto JSON vazio",
+		)
 	}
 	normalizeExtractionMetadata(analysis)
 	normalizePatientIdentityFields(analysis)

@@ -3,6 +3,7 @@ export type Eye = 'OD' | 'OS' | 'AO'
 export type ExamKey =
   | 'fundus_retinography'
   | 'iol_calculation'
+  | 'refractometry'
   | 'oct_retina'
   | 'pentacam_corneal_tomography'
   | 'specular_microscopy'
@@ -31,10 +32,40 @@ export interface IntakeAnalysis {
   extraction_notes?: Record<string, unknown>
 }
 
+export type PatientMatch =
+  | { status: 'new' }
+  | { status: 'unresolved' }
+  | {
+      status: 'existing'
+      caseId: string
+      patientName?: string
+    }
+
+export type PatientChangeKind = 'added' | 'changed' | 'removed' | 'unchanged'
+
+export interface PatientChangeRow {
+  exam: string
+  eye?: string
+  field: string
+  before: unknown
+  after: unknown
+  kind: PatientChangeKind
+}
+
+export interface PatientChangePreview {
+  added: number
+  changed: number
+  removed: number
+  unchanged: number
+  rows: PatientChangeRow[]
+}
+
 export interface IntakePreview {
   intakeId: string
   files: Array<{ filename: string; contentType: string; size: number; sha256: string; signed_url?: string }>
   analysis: IntakeAnalysis
+  patientMatch: PatientMatch
+  changePreview: PatientChangePreview | null
   message: string
 }
 
