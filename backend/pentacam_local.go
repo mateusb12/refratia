@@ -16,13 +16,43 @@ type pentacamFocusedField struct {
 func extractPentacamPDFLocal(ctx context.Context, data []byte) (map[string]any, error) {
 	pages := map[int][]byte{}
 
-	for _, page := range []int{4, 6, 7, 8, 9} {
-		image, err := renderPDFPageAtDPI(ctx, data, page, 450)
+	reportProgress(
+		ctx,
+		0,
+		"pentacam",
+		"Preparando páginas do Pentacam",
+	)
+
+	renderPages := []int{4, 6, 7, 8, 9}
+
+	for index, page := range renderPages {
+		reportProgress(
+			ctx,
+			index*25/len(renderPages),
+			"pentacam",
+			"Renderizando páginas do Pentacam",
+		)
+
+		image, err := renderPDFPageAtDPI(
+			ctx,
+			data,
+			page,
+			450,
+		)
+
 		if err != nil {
 			return nil, err
 		}
+
 		pages[page] = image
 	}
+
+	reportProgress(
+		ctx,
+		25,
+		"pentacam",
+		"Páginas renderizadas",
+	)
 
 	values := map[string]any{}
 
@@ -50,6 +80,13 @@ func extractPentacamPDFLocal(ctx context.Context, data []byte) (map[string]any, 
 		return nil
 	}
 
+	reportProgress(
+		ctx,
+		30,
+		"pentacam",
+		"Lendo córnea anterior",
+	)
+
 	// Página 4 — córnea anterior.
 	_ = read(4, referenceCrop{X: 250, Y: 1240, W: 500, H: 310}, []pentacamFocusedField{
 		{"k1_d", `\b(?:k1|ki)\b`, true},
@@ -58,10 +95,24 @@ func extractPentacamPDFLocal(ctx context.Context, data []byte) (map[string]any, 
 		{"astigmatism_d", `\bastig\w*`, true},
 	})
 
+	reportProgress(
+		ctx,
+		36,
+		"pentacam",
+		"Lendo paquimetria",
+	)
+
 	// Página 6 — paquimetria.
 	_ = read(6, referenceCrop{X: 740, Y: 1880, W: 400, H: 150}, []pentacamFocusedField{
 		{"thinnest_um", `\bthinnest\W+pachy\b`, false},
 	})
+
+	reportProgress(
+		ctx,
+		42,
+		"pentacam",
+		"Lendo índices topométricos",
+	)
 
 	// Página 6 — índices topométricos.
 	indexVariants, _ := focusedOCRVariants(
@@ -91,15 +142,36 @@ func extractPentacamPDFLocal(ctx context.Context, data []byte) (map[string]any, 
 		values["tkc"] = tkc
 	}
 
+	reportProgress(
+		ctx,
+		48,
+		"pentacam",
+		"Lendo BAD-D",
+	)
+
 	// Página 7 — BAD-D.
 	_ = read(7, referenceCrop{X: 1600, Y: 2110, W: 330, H: 130}, []pentacamFocusedField{
 		{"bad_d", `\bbad\W*d`, true},
 	})
 
+	reportProgress(
+		ctx,
+		52,
+		"pentacam",
+		"Lendo Z40 6 mm",
+	)
+
 	// Página 7 — Z40 6 mm.
 	_ = read(7, referenceCrop{X: 1970, Y: 2050, W: 460, H: 150}, []pentacamFocusedField{
 		{"z40_6mm_um", `\bz40\b`, true},
 	})
+
+	reportProgress(
+		ctx,
+		56,
+		"pentacam",
+		"Lendo profundidade da câmara anterior",
+	)
 
 	// Página 7 — profundidade da câmara anterior INTERNA.
 	_ = read(7, referenceCrop{X: 1990, Y: 2370, W: 440, H: 180}, []pentacamFocusedField{
@@ -110,10 +182,24 @@ func extractPentacamPDFLocal(ctx context.Context, data []byte) (map[string]any, 
 		},
 	})
 
+	reportProgress(
+		ctx,
+		60,
+		"pentacam",
+		"Lendo ARTmax",
+	)
+
 	// Página 8 — ARTmax.
 	_ = read(8, referenceCrop{X: 1490, Y: 1420, W: 300, H: 150}, []pentacamFocusedField{
 		{"art_max", `\bartmax\b`, false},
 	})
+
+	reportProgress(
+		ctx,
+		64,
+		"pentacam",
+		"Lendo Z31 coma 5 mm",
+	)
 
 	// Página 9 — Z31 da coluna 5 mm.
 	_ = read(9, referenceCrop{X: 970, Y: 1490, W: 290, H: 180}, []pentacamFocusedField{
@@ -121,12 +207,33 @@ func extractPentacamPDFLocal(ctx context.Context, data []byte) (map[string]any, 
 	})
 
 	// Segunda passada: célula numérica exata, sem inferência de decimal.
+	reportProgress(
+		ctx,
+		68,
+		"pentacam",
+		"Lendo células numéricas",
+	)
+
 	fillPentacamFocusedCells(ctx, pages, values)
+
+	reportProgress(
+		ctx,
+		75,
+		"pentacam",
+		"Células numéricas processadas",
+	)
 
 	// BAD-D rescue determinístico:
 	// - três dígitos estáveis em múltiplos thresholds
 	// - separador decimal comprovado geometricamente nos pixels
 	// - nenhuma inferência de casa decimal
+	reportProgress(
+		ctx,
+		78,
+		"pentacam",
+		"Validando BAD-D deterministicamente",
+	)
+
 	if current, exists := values["bad_d"]; !exists || current == nil {
 		if value, ok := readPentacamBADDDeterministic(ctx, data); ok {
 			values["bad_d"] = value
@@ -135,11 +242,25 @@ func extractPentacamPDFLocal(ctx context.Context, data []byte) (map[string]any, 
 
 	// K1 rescue determinístico:
 	// mesmo decimal em >=3 thresholds e >=2 crops.
+	reportProgress(
+		ctx,
+		84,
+		"pentacam",
+		"Validando K1 deterministicamente",
+	)
+
 	if current, exists := values["k1_d"]; !exists || current == nil {
 		if value, ok := readPentacamK1Deterministic(ctx, data); ok {
 			values["k1_d"] = value
 		}
 	}
+
+	reportProgress(
+		ctx,
+		90,
+		"pentacam",
+		"Validando variações de layout",
+	)
 
 	// Rescue determinístico tolerante a pequenas variações de layout.
 	// Executa somente quando o caminho local principal ainda deixou gap.
@@ -149,11 +270,25 @@ func extractPentacamPDFLocal(ctx context.Context, data []byte) (map[string]any, 
 		}
 	}
 
+	reportProgress(
+		ctx,
+		96,
+		"pentacam",
+		"Validando ACD interna",
+	)
+
 	if current, exists := values["acd_internal_mm"]; !exists || current == nil {
 		if value, ok := readPentacamACDAdaptive(ctx, data); ok {
 			values["acd_internal_mm"] = value
 		}
 	}
+
+	reportProgress(
+		ctx,
+		100,
+		"pentacam",
+		"Pentacam validado",
+	)
 
 	return map[string]any{
 		"anterior_cornea": map[string]any{

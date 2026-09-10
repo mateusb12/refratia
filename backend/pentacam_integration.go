@@ -42,12 +42,39 @@ func tryExtractPentacamLocal(
 	file uploadedFile,
 	analysis map[string]any,
 ) bool {
-	eye, err := detectPentacamEyeLocal(ctx, file.Data)
+	reportProgress(
+		ctx,
+		2,
+		"pentacam",
+		"Identificando lateralidade do Pentacam",
+	)
+
+	eye, err := detectPentacamEyeLocal(
+		ctx,
+		file.Data,
+	)
+
 	if err != nil {
 		return false
 	}
 
-	exam, err := extractPentacamPDFLocal(ctx, file.Data)
+	eyeLabel := "olho direito"
+	if eye == "OS" {
+		eyeLabel = "olho esquerdo"
+	}
+
+	reportProgress(
+		ctx,
+		8,
+		"pentacam",
+		"Pentacam — "+eyeLabel,
+	)
+
+	exam, err := extractPentacamPDFLocal(
+		withProgressRange(ctx, 8, 96),
+		file.Data,
+	)
+
 	if err != nil {
 		return false
 	}
@@ -57,6 +84,13 @@ func tryExtractPentacamLocal(
 		eye,
 		file.Metadata.Filename,
 		exam,
+	)
+
+	reportProgress(
+		ctx,
+		100,
+		"pentacam",
+		"Pentacam concluído — "+eyeLabel,
 	)
 
 	return true

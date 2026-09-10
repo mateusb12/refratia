@@ -71,6 +71,15 @@ function formatContractValue(value: unknown) {
   return String(value)
 }
 
+function formatCaseSavedTime(caseId: string) {
+  const match = caseId.match(/^case-(\d{8})T(\d{2})(\d{2})\d{2}Z-/)
+  if (!match) return null
+
+  const utcHour = Number(match[2])
+  const localHour = (utcHour + 21) % 24
+  return `${String(localHour).padStart(2, '0')}h${match[3]}`
+}
+
 function normalizeSavedReport(analysis: IntakeAnalysis): ReportData {
   const raw = normalizeSavedAnalysis(analysis) as any
 
@@ -534,16 +543,23 @@ const extractedData: ExtractedDatum[] = [
 
 const realPatientName = 'Gerinaldo Alfregildo'
 const endothelialCutoff = 2000
+
+function fileBaseName(value: unknown, fallback = 'Documento') {
+  const path = typeof value === 'string' ? value : ''
+  return path.split('/').pop() || fallback
+}
+
 function getReportDocuments(data: ReportData): DocumentReview[] {
   return data.source_files.map((file) => {
-  const signedURL = (file as typeof file & { signed_url?: string }).signed_url
-  return {
-    name: file.exam ? `${file.exam.charAt(0).toUpperCase()}${file.exam.slice(1)}${file.eye ? ` · ${eyeLabel(file.eye as Eye)}` : ''}` : 'Documento',
-    filename: file.path.split('/').pop() ?? file.path,
-    status: 'Processado',
-    detail: `${file.type === 'application/pdf' ? `${file.pages} páginas` : 'Imagem'} disponível no caso.`,
-    url: signedURL,
-  }
+    const signedURL = (file as typeof file & { signed_url?: string }).signed_url
+    const exam = typeof file.exam === 'string' ? file.exam : ''
+    return {
+      name: exam ? `${exam.charAt(0).toUpperCase()}${exam.slice(1)}${file.eye ? ` · ${eyeLabel(file.eye as Eye)}` : ''}` : 'Documento',
+      filename: fileBaseName(file.path),
+      status: 'Processado',
+      detail: `${file.type === 'application/pdf' ? `${file.pages} páginas` : 'Imagem'} disponível no caso.`,
+      url: signedURL,
+    }
   })
 }
 
@@ -563,7 +579,7 @@ function getReportExtractedData(data: ReportData): ExtractedDatum[] {
       source,
       kind: 'Dado bruto',
       confidence: 'Consistente',
-      document: pentacam.source_file.split('/').pop() ?? source,
+      document: fileBaseName(pentacam.source_file, source),
       screen: 'Pachymetry',
       field: 'Thinnest',
     },
@@ -575,7 +591,7 @@ function getReportExtractedData(data: ReportData): ExtractedDatum[] {
       source,
       kind: 'Dado bruto',
       confidence: 'Consistente',
-      document: pentacam.source_file.split('/').pop() ?? source,
+      document: fileBaseName(pentacam.source_file, source),
       screen: 'Topometric',
       field: 'Kmax',
     },
@@ -586,7 +602,7 @@ function getReportExtractedData(data: ReportData): ExtractedDatum[] {
       source,
       kind: 'Dado bruto',
       confidence: 'Consistente',
-      document: pentacam.source_file.split('/').pop() ?? source,
+      document: fileBaseName(pentacam.source_file, source),
       screen: 'Belin/Ambrósio',
       field: 'Final D',
     },
@@ -597,7 +613,7 @@ function getReportExtractedData(data: ReportData): ExtractedDatum[] {
       source,
       kind: 'Dado bruto',
       confidence: 'Consistente',
-      document: pentacam.source_file.split('/').pop() ?? source,
+      document: fileBaseName(pentacam.source_file, source),
       screen: 'Belin/Ambrósio',
       field: 'ARTmax',
     },
@@ -609,7 +625,7 @@ function getReportExtractedData(data: ReportData): ExtractedDatum[] {
       source: `Microscopia especular ${label}`,
       kind: 'Dado bruto',
       confidence: 'Consistente',
-      document: data.exams.specular_microscopy.source[0]?.split('/').pop() ?? source,
+      document: fileBaseName(data.exams.specular_microscopy.source[0], source),
       screen: 'NIDEK',
       field: 'Cell Density (CD)',
     },
@@ -680,8 +696,6 @@ interface ReportCase {
 const recentCases: ReportCase[] = [
   { initials: 'RA', patient: realPatientName, report: 'Gerado', review: 'Pendente', tone: 'warning' as const, real: true },
   { initials: 'MS', patient: 'Maria S.', report: 'Parcial', review: 'Pendente', tone: 'warning' as const, real: false },
-  { initials: 'JL', patient: 'João L.', report: 'Gerado', review: 'Revisado', tone: 'success' as const, real: false },
-  { initials: 'AR', patient: 'Ana R.', report: 'Bloqueado', review: 'Identidade', tone: 'blocking' as const, real: false },
 ]
 
 function getInitialTheme(): Theme {
@@ -1595,6 +1609,8 @@ function App() {
   const [intakePreview, setIntakePreview] = useState<IntakePreview | null>(null)
   const [intakeBusy, setIntakeBusy] = useState(false)
   const [intakeProgress, setIntakeProgress] = useState(0)
+  const [intakeProgressStage, setIntakeProgressStage] = useState('')
+  const [intakeProgressMessage, setIntakeProgressMessage] = useState('')
   const [intakeElapsed, setIntakeElapsed] = useState(0)
   const [intakeMessage, setIntakeMessage] = useState('')
   const [savedCases, setSavedCases] = useState<SavedCase[]>([])
@@ -1609,15 +1625,6 @@ function App() {
   const activeExtractedData = reportData ? getReportExtractedData(reportData) : extractedData
   const activeMetrics = reportData ? getReportMetrics(reportData, activeExtractedData) : metrics
   const activeDocuments = reportData ? getReportDocuments(reportData) : documents
-
-  useEffect(() => {
-    if (!intakeBusy || !intakeFiles.length) return
-    setIntakeProgress(4)
-    const timer = window.setInterval(() => {
-      setIntakeProgress((progress) => progress >= 94 ? progress : progress + (progress < 65 ? 4 : 1))
-    }, 650)
-    return () => window.clearInterval(timer)
-  }, [intakeBusy, intakeFiles.length])
 
   useEffect(() => {
     if (!intakeBusy) return
@@ -1671,6 +1678,7 @@ function App() {
   function backToReports() {
     window.history.pushState({}, '', `${appBasePath}/relatorios`)
     setRoute(window.location.pathname)
+    setActiveSection('Relatórios')
     setSelectedCase(null)
     setStoredCase(null)
     setStoredCaseError('')
@@ -1698,40 +1706,207 @@ function App() {
 
   async function analyzeIntake() {
     if (!intakeFiles.length) return
+
     if (!API_URL) {
-      setIntakeMessage('VITE_API_URL não está configurada no .env. Exemplo local: VITE_API_URL=http://localhost:3000')
+      setIntakeMessage(
+        'VITE_API_URL não está configurada no .env. Exemplo local: VITE_API_URL=http://localhost:3000',
+      )
       return
     }
+
     setIntakeBusy(true)
-    setIntakeProgress(4)
+    setIntakeProgress(1)
+    setIntakeProgressStage('upload')
+    setIntakeProgressMessage('Enviando documentos')
     setIntakeElapsed(0)
     setIntakeMessage('')
+
     try {
       const body = new FormData()
       intakeFiles.forEach((file) => body.append('files', file))
-      const response = await fetch(`${API_URL}/api/intakes/analyze`, { method: 'POST', body })
-      const responseText = await response.text()
+
+      const response = await fetch(
+        `${API_URL}/api/intakes/analyze?stream=1`,
+        {
+          method: 'POST',
+          headers: {
+            Accept: 'application/x-ndjson',
+          },
+          body,
+        },
+      )
+
+      const contentType =
+        response.headers.get('content-type') ?? ''
+
       let result: unknown = null
-      try {
-        result = responseText ? JSON.parse(responseText) : null
-      } catch {
-        if (!response.ok) {
-          throw new Error(`Falha na análise (HTTP ${response.status}): ${responseText.slice(0, 300) || 'o servidor não retornou detalhes'}`)
+
+      if (
+        contentType.includes(
+          'application/x-ndjson',
+        )
+      ) {
+        if (!response.body) {
+          throw new Error(
+            'O backend não disponibilizou o stream de progresso.',
+          )
         }
+
+        const reader = response.body.getReader()
+        const decoder = new TextDecoder()
+
+        let buffer = ''
+
+        const consumeLine = (line: string) => {
+          const trimmed = line.trim()
+          if (!trimmed) return
+
+          let event: {
+            type?: string
+            percent?: number
+            stage?: string
+            message?: string
+            status?: number
+            payload?: unknown
+          }
+
+          try {
+            event = JSON.parse(trimmed)
+          } catch {
+            throw new Error(
+              'O backend enviou um evento de progresso inválido.',
+            )
+          }
+
+          if (event.type === 'progress') {
+            if (
+              typeof event.percent === 'number'
+            ) {
+              setIntakeProgress(
+                Math.max(
+                  0,
+                  Math.min(
+                    100,
+                    Math.round(event.percent),
+                  ),
+                ),
+              )
+            }
+
+            if (event.stage) {
+              setIntakeProgressStage(event.stage)
+            }
+
+            if (event.message) {
+              setIntakeProgressMessage(
+                event.message,
+              )
+            }
+
+            return
+          }
+
+          if (event.type === 'error') {
+            throw new Error(
+              event.message ||
+                `Falha na análise${
+                  event.status
+                    ? ` (HTTP ${event.status})`
+                    : ''
+                }`,
+            )
+          }
+
+          if (event.type === 'result') {
+            result = event.payload
+          }
+        }
+
+        while (true) {
+          const { value, done } =
+            await reader.read()
+
+          if (done) break
+
+          buffer += decoder.decode(
+            value,
+            { stream: true },
+          )
+
+          const lines = buffer.split('\n')
+          buffer = lines.pop() ?? ''
+
+          for (const line of lines) {
+            consumeLine(line)
+          }
+        }
+
+        buffer += decoder.decode()
+
+        if (buffer.trim()) {
+          consumeLine(buffer)
+        }
+      } else {
+        // Compatibilidade durante deploy:
+        // backend antigo ainda responde JSON normal.
+        const responseText =
+          await response.text()
+
+        try {
+          result = responseText
+            ? JSON.parse(responseText)
+            : null
+        } catch {
+          if (!response.ok) {
+            throw new Error(
+              `Falha na análise (HTTP ${response.status}): ${
+                responseText.slice(0, 300) ||
+                'o servidor não retornou detalhes'
+              }`,
+            )
+          }
+        }
+
+        if (!response.ok) {
+          const errorMessage =
+            result &&
+            typeof result === 'object' &&
+            'error' in result &&
+            typeof result.error === 'string'
+              ? result.error
+              : `Falha na análise (HTTP ${response.status})`
+
+          throw new Error(errorMessage)
+        }
+
+        setIntakeProgress(100)
       }
-      const errorMessage = result && typeof result === 'object' && 'error' in result && typeof result.error === 'string'
-        ? result.error
-        : `Falha na análise (HTTP ${response.status}): ${responseText.slice(0, 300) || 'o servidor não retornou detalhes'}`
-      if (!response.ok) throw new Error(errorMessage)
-      if (!isIntakePreview(result)) throw new Error('A API de análise está desatualizada. Reinicie o backend e tente novamente.')
+
+      if (!isIntakePreview(result)) {
+        throw new Error(
+          'A API de análise está desatualizada. Reinicie o backend e tente novamente.',
+        )
+      }
+
+      setIntakeProgress(100)
+      setIntakeProgressStage('complete')
+      setIntakeProgressMessage(
+        'Análise concluída',
+      )
+
       setIntakePreview(result)
       setIntakeFiles([])
-      setIntakeProgress(100)
     } catch (error) {
       if (error instanceof TypeError) {
-        setIntakeMessage(`NetworkError: não foi possível conectar ao backend em ${API_URL}. Verifique se o container backend está ativo e se a porta 3000 está publicada.`)
+        setIntakeMessage(
+          `NetworkError: não foi possível conectar ao backend em ${API_URL}. Verifique se o backend está ativo.`,
+        )
       } else {
-        setIntakeMessage(error instanceof Error ? error.message : 'Não foi possível analisar os arquivos.')
+        setIntakeMessage(
+          error instanceof Error
+            ? error.message
+            : 'Não foi possível analisar os arquivos.',
+        )
       }
     } finally {
       setIntakeBusy(false)
@@ -2000,7 +2175,11 @@ function App() {
                 {item.real && <StatusBadge tone="warning">REAL</StatusBadge>}
                 {item.saved && <StatusBadge tone="success">NOVO</StatusBadge>}
               </span>
-              <small className="text-xs text-text-muted">{item.saved ? `Caso salvo · ${item.caseId}` : item.real ? 'Caso real' : 'Caso demonstrativo'}</small>
+              <small className="text-xs text-text-muted">
+                {item.saved
+                  ? `Caso salvo · ${formatCaseSavedTime(item.caseId ?? '') ?? item.caseId}`
+                  : item.real ? 'Caso real' : 'Caso demonstrativo'}
+              </small>
             </span>
             <StatusBadge tone={item.report === 'Bloqueado' ? 'blocking' : item.tone}>Relatório: {item.report}</StatusBadge>
             <StatusBadge tone={item.tone}>Revisão: {item.review}</StatusBadge>
@@ -2175,25 +2354,50 @@ function App() {
                       </PrimaryButton>
                     </div>
                     {intakeBusy && (() => {
-                      const currentIndex = Math.min(intakeFiles.length - 1, Math.floor((intakeProgress / 100) * intakeFiles.length))
-                      const currentFile = intakeFiles[currentIndex]
-                      const isWaitingResponse = intakeProgress >= 94
                       const elapsedLabel = `${String(Math.floor(intakeElapsed / 60)).padStart(2, '0')}:${String(intakeElapsed % 60).padStart(2, '0')}`
+
                       return (
-                        <div aria-live="polite" className="mt-4 rounded-xl border border-primary-border bg-primary-soft p-4">
+                        <div
+                          aria-label={`Progresso da análise: ${intakeProgress}%`}
+                          aria-live="polite"
+                          aria-valuemax={100}
+                          aria-valuemin={0}
+                          aria-valuenow={intakeProgress}
+                          className="mt-4 rounded-xl border border-primary-border bg-primary-soft p-4"
+                          role="progressbar"
+                        >
                           <div className="flex items-center justify-between gap-3 text-xs font-bold">
-                            <span className="text-primary">{isWaitingResponse ? 'Aguardando resposta do backend' : `Analisando documento ${currentIndex + 1}/${intakeFiles.length}`}</span>
-                            <span className="text-text-secondary">{intakeProgress}%</span>
+                            <span className="text-primary">
+                              {intakeProgressMessage || 'Processando documentos'}
+                            </span>
+                            <span className="text-text-secondary">
+                              {intakeProgress}%
+                            </span>
                           </div>
-                          <div aria-hidden="true" className="mt-2 h-2 overflow-hidden rounded-full bg-surface">
-                            <div className="h-full rounded-full bg-primary transition-[width] duration-500" style={{ width: `${intakeProgress}%` }} />
+
+                          <div
+                            aria-hidden="true"
+                            className="mt-2 h-2 overflow-hidden rounded-full bg-surface"
+                          >
+                            <div
+                              className="h-full rounded-full bg-primary transition-[width] duration-500"
+                              style={{ width: `${intakeProgress}%` }}
+                            />
                           </div>
+
                           <div className="mt-2 flex items-center gap-2 text-xs text-text-secondary">
                             <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-primary" />
-                            <span className="truncate" title={currentFile?.name}>{isWaitingResponse ? 'Documentos enviados; esperando o JSON consolidado…' : currentFile?.name}</span>
-                            <span className="ml-auto flex-none font-mono text-text-muted">{elapsedLabel}</span>
+                            <span className="truncate">
+                              {intakeProgressStage || 'OCR local'}
+                            </span>
+                            <span className="ml-auto flex-none font-mono text-text-muted">
+                              {elapsedLabel}
+                            </span>
                           </div>
-                          <p className="mb-0 mt-2 text-[11px] text-text-muted">{isWaitingResponse ? 'A análise ainda está em andamento. A tela será atualizada quando o HTTP responder.' : 'Depois dos documentos, consolidando os dados extraídos…'}</p>
+
+                          <p className="mb-0 mt-2 text-[11px] text-text-muted">
+                            Progresso informado pelo backend em tempo real. O percentual avança conforme o OCR e a consolidação concluem etapas reais.
+                          </p>
                         </div>
                       )
                     })()}

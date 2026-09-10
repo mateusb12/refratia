@@ -7,50 +7,131 @@ import (
 	"strings"
 )
 
-func extractPatientLocal(ctx context.Context, files []uploadedFile) map[string]any {
+func extractPatientLocal(
+	ctx context.Context,
+	files []uploadedFile,
+) map[string]any {
 	exams := map[string]any{}
-	analysis := map[string]any{"exams": exams}
+	analysis := map[string]any{
+		"exams": exams,
+	}
 
-	for _, file := range files {
+	total := len(files)
+
+	if total == 0 {
+		return analysis
+	}
+
+	for index, file := range files {
+		fileCtx := withProgressRange(
+			ctx,
+			index*100/total,
+			(index+1)*100/total,
+		)
+
+		reportProgress(
+			fileCtx,
+			2,
+			"document",
+			fmt.Sprintf(
+				"Identificando documento %d/%d",
+				index+1,
+				total,
+			),
+		)
+
 		if file.Metadata.ContentType != "application/pdf" {
+			reportProgress(
+				fileCtx,
+				100,
+				"document",
+				"Documento reservado para etapa complementar",
+			)
 			continue
 		}
 
-		// EyeSuite: exame + identidade local completos quando possível.
-		if bundle, err := extractEyeSuitePDFLocalBundle(ctx, file.Data); err == nil {
-			bundle.Exam["source"] = []any{file.Metadata.Filename}
-			exams["iol_calculation"] = bundle.Exam
+		reportProgress(
+			fileCtx,
+			8,
+			"eyesuite",
+			"Verificando biometria EyeSuite",
+		)
+
+		if bundle, err :=
+			extractEyeSuitePDFLocalBundle(
+				fileCtx,
+				file.Data,
+			); err == nil {
+			bundle.Exam["source"] = []any{
+				file.Metadata.Filename,
+			}
+
+			exams["iol_calculation"] =
+				bundle.Exam
 
 			if bundle.Identity != nil {
 				patient := map[string]any{
 					"full_name": bundle.Identity.FullName,
 				}
+
 				analysis["patient"] = patient
 
-				analysis["verificacao_identidade"] = []any{
-					map[string]any{
-						"source":          file.Metadata.Filename,
-						"nome_lido":       bundle.Identity.FullName,
-						"nascimento_lido": bundle.Identity.BirthDateRaw,
-						"timestamp_lido":  bundle.Identity.TimestampRaw,
-						"confidence":      "deterministic_template",
-						"method":          "local_ocr_tesseract",
-					},
-				}
+				analysis["verificacao_identidade"] =
+					[]any{
+						map[string]any{
+							"source":          file.Metadata.Filename,
+							"nome_lido":       bundle.Identity.FullName,
+							"nascimento_lido": bundle.Identity.BirthDateRaw,
+							"timestamp_lido":  bundle.Identity.TimestampRaw,
+							"confidence":      "deterministic_template",
+							"method":          "local_ocr_tesseract",
+						},
+					}
 
-				if birthDate, ok := canonicalPatientBirthDate(analysis); ok {
-					patient["birth_date"] = birthDate
+				if birthDate, ok :=
+					canonicalPatientBirthDate(
+						analysis,
+					); ok {
+					patient["birth_date"] =
+						birthDate
 				}
 			}
 
+			reportProgress(
+				fileCtx,
+				100,
+				"eyesuite",
+				"EyeSuite extraído localmente",
+			)
+
 			continue
 		}
 
-		// Pentacam: aceita resultado parcial.
-		// Campos ausentes serão gaps para o fallback.
-		if tryExtractPentacamLocal(ctx, file, analysis) {
+		reportProgress(
+			fileCtx,
+			14,
+			"pentacam",
+			"Verificando Pentacam",
+		)
+
+		if tryExtractPentacamLocal(
+			withProgressRange(
+				fileCtx,
+				14,
+				100,
+			),
+			file,
+			analysis,
+		) {
 			continue
 		}
+
+		reportProgress(
+			fileCtx,
+			100,
+			"document",
+			"Documento reservado para fallback",
+		)
 	}
 
 	return analysis

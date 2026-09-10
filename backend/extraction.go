@@ -103,27 +103,77 @@ func intakeMetadata(files []uploadedFile) []intakeFile {
 	return result
 }
 
-func extractPatient(ctx context.Context, files []uploadedFile) (map[string]any, error) {
-	analysis := extractPatientLocal(ctx, files)
-	gaps := collectLocalGaps(analysis, files)
+func extractPatient(
+	ctx context.Context,
+	files []uploadedFile,
+) (map[string]any, error) {
+	reportProgress(
+		ctx,
+		0,
+		"ocr",
+		"Iniciando OCR determinístico",
+	)
+
+	analysis := extractPatientLocal(
+		withProgressRange(ctx, 0, 82),
+		files,
+	)
+
+	reportProgress(
+		ctx,
+		83,
+		"validation",
+		"Validando contratos dos exames",
+	)
+
+	gaps := collectLocalGaps(
+		analysis,
+		files,
+	)
 
 	var prepared []preparedFile
 
 	if len(gaps) > 0 {
-		fallbackFiles := localFallbackFiles(analysis, files)
+		reportProgress(
+			ctx,
+			85,
+			"fallback",
+			"Resolvendo lacunas restantes",
+		)
+
+		fallbackFiles := localFallbackFiles(
+			analysis,
+			files,
+		)
 
 		var err error
-		prepared, err = prepareExtractionFiles(ctx, fallbackFiles)
+
+		prepared, err = prepareExtractionFiles(
+			ctx,
+			fallbackFiles,
+		)
+
 		if err != nil {
 			return nil, err
 		}
 
+		reportProgress(
+			ctx,
+			90,
+			"fallback",
+			"Executando fallback dos dados ausentes",
+		)
+
 		output, err := requestOpenAIPreparedJSON(
 			ctx,
 			prepared,
-			extractionPromptForLocalGaps(analysis, gaps),
+			extractionPromptForLocalGaps(
+				analysis,
+				gaps,
+			),
 			40000,
 		)
+
 		if err != nil {
 			return nil, err
 		}
@@ -133,37 +183,95 @@ func extractPatient(ctx context.Context, files []uploadedFile) (map[string]any, 
 			return nil, err
 		}
 
-		resolved := localResolvedExamKeys(analysis)
-		stripLocallyResolvedExams(fallback, resolved)
-		mergeFallbackAnalysis(analysis, fallback)
+		resolved := localResolvedExamKeys(
+			analysis,
+		)
+
+		stripLocallyResolvedExams(
+			fallback,
+			resolved,
+		)
+
+		mergeFallbackAnalysis(
+			analysis,
+			fallback,
+		)
+
+		reportProgress(
+			ctx,
+			95,
+			"fallback",
+			"Lacunas consolidadas",
+		)
 	}
 
-	// Pentacam usa somente o fallback local-first acima.
-	// Não executar uma segunda chamada OpenAI para o mesmo exame.
+	if repairFiles := iolFilesNeedingRepair(
+		analysis,
+		files,
+	); len(repairFiles) > 0 {
+		reportProgress(
+			ctx,
+			96,
+			"iol",
+			"Validando biometria",
+		)
 
-	if repairFiles := iolFilesNeedingRepair(analysis, files); len(repairFiles) > 0 {
 		if prepared == nil {
 			var err error
-			prepared, err = prepareExtractionFiles(ctx, files)
+
+			prepared, err = prepareExtractionFiles(
+				ctx,
+				files,
+			)
+
 			if err != nil {
 				return nil, err
 			}
 		}
 
-		if repairOutput, repairErr := requestOpenAIPreparedJSON(
-			ctx,
-			prepareRepairFiles(repairFiles, prepared),
-			iolRepairPrompt,
-			5000,
-		); repairErr == nil {
+		if repairOutput, repairErr :=
+			requestOpenAIPreparedJSON(
+				ctx,
+				prepareRepairFiles(
+					repairFiles,
+					prepared,
+				),
+				iolRepairPrompt,
+				5000,
+			); repairErr == nil {
 			var repair map[string]any
-			if json.Unmarshal([]byte(repairOutput), &repair) == nil {
-				mergeIOLRepair(analysis, repair)
+
+			if json.Unmarshal(
+				[]byte(repairOutput),
+				&repair,
+			) == nil {
+				mergeIOLRepair(
+					analysis,
+					repair,
+				)
 			}
 		}
 	}
 
-	enrichSourceFiles(analysis, files)
+	reportProgress(
+		ctx,
+		99,
+		"consolidation",
+		"Consolidando fontes e evidências",
+	)
+
+	enrichSourceFiles(
+		analysis,
+		files,
+	)
+
+	reportProgress(
+		ctx,
+		100,
+		"consolidation",
+		"Extração concluída",
+	)
+
 	return analysis, nil
 }
 
