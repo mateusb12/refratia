@@ -8,6 +8,8 @@ import (
 	"image/png"
 	"regexp"
 	"strconv"
+
+	pdfutil "refratia/backend/shared/pdf"
 )
 
 var pentacamNonDigit = regexp.MustCompile(`[^0-9]`)
@@ -16,7 +18,7 @@ func readPentacamBADDDeterministic(
 	ctx context.Context,
 	pdf []byte,
 ) (float64, bool) {
-	page, err := renderPDFPageAtDPI(ctx, pdf, 7, 300)
+	page, err := pdfutil.RenderPageAtDPI(ctx, pdf, 7, 300)
 	if err != nil {
 		return 0, false
 	}

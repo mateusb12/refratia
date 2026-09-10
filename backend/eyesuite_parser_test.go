@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+
+	"refratia/backend/shared/ocr"
 )
 
 func TestParseEyeSuiteTSVCompleteBothEyes(t *testing.T) {
@@ -94,7 +96,7 @@ func assertEyeSuiteK(t *testing.T, eyes map[string]any, eye, key string, want fl
 }
 
 func TestParseEyeSuiteIdentityWords(t *testing.T) {
-	words := []ocrWord{
+	words := []ocr.Word{
 		{Text: "PESSOA,", Left: 100, Top: 420},
 		{Text: "TESTE", Left: 300, Top: 421},
 		{Text: "SILVA,", Left: 500, Top: 421},
@@ -126,7 +128,7 @@ func TestParseEyeSuiteIdentityWords(t *testing.T) {
 }
 
 func TestParseEyeSuiteIdentityRejectsIncompleteHeader(t *testing.T) {
-	words := []ocrWord{
+	words := []ocr.Word{
 		{Text: "PESSOA", Left: 100, Top: 420},
 		{Text: "TESTE", Left: 300, Top: 420},
 		{Text: "03/14/1980", Left: 500, Top: 420},

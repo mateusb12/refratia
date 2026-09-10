@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"strings"
+
+	pdfutil "refratia/backend/shared/pdf"
 )
 
 func detectPentacamEyeLocal(ctx context.Context, data []byte) (string, error) {
-	image, err := renderPDFPageAtDPI(ctx, data, 9, 220)
+	image, err := pdfutil.RenderPageAtDPI(ctx, data, 9, 220)
 	if err != nil {
 		return "", err
 	}

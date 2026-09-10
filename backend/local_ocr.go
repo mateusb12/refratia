@@ -3,38 +3,11 @@ package main
 import (
 	"context"
 	"fmt"
-	"os"
-	"os/exec"
-	"strings"
+
+	"refratia/backend/shared/ocr"
+
+	pdfutil "refratia/backend/shared/pdf"
 )
-
-func runTesseractTSV(ctx context.Context, png []byte) (string, error) {
-	input, err := os.CreateTemp("", "refratia-ocr-*.png")
-	if err != nil {
-		return "", err
-	}
-	path := input.Name()
-	defer os.Remove(path)
-
-	if _, err := input.Write(png); err != nil {
-		input.Close()
-		return "", err
-	}
-	if err := input.Close(); err != nil {
-		return "", err
-	}
-
-	command := exec.CommandContext(ctx, "tesseract", path, "stdout", "tsv")
-	output, err := command.Output()
-	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok && len(exitErr.Stderr) > 0 {
-			return "", fmt.Errorf("tesseract: %s", strings.TrimSpace(string(exitErr.Stderr)))
-		}
-		return "", fmt.Errorf("tesseract: %w", err)
-	}
-
-	return string(output), nil
-}
 
 type eyeSuiteLocalBundle struct {
 	Exam     map[string]any
@@ -50,7 +23,7 @@ func extractEyeSuitePDFLocal(ctx context.Context, data []byte) (map[string]any, 
 }
 
 func extractEyeSuitePDFLocalBundle(ctx context.Context, data []byte) (eyeSuiteLocalBundle, error) {
-	if _, _, err := inspectPDF(ctx, data); err != nil {
+	if _, _, err := pdfutil.Inspect(ctx, data); err != nil {
 		return eyeSuiteLocalBundle{}, err
 	}
 
@@ -58,13 +31,13 @@ func extractEyeSuitePDFLocalBundle(ctx context.Context, data []byte) (eyeSuiteLo
 	var lastErr error
 
 	for _, dpi := range []int{300, 450} {
-		image, err := renderPDFPageAtDPI(ctx, data, 1, dpi)
+		image, err := pdfutil.RenderPageAtDPI(ctx, data, 1, dpi)
 		if err != nil {
 			lastErr = err
 			continue
 		}
 
-		tsv, err := runTesseractTSV(ctx, image)
+		tsv, err := ocr.RunTesseractTSV(ctx, image)
 		if err != nil {
 			lastErr = err
 			continue

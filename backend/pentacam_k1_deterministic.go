@@ -2,13 +2,15 @@ package main
 
 import (
 	"context"
+
+	pdfutil "refratia/backend/shared/pdf"
 )
 
 func readPentacamK1Deterministic(
 	ctx context.Context,
 	pdf []byte,
 ) (float64, bool) {
-	page, err := renderPDFPageAtDPI(ctx, pdf, 4, 300)
+	page, err := pdfutil.RenderPageAtDPI(ctx, pdf, 4, 300)
 	if err != nil {
 		return 0, false
 	}

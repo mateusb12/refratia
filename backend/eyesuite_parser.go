@@ -3,28 +3,17 @@ package main
 import (
 	"errors"
 	"fmt"
-	"math"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
+
+	"refratia/backend/shared/ocr"
 )
-
-type ocrWord struct {
-	Text          string
-	Left, Top     int
-	Width, Height int
-}
-
-type ocrRow struct {
-	Y     int
-	Words []ocrWord
-}
 
 var decimalPattern = regexp.MustCompile(`[+-]?\d+[,.]\d+`)
 
 func parseEyeSuiteTSV(tsv string) (map[string]any, error) {
-	words, pageWidth, err := parseTSVWords(tsv)
+	words, pageWidth, err := ocr.ParseTSVWords(tsv)
 	if err != nil {
 		return nil, err
 	}
@@ -53,7 +42,7 @@ func parseEyeSuiteTSV(tsv string) (map[string]any, error) {
 		{Name: "OD", MinX: 0, MaxX: mid},
 		{Name: "OS", MinX: mid, MaxX: pageWidth + 1},
 	} {
-		selected := make([]ocrWord, 0)
+		selected := make([]ocr.Word, 0)
 		for _, word := range words {
 			center := word.Left + word.Width/2
 			if center >= eye.MinX && center < eye.MaxX {
@@ -71,51 +60,15 @@ func parseEyeSuiteTSV(tsv string) (map[string]any, error) {
 	return map[string]any{"eyes": eyes}, nil
 }
 
-func parseTSVWords(tsv string) ([]ocrWord, int, error) {
-	lines := strings.Split(tsv, "\n")
-	words := make([]ocrWord, 0)
-	pageWidth := 0
-
-	for _, line := range lines {
-		fields := strings.Split(line, "\t")
-		if len(fields) < 12 {
-			continue
-		}
-
-		level, _ := strconv.Atoi(fields[0])
-		left, _ := strconv.Atoi(fields[6])
-		top, _ := strconv.Atoi(fields[7])
-		width, _ := strconv.Atoi(fields[8])
-		height, _ := strconv.Atoi(fields[9])
-
-		if level == 1 && width > pageWidth {
-			pageWidth = width
-		}
-		if level != 5 || strings.TrimSpace(fields[11]) == "" {
-			continue
-		}
-
-		words = append(words, ocrWord{
-			Text:   strings.TrimSpace(fields[11]),
-			Left:   left,
-			Top:    top,
-			Width:  width,
-			Height: height,
-		})
-	}
-
-	return words, pageWidth, nil
-}
-
-func parseEyeSuiteEye(words []ocrWord) (map[string]any, error) {
-	rows := groupOCRRows(words, 10)
+func parseEyeSuiteEye(words []ocr.Word) (map[string]any, error) {
+	rows := ocr.GroupRows(words, 10)
 
 	values := map[string]float64{}
 	var astigAxis float64
 	axisFound := false
 
 	for _, row := range rows {
-		text := rowText(row)
+		text := ocr.RowText(row)
 
 		if value, ok := decimalAfter(text, `\bAL\b`); ok {
 			values["axial_length_mm"] = value
@@ -191,41 +144,6 @@ func parseEyeSuiteEye(words []ocrWord) (map[string]any, error) {
 	}, nil
 }
 
-func groupOCRRows(words []ocrWord, tolerance int) []ocrRow {
-	sort.Slice(words, func(i, j int) bool {
-		if words[i].Top == words[j].Top {
-			return words[i].Left < words[j].Left
-		}
-		return words[i].Top < words[j].Top
-	})
-
-	rows := make([]ocrRow, 0)
-	for _, word := range words {
-		if len(rows) == 0 || int(math.Abs(float64(rows[len(rows)-1].Y-word.Top))) > tolerance {
-			rows = append(rows, ocrRow{Y: word.Top, Words: []ocrWord{word}})
-			continue
-		}
-		row := &rows[len(rows)-1]
-		row.Words = append(row.Words, word)
-	}
-
-	for index := range rows {
-		sort.Slice(rows[index].Words, func(i, j int) bool {
-			return rows[index].Words[i].Left < rows[index].Words[j].Left
-		})
-	}
-
-	return rows
-}
-
-func rowText(row ocrRow) string {
-	parts := make([]string, len(row.Words))
-	for index, word := range row.Words {
-		parts[index] = word.Text
-	}
-	return strings.Join(parts, " ")
-}
-
 func decimalAfter(text, labelPattern string) (float64, bool) {
 	label := regexp.MustCompile(`(?i)` + labelPattern)
 	location := label.FindStringIndex(text)
@@ -266,19 +184,19 @@ var (
 )
 
 func parseEyeSuiteIdentityTSV(tsv string) (eyeSuiteIdentity, error) {
-	words, _, err := parseTSVWords(tsv)
+	words, _, err := ocr.ParseTSVWords(tsv)
 	if err != nil {
 		return eyeSuiteIdentity{}, err
 	}
 	return parseEyeSuiteIdentityWords(words)
 }
 
-func parseEyeSuiteIdentityWords(words []ocrWord) (eyeSuiteIdentity, error) {
-	rows := groupOCRRows(words, 10)
+func parseEyeSuiteIdentityWords(words []ocr.Word) (eyeSuiteIdentity, error) {
+	rows := ocr.GroupRows(words, 10)
 
 	anchor := -1
 	for i, row := range rows {
-		if eyeSuiteIDPattern.MatchString(rowText(row)) {
+		if eyeSuiteIDPattern.MatchString(ocr.RowText(row)) {
 			anchor = i
 			break
 		}

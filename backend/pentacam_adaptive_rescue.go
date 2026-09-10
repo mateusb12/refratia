@@ -1,6 +1,10 @@
 package main
 
-import "context"
+import (
+	"context"
+
+	pdfutil "refratia/backend/shared/pdf"
+)
 
 type pentacamAdaptiveCrop struct {
 	X int
@@ -22,7 +26,7 @@ func readPentacamAdaptiveNumber(
 	pdf []byte,
 	spec pentacamAdaptiveSpec,
 ) (float64, bool) {
-	page, err := renderPDFPageAtDPI(
+	page, err := pdfutil.RenderPageAtDPI(
 		ctx,
 		pdf,
 		spec.Page,

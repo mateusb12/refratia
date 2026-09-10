@@ -6,21 +6,23 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"refratia/backend/shared/ocr"
 )
 
 func parsePentacamTSVPages(pages map[int]string) (map[string]any, error) {
 	texts := map[int]string{}
 
 	for page, tsv := range pages {
-		words, _, err := parseTSVWords(tsv)
+		words, _, err := ocr.ParseTSVWords(tsv)
 		if err != nil {
 			return nil, fmt.Errorf("página %d: %w", page, err)
 		}
 
-		rows := groupOCRRows(words, 10)
+		rows := ocr.GroupRows(words, 10)
 		parts := make([]string, 0, len(rows))
 		for _, row := range rows {
-			parts = append(parts, rowText(row))
+			parts = append(parts, ocr.RowText(row))
 		}
 		texts[page] = strings.Join(parts, "\n")
 	}

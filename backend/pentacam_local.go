@@ -5,6 +5,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	pdfutil "refratia/backend/shared/pdf"
 )
 
 type pentacamFocusedField struct {
@@ -33,7 +35,7 @@ func extractPentacamPDFLocal(ctx context.Context, data []byte) (map[string]any, 
 			"Renderizando páginas do Pentacam",
 		)
 
-		image, err := renderPDFPageAtDPI(
+		image, err := pdfutil.RenderPageAtDPI(
 			ctx,
 			data,
 			page,
