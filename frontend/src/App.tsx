@@ -994,22 +994,28 @@ function ExtractedDataReview({
       </div>
 
       <div className="mt-5 grid grid-cols-3 gap-3 max-[1100px]:grid-cols-2 max-[580px]:grid-cols-1">
-        {items.map((data) => (
-          <article
-            key={data.name}
-            className={clsx(
-              'flex min-w-0 flex-col rounded-xl border bg-surface-muted p-4',
-              data.kind === 'Dado ausente' ? 'border-warning/40' : 'border-border',
-            )}
-          >
-            <div className="flex items-start justify-between gap-3">
+        {items.map((data) => {
+          const missingValue = data.kind === 'Dado ausente' || data.value.trim().toLocaleLowerCase() === 'não informado'
+
+          return (
+            <article
+              key={data.name}
+              className={clsx(
+                'flex min-w-0 flex-col rounded-xl border bg-surface-muted p-4',
+                missingValue ? 'border-warning/60 bg-warning-soft/10' : 'border-border',
+              )}
+            >
+            <div className={clsx(
+              'flex items-start justify-between gap-3',
+              missingValue && 'flex-col gap-1',
+            )}>
               <div className="min-w-0">
                 <h3 className="m-0 text-base font-bold">{data.name}</h3>
                 {data.fullName && <p className="mb-0 mt-1 text-xs leading-snug text-text-muted">{data.fullName}</p>}
               </div>
               <strong className={clsx(
                 'whitespace-nowrap font-display text-lg',
-                data.kind === 'Dado ausente' && 'text-warning text-xs',
+                missingValue && 'self-end rounded-md bg-warning-soft px-2 py-1 text-xs text-warning',
               )}>
                 {data.value}{data.unit && <small className="ml-1 text-xs text-text-secondary">{data.unit}</small>}
               </strong>
@@ -1031,8 +1037,9 @@ function ExtractedDataReview({
             >
               {data.kind === 'Dado calculado' ? 'Ver cálculo' : 'Ver origem'}
             </button>
-          </article>
-        ))}
+            </article>
+          )
+        })}
       </div>
 
       <div className="mt-4">
