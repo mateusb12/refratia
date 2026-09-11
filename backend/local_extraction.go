@@ -13,11 +13,153 @@ import (
 	patientfeature "refratia/backend/features/patient"
 )
 
+func localExamTypeFromFilename(
+	filename string,
+) string {
+	parts := strings.Split(filename, "__")
+
+	if len(parts) < 2 {
+		return ""
+	}
+
+	return strings.ToUpper(
+		strings.TrimSpace(parts[0]),
+	)
+}
+
+func localExamEyeFromFilename(
+	filename string,
+) string {
+	parts := strings.Split(filename, "__")
+
+	if len(parts) < 2 {
+		return ""
+	}
+
+	return strings.ToUpper(
+		strings.TrimSpace(parts[1]),
+	)
+}
+
+func emitLocalFileResult(
+	ctx context.Context,
+	filename,
+	examType,
+	eye,
+	status,
+	message string,
+	analysis map[string]any,
+) {
+	payload := map[string]any{
+		"filename": filename,
+		"examType": examType,
+		"eye":      eye,
+		"status":   status,
+		"message":  message,
+	}
+
+	if analysis != nil {
+		payload["analysis"] = analysis
+	}
+
+	progressutil.Emit(
+		ctx,
+		progressutil.Event{
+			Type:     "file_result",
+			Percent:  100,
+			Stage:    "file_result",
+			Message:  message,
+			Filename: filename,
+			Payload:  payload,
+		},
+	)
+}
+
+func tryExtractEyeSuiteLocal(
+	ctx context.Context,
+	file uploadedFile,
+	analysis map[string]any,
+) bool {
+	bundle, err := eyesuite.ExtractPDF(
+		ctx,
+		file.Data,
+	)
+
+	if err != nil {
+		return false
+	}
+
+	exams, _ := analysis["exams"].(map[string]any)
+
+	if exams == nil {
+		exams = map[string]any{}
+		analysis["exams"] = exams
+	}
+
+	bundle.Exam["source"] = []any{
+		file.Metadata.Filename,
+	}
+
+	exams["iol_calculation"] =
+		bundle.Exam
+
+	if bundle.Identity != nil {
+		patient := map[string]any{
+			"full_name": bundle.Identity.FullName,
+		}
+
+		analysis["patient"] = patient
+
+		analysis["verificacao_identidade"] =
+			[]any{
+				map[string]any{
+					"source":          file.Metadata.Filename,
+					"nome_lido":       bundle.Identity.FullName,
+					"nascimento_lido": bundle.Identity.BirthDateRaw,
+					"timestamp_lido":  bundle.Identity.TimestampRaw,
+					"confidence":      "deterministic_template",
+					"method":          "local_ocr_tesseract",
+				},
+			}
+
+		if birthDate, ok :=
+			patientfeature.CanonicalBirthDate(
+				analysis,
+			); ok {
+
+			patient["birth_date"] =
+				birthDate
+		}
+	}
+
+	return true
+}
+
+func emitLocalPartial(
+	ctx context.Context,
+	filename,
+	message string,
+	analysis map[string]any,
+) {
+	progressutil.Emit(
+		ctx,
+		progressutil.Event{
+			Type:     "partial",
+			Percent:  100,
+			Stage:    "result",
+			Message:  message,
+			Filename: filename,
+			Payload:  analysis,
+		},
+	)
+}
+
 func extractPatientLocal(
 	ctx context.Context,
 	files []uploadedFile,
 ) map[string]any {
 	exams := map[string]any{}
+
 	analysis := map[string]any{
 		"exams": exams,
 	}
@@ -35,27 +177,189 @@ func extractPatientLocal(
 			(index+1)*100/total,
 		)
 
+		fileCtx = progressutil.WithFilename(
+			fileCtx,
+			file.Metadata.Filename,
+		)
+
+		examType :=
+			localExamTypeFromFilename(
+				file.Metadata.Filename,
+			)
+
+		examEye :=
+			localExamEyeFromFilename(
+				file.Metadata.Filename,
+			)
+
 		progressutil.Report(
 			fileCtx,
 			2,
 			"document",
 			fmt.Sprintf(
-				"Identificando documento %d/%d",
+				"Processando documento %d/%d",
 				index+1,
 				total,
 			),
 		)
 
+		// Arquivos de imagem já são identificados
+		// pelo filename, mas ainda não possuem todos
+		// os extratores locais implementados.
 		if file.Metadata.ContentType != "application/pdf" {
 			progressutil.Report(
 				fileCtx,
-				100,
-				"document",
-				"Documento reservado para etapa complementar",
+				96,
+				strings.ToLower(examType),
+				"Arquivo identificado pelo nome",
 			)
+
+			emitLocalFileResult(
+				fileCtx,
+				file.Metadata.Filename,
+				examType,
+				examEye,
+				"identified",
+				"Identificado pelo filename; extrator clínico específico ainda não implementado",
+				nil,
+			)
+
 			continue
 		}
 
+		switch examType {
+		case "EYESUITE":
+			progressutil.Report(
+				fileCtx,
+				8,
+				"eyesuite",
+				"Extraindo biometria EyeSuite",
+			)
+
+			if tryExtractEyeSuiteLocal(
+				fileCtx,
+				file,
+				analysis,
+			) {
+				progressutil.Report(
+					fileCtx,
+					96,
+					"eyesuite",
+					"EyeSuite extraído localmente",
+				)
+
+				emitLocalPartial(
+					fileCtx,
+					file.Metadata.Filename,
+					"EyeSuite concluído",
+					analysis,
+				)
+
+				emitLocalFileResult(
+					fileCtx,
+					file.Metadata.Filename,
+					"EYESUITE",
+					examEye,
+					"extracted",
+					"EyeSuite extraído",
+					analysis,
+				)
+
+				continue
+			}
+
+			progressutil.Report(
+				fileCtx,
+				96,
+				"eyesuite",
+				"EyeSuite não pôde ser extraído localmente",
+			)
+
+			emitLocalFileResult(
+				fileCtx,
+				file.Metadata.Filename,
+				"EYESUITE",
+				examEye,
+				"failed",
+				"Falha na extração EyeSuite",
+				nil,
+			)
+
+			continue
+
+		case "PENTACAM":
+			progressutil.Report(
+				fileCtx,
+				8,
+				"pentacam",
+				"Extraindo Pentacam",
+			)
+
+			if tryExtractPentacamLocal(
+				progressutil.WithRange(
+					fileCtx,
+					8,
+					96,
+				),
+				file,
+				analysis,
+			) {
+				emitLocalPartial(
+					fileCtx,
+					file.Metadata.Filename,
+					"Pentacam concluído",
+					analysis,
+				)
+
+				emitLocalFileResult(
+					fileCtx,
+					file.Metadata.Filename,
+					"PENTACAM",
+					examEye,
+					"extracted",
+					"Pentacam extraído",
+					analysis,
+				)
+
+				continue
+			}
+
+			progressutil.Report(
+				fileCtx,
+				96,
+				"pentacam",
+				"Pentacam não pôde ser extraído localmente",
+			)
+
+			emitLocalFileResult(
+				fileCtx,
+				file.Metadata.Filename,
+				"PENTACAM",
+				examEye,
+				"failed",
+				"Falha na extração Pentacam",
+				nil,
+			)
+
+			continue
+
+		case "RETINA",
+			"CORNEA",
+			"MICROSCOPIA_ESPECULAR":
+
+			progressutil.Report(
+				fileCtx,
+				100,
+				strings.ToLower(examType),
+				"Arquivo identificado; extrator local específico ainda não configurado",
+			)
+
+			continue
+		}
+
+		// Compatibilidade com arquivos antigos ainda
+		// não padronizados: mantém o comportamento
+		// heurístico anterior.
 		progressutil.Report(
 			fileCtx,
 			8,
@@ -63,51 +367,16 @@ func extractPatientLocal(
 			"Verificando biometria EyeSuite",
 		)
 
-		if bundle, err :=
-			eyesuite.ExtractPDF(
+		if tryExtractEyeSuiteLocal(
+			fileCtx,
+			file,
+			analysis,
+		) {
+			emitLocalPartial(
 				fileCtx,
-				file.Data,
-			); err == nil {
-			bundle.Exam["source"] = []any{
 				file.Metadata.Filename,
-			}
-
-			exams["iol_calculation"] =
-				bundle.Exam
-
-			if bundle.Identity != nil {
-				patient := map[string]any{
-					"full_name": bundle.Identity.FullName,
-				}
-
-				analysis["patient"] = patient
-
-				analysis["verificacao_identidade"] =
-					[]any{
-						map[string]any{
-							"source":          file.Metadata.Filename,
-							"nome_lido":       bundle.Identity.FullName,
-							"nascimento_lido": bundle.Identity.BirthDateRaw,
-							"timestamp_lido":  bundle.Identity.TimestampRaw,
-							"confidence":      "deterministic_template",
-							"method":          "local_ocr_tesseract",
-						},
-					}
-
-				if birthDate, ok :=
-					patientfeature.CanonicalBirthDate(
-						analysis,
-					); ok {
-					patient["birth_date"] =
-						birthDate
-				}
-			}
-
-			progressutil.Report(
-				fileCtx,
-				100,
-				"eyesuite",
-				"EyeSuite extraído localmente",
+				"EyeSuite concluído",
+				analysis,
 			)
 
 			continue
@@ -129,6 +398,13 @@ func extractPatientLocal(
 			file,
 			analysis,
 		) {
+			emitLocalPartial(
+				fileCtx,
+				file.Metadata.Filename,
+				"Pentacam concluído",
+				analysis,
+			)
+
 			continue
 		}
 

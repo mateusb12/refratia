@@ -3,18 +3,20 @@ package progress
 import "context"
 
 type Event struct {
-	Type    string `json:"type"`
-	Percent int    `json:"percent,omitempty"`
-	Stage   string `json:"stage,omitempty"`
-	Message string `json:"message,omitempty"`
-	Status  int    `json:"status,omitempty"`
-	Payload any    `json:"payload,omitempty"`
+	Type     string `json:"type"`
+	Percent  int    `json:"percent,omitempty"`
+	Stage    string `json:"stage,omitempty"`
+	Message  string `json:"message,omitempty"`
+	Filename string `json:"filename,omitempty"`
+	Status   int    `json:"status,omitempty"`
+	Payload  any    `json:"payload,omitempty"`
 }
 
 type Reporter func(Event)
 
 type reporterKey struct{}
 type rangeKey struct{}
+type filenameKey struct{}
 
 type progressRange struct {
 	Start int
@@ -92,11 +94,29 @@ func WithRange(
 	)
 }
 
-func Report(
+func WithFilename(
 	ctx context.Context,
-	percent int,
-	stage,
-	message string,
+	filename string,
+) context.Context {
+	return context.WithValue(
+		ctx,
+		filenameKey{},
+		filename,
+	)
+}
+
+func Filename(
+	ctx context.Context,
+) string {
+	value, _ :=
+		ctx.Value(filenameKey{}).(string)
+
+	return value
+}
+
+func Emit(
+	ctx context.Context,
+	event Event,
 ) {
 	reporter, ok :=
 		ctx.Value(reporterKey{}).(Reporter)
@@ -105,24 +125,40 @@ func Report(
 		return
 	}
 
-	if percent < 0 {
-		percent = 0
+	if event.Percent < 0 {
+		event.Percent = 0
 	}
 
-	if percent > 100 {
-		percent = 100
+	if event.Percent > 100 {
+		event.Percent = 100
 	}
 
 	scope := currentRange(ctx)
 
-	mapped :=
+	event.Percent =
 		scope.Start +
-			(scope.End-scope.Start)*percent/100
+			(scope.End-scope.Start)*event.Percent/100
 
-	reporter(Event{
-		Type:    "progress",
-		Percent: mapped,
-		Stage:   stage,
-		Message: message,
-	})
+	if event.Filename == "" {
+		event.Filename = Filename(ctx)
+	}
+
+	reporter(event)
+}
+
+func Report(
+	ctx context.Context,
+	percent int,
+	stage,
+	message string,
+) {
+	Emit(
+		ctx,
+		Event{
+			Type:    "progress",
+			Percent: percent,
+			Stage:   stage,
+			Message: message,
+		},
+	)
 }

@@ -1,4 +1,5 @@
-import { Component, useEffect, useState, type ErrorInfo, type ReactNode } from 'react'
+import { Component, useEffect, useState, type ErrorInfo, type ReactNode, useRef
+} from 'react'
 import clsx from 'clsx'
 import {
   Activity,
@@ -30,6 +31,7 @@ import {
 } from 'lucide-react'
 import patientData from '../data/paciente_compilado.json'
 import RoadmapPage from './components/roadmap/RoadmapPage'
+import ExamProtocolChecklist from './components/intake/ExamProtocolChecklist'
 import BenchmarkOcrPage from './components/benchmark/BenchmarkOcrPage'
 import { isIntakePreview, normalizeSavedAnalysis, type IntakeAnalysis, type IntakePreview } from './contracts/patient-analysis'
 import { assessExamContract } from './contracts/exam-contracts'
@@ -1611,9 +1613,13 @@ function App() {
   const [intakeLocalPreviews, setIntakeLocalPreviews] = useState<Record<string, string>>({})
   const [intakePreview, setIntakePreview] = useState<IntakePreview | null>(null)
   const [intakeBusy, setIntakeBusy] = useState(false)
+  const intakeAbortController = useRef<AbortController | null>(null)
   const [intakeProgress, setIntakeProgress] = useState(0)
   const [intakeProgressStage, setIntakeProgressStage] = useState('')
   const [intakeProgressMessage, setIntakeProgressMessage] = useState('')
+  const [intakeProgressFilename, setIntakeProgressFilename] = useState('')
+  const [intakeLiveAnalysis, setIntakeLiveAnalysis] = useState<IntakeAnalysis | null>(null)
+  const [intakeCompletedFiles, setIntakeCompletedFiles] = useState<string[]>([])
   const [intakeElapsed, setIntakeElapsed] = useState(0)
   const [intakeMessage, setIntakeMessage] = useState('')
   const [savedCases, setSavedCases] = useState<SavedCase[]>([])
@@ -1717,10 +1723,16 @@ function App() {
       return
     }
 
+    const controller = new AbortController()
+    intakeAbortController.current = controller
+
     setIntakeBusy(true)
     setIntakeProgress(1)
     setIntakeProgressStage('upload')
     setIntakeProgressMessage('Enviando documentos')
+    setIntakeProgressFilename('')
+    setIntakeLiveAnalysis(null)
+    setIntakeCompletedFiles([])
     setIntakeElapsed(0)
     setIntakeMessage('')
 
@@ -1735,6 +1747,7 @@ function App() {
           headers: {
             Accept: 'application/x-ndjson',
           },
+          signal: controller.signal,
           body,
         },
       )
@@ -1769,6 +1782,7 @@ function App() {
             percent?: number
             stage?: string
             message?: string
+            filename?: string
             status?: number
             payload?: unknown
           }
@@ -1779,6 +1793,10 @@ function App() {
             throw new Error(
               'O backend enviou um evento de progresso inválido.',
             )
+          }
+
+          if (event.filename) {
+            setIntakeProgressFilename(event.filename)
           }
 
           if (event.type === 'progress') {
@@ -1803,6 +1821,28 @@ function App() {
             if (event.message) {
               setIntakeProgressMessage(
                 event.message,
+              )
+            }
+
+            return
+          }
+
+          if (event.type === 'partial') {
+            if (
+              event.payload &&
+              typeof event.payload === 'object' &&
+              'exams' in event.payload
+            ) {
+              setIntakeLiveAnalysis(
+                event.payload as IntakeAnalysis,
+              )
+            }
+
+            if (event.filename) {
+              setIntakeCompletedFiles((current) =>
+                current.includes(event.filename!)
+                  ? current
+                  : [...current, event.filename!],
               )
             }
 
@@ -1900,7 +1940,16 @@ function App() {
       setIntakePreview(result)
       setIntakeFiles([])
     } catch (error) {
-      if (error instanceof TypeError) {
+      if (
+        error instanceof Error &&
+        error.name === 'AbortError'
+      ) {
+        setIntakeProgressStage('cancelled')
+        setIntakeProgressMessage('Análise cancelada')
+        setIntakeMessage(
+          'Análise cancelada. Os resultados já processados foram preservados.',
+        )
+      } else if (error instanceof TypeError) {
         setIntakeMessage(
           `NetworkError: não foi possível conectar ao backend em ${API_URL}. Verifique se o backend está ativo.`,
         )
@@ -1912,16 +1961,54 @@ function App() {
         )
       }
     } finally {
+      if (intakeAbortController.current === controller) {
+        intakeAbortController.current = null
+      }
+
       setIntakeBusy(false)
     }
   }
 
+  function abortIntakeAnalysis() {
+    const controller = intakeAbortController.current
+
+    if (!controller || controller.signal.aborted) return
+
+    setIntakeProgressMessage('Cancelando análise…')
+    controller.abort()
+  }
+
   function replaceIntakeFiles(files: File[]) {
-    setIntakeLocalPreviews((current) => {
-      Object.values(current).forEach((url) => URL.revokeObjectURL(url))
-      return Object.fromEntries(files.map((file) => [file.name, URL.createObjectURL(file)]))
+    setIntakeFiles((current) => {
+      const merged = [...current]
+
+      for (const file of files) {
+        const duplicate = merged.some(
+          (existing) =>
+            existing.name === file.name &&
+            existing.size === file.size &&
+            existing.lastModified === file.lastModified,
+        )
+
+        if (!duplicate) {
+          merged.push(file)
+        }
+      }
+
+      return merged
     })
-    setIntakeFiles(files)
+
+    setIntakeLocalPreviews((current) => {
+      const next = { ...current }
+
+      for (const file of files) {
+        if (!next[file.name]) {
+          next[file.name] = URL.createObjectURL(file)
+        }
+      }
+
+      return next
+    })
   }
 
   async function confirmIntake() {
@@ -2365,10 +2452,27 @@ function App() {
                   <div className="mt-4 rounded-xl border border-border bg-surface p-4">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <strong className="text-sm">{intakeFiles.length} arquivo(s) selecionado(s)</strong>
-                      <PrimaryButton disabled={intakeBusy} onClick={analyzeIntake}>
-                        {intakeBusy ? 'Analisando…' : 'Analisar arquivos'}
-                      </PrimaryButton>
+                      <div className="flex items-center gap-2">
+                        {intakeBusy && (
+                          <button
+                            className="rounded-xl border border-danger/40 bg-danger-soft px-4 py-2.5 text-sm font-bold text-danger hover:border-danger/70"
+                            onClick={abortIntakeAnalysis}
+                            type="button"
+                          >
+                            Cancelar análise
+                          </button>
+                        )}
+
+                        <PrimaryButton
+                          disabled={intakeBusy}
+                          onClick={analyzeIntake}
+                        >
+                          {intakeBusy ? 'Analisando…' : 'Analisar arquivos'}
+                        </PrimaryButton>
+                      </div>
                     </div>
+                    <ExamProtocolChecklist files={intakeFiles} />
+
                     {intakeBusy && (() => {
                       const elapsedLabel = `${String(Math.floor(intakeElapsed / 60)).padStart(2, '0')}:${String(intakeElapsed % 60).padStart(2, '0')}`
 
@@ -2404,7 +2508,7 @@ function App() {
                           <div className="mt-2 flex items-center gap-2 text-xs text-text-secondary">
                             <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-primary" />
                             <span className="truncate">
-                              {intakeProgressStage || 'OCR local'}
+                              {intakeProgressFilename || intakeProgressStage || 'OCR local'}
                             </span>
                             <span className="ml-auto flex-none font-mono text-text-muted">
                               {elapsedLabel}
@@ -2417,6 +2521,60 @@ function App() {
                         </div>
                       )
                     })()}
+                    {intakeLiveAnalysis && (
+                      <div className="mt-4 rounded-xl border border-success/40 bg-success-soft p-4">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <span className="text-xs font-bold uppercase tracking-[0.12em] text-success">
+                              Resultados durante a análise
+                            </span>
+
+                            <p className="mb-0 mt-1 text-xs text-text-secondary">
+                              Exames exibidos assim que cada parser termina.
+                            </p>
+                          </div>
+
+                          <span className="rounded-full border border-success/30 bg-surface px-3 py-1 text-xs font-bold text-success">
+                            {intakeCompletedFiles.length} processado(s)
+                          </span>
+                        </div>
+
+                        {intakeCompletedFiles.length > 0 && (
+                          <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                            {intakeCompletedFiles.map((filename) => (
+                              <div
+                                className="flex min-w-0 items-center gap-3 rounded-lg border border-success/20 bg-surface/70 px-3 py-2"
+                                key={filename}
+                              >
+                                <span className="grid h-6 w-6 flex-none place-items-center rounded-full bg-success-soft text-success">
+                                  ✓
+                                </span>
+
+                                <div className="min-w-0">
+                                  <strong className="block text-xs text-success">
+                                    Parsing concluído
+                                  </strong>
+
+                                  <span
+                                    className="block truncate font-mono text-[10px] text-text-secondary"
+                                    title={filename}
+                                  >
+                                    {filename}
+                                  </span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        <div className="mt-4 border-t border-success/20 pt-4">
+                          <IntakeAnalysisSummary
+                            analysis={intakeLiveAnalysis}
+                          />
+                        </div>
+                      </div>
+                    )}
+
                     <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                       {intakeFiles.map((file) => (
                         <div
