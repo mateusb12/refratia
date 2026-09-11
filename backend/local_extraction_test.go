@@ -93,3 +93,64 @@ func TestCompleteLocalExtractionHasZeroGaps(t *testing.T) {
 		t.Fatalf("esperava zero gaps; recebeu %v", gaps)
 	}
 }
+
+func TestStripLocallyResolvedExamsRemovesStaleInvalidExamWarning(t *testing.T) {
+	analysis := map[string]any{
+		"exams": map[string]any{
+			"iol_calculation": map[string]any{
+				"source": []any{"BIO SRK-T AO.pdf"},
+			},
+			"oct_retina": map[string]any{
+				"source": []any{"oct.pdf"},
+			},
+		},
+		"extraction_notes": map[string]any{
+			"invalid_exams": []any{
+				map[string]any{
+					"exam":   "iol_calculation",
+					"reason": "payload não é um objeto",
+				},
+				map[string]any{
+					"exam":   "oct_retina",
+					"reason": "source ausente ou inválido",
+				},
+			},
+		},
+	}
+
+	stripLocallyResolvedExams(
+		analysis,
+		map[string]bool{
+			"iol_calculation": true,
+		},
+	)
+
+	exams := analysis["exams"].(map[string]any)
+
+	if _, exists := exams["iol_calculation"]; exists {
+		t.Fatal("locally resolved IOL must be removed from fallback exams")
+	}
+
+	if _, exists := exams["oct_retina"]; !exists {
+		t.Fatal("unrelated fallback exam must remain untouched")
+	}
+
+	notes := analysis["extraction_notes"].(map[string]any)
+	invalid := notes["invalid_exams"].([]any)
+
+	if len(invalid) != 1 {
+		t.Fatalf(
+			"expected only unrelated warning to remain, got %#v",
+			invalid,
+		)
+	}
+
+	item := invalid[0].(map[string]any)
+
+	if item["exam"] != "oct_retina" {
+		t.Fatalf(
+			"stale IOL warning survived: %#v",
+			invalid,
+		)
+	}
+}

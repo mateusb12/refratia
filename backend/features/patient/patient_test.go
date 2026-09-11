@@ -1,6 +1,8 @@
-package main
+package patient
 
-import "testing"
+import (
+	"testing"
+)
 
 func TestPatientIdentityNormalizesNameAndBirthDate(t *testing.T) {
 	analysis := map[string]any{
@@ -10,7 +12,7 @@ func TestPatientIdentityNormalizesNameAndBirthDate(t *testing.T) {
 		},
 	}
 
-	identity, ok := patientIdentity(analysis)
+	identity, ok := Identity(analysis)
 	if !ok {
 		t.Fatal("expected patient to be identifiable")
 	}
@@ -27,7 +29,7 @@ func TestPatientIdentityRequiresBirthDate(t *testing.T) {
 		},
 	}
 
-	if _, ok := patientIdentity(analysis); ok {
+	if _, ok := Identity(analysis); ok {
 		t.Fatal("patient without birth date must not be automatically merged")
 	}
 }
@@ -65,7 +67,7 @@ func TestMergePatientCaseAddsPreviouslyMissingExam(t *testing.T) {
 		},
 	}
 
-	merged := mergePatientCase(existing, incoming)
+	merged := Merge(existing, incoming)
 	exams := merged["exams"].(map[string]any)
 
 	if _, ok := exams["iol_calculation"]; !ok {
@@ -109,7 +111,7 @@ func TestMergePatientCaseReplacesOnlyIncomingEye(t *testing.T) {
 		},
 	}
 
-	merged := mergePatientCase(existing, incoming)
+	merged := Merge(existing, incoming)
 
 	exams := merged["exams"].(map[string]any)
 	pentacam := exams["pentacam_corneal_tomography"].(map[string]any)
@@ -283,7 +285,7 @@ func TestMergePatientCaseRebuildsPentacamSourceInEyeOrder(t *testing.T) {
 		},
 	}
 
-	merged := mergePatientCase(existing, incoming)
+	merged := Merge(existing, incoming)
 
 	exams := merged["exams"].(map[string]any)
 	pentacam := exams["pentacam_corneal_tomography"].(map[string]any)
@@ -328,7 +330,7 @@ func TestPatientIdentityUsesDocumentDateOrderInsteadOfModelNormalizedDate(t *tes
 		},
 	}
 
-	identity, ok := patientIdentity(analysis)
+	identity, ok := Identity(analysis)
 	if !ok {
 		t.Fatal("expected patient identity to be deterministically resolved")
 	}
@@ -367,8 +369,8 @@ func TestPatientIdentityMatchesBothObservedPentacamShapes(t *testing.T) {
 		},
 	}
 
-	odIdentity, odOK := patientIdentity(od)
-	osIdentity, osOK := patientIdentity(os)
+	odIdentity, odOK := Identity(od)
+	osIdentity, osOK := Identity(os)
 
 	if !odOK || !osOK {
 		t.Fatal("both Pentacam shapes should produce a patient identity")
@@ -400,7 +402,7 @@ func TestPatientIdentityRejectsAmbiguousSlashDateWithoutContext(t *testing.T) {
 		},
 	}
 
-	if _, ok := patientIdentity(analysis); ok {
+	if _, ok := Identity(analysis); ok {
 		t.Fatal("ambiguous raw birth date must not fall back to model normalization")
 	}
 }
@@ -479,7 +481,7 @@ func TestNormalizePatientIdentityFieldsRemovesWrongNormalizedAlias(t *testing.T)
 		},
 	}
 
-	normalizePatientIdentityFields(analysis)
+	NormalizeIdentityFields(analysis)
 
 	patient := analysis["patient"].(map[string]any)
 
@@ -512,7 +514,7 @@ func TestMergePatientCaseRemovesLegacyBirthDateAlias(t *testing.T) {
 		"exams":        map[string]any{},
 	}
 
-	merged := mergePatientCase(existing, incoming)
+	merged := Merge(existing, incoming)
 	patient := merged["patient"].(map[string]any)
 
 	if patient["birth_date"] != "1980-03-04" {
@@ -549,7 +551,7 @@ func TestBuildPatientChangePreviewChangedField(t *testing.T) {
 		},
 	}
 
-	preview := buildPatientChangePreview(existing, incoming)
+	preview := BuildChangePreview(existing, incoming)
 
 	if preview.Changed != 1 || preview.Added != 0 || preview.Removed != 0 {
 		t.Fatalf("unexpected counters: %#v", preview)
@@ -586,7 +588,7 @@ func TestBuildPatientChangePreviewAddsOSWithoutTouchingOD(t *testing.T) {
 		},
 	}
 
-	preview := buildPatientChangePreview(existing, incoming)
+	preview := BuildChangePreview(existing, incoming)
 
 	if preview.Added != 1 ||
 		preview.Changed != 0 ||
@@ -643,7 +645,7 @@ func TestMergePatientCaseExactReuploadKeepsExistingPayload(t *testing.T) {
 		},
 	}
 
-	merged := mergePatientCase(existing, incoming)
+	merged := Merge(existing, incoming)
 	os := merged["exams"].(map[string]any)["pentacam_corneal_tomography"].(map[string]any)["eyes"].(map[string]any)["OS"].(map[string]any)
 
 	if os["value"] != 45.5 {
@@ -684,7 +686,7 @@ func TestBuildPatientChangePreviewExactReuploadHasNoChanges(t *testing.T) {
 		},
 	}
 
-	preview := buildPatientChangePreview(existing, incoming)
+	preview := BuildChangePreview(existing, incoming)
 
 	if len(preview.Rows) != 0 ||
 		preview.Added != 0 ||

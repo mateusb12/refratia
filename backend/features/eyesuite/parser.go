@@ -1,4 +1,4 @@
-package main
+package eyesuite
 
 import (
 	"errors"
@@ -169,7 +169,7 @@ func axisAfter(text string) (float64, bool) {
 	return value, err == nil
 }
 
-type eyeSuiteIdentity struct {
+type Identity struct {
 	FullName     string
 	BirthDateRaw string
 	TimestampRaw string
@@ -183,15 +183,15 @@ var (
 	eyeSuiteLetterPattern    = regexp.MustCompile(`\p{L}`)
 )
 
-func parseEyeSuiteIdentityTSV(tsv string) (eyeSuiteIdentity, error) {
+func parseEyeSuiteIdentityTSV(tsv string) (Identity, error) {
 	words, _, err := ocr.ParseTSVWords(tsv)
 	if err != nil {
-		return eyeSuiteIdentity{}, err
+		return Identity{}, err
 	}
 	return parseEyeSuiteIdentityWords(words)
 }
 
-func parseEyeSuiteIdentityWords(words []ocr.Word) (eyeSuiteIdentity, error) {
+func parseEyeSuiteIdentityWords(words []ocr.Word) (Identity, error) {
 	rows := ocr.GroupRows(words, 10)
 
 	anchor := -1
@@ -202,7 +202,7 @@ func parseEyeSuiteIdentityWords(words []ocr.Word) (eyeSuiteIdentity, error) {
 		}
 	}
 	if anchor < 0 {
-		return eyeSuiteIdentity{}, errors.New("EyeSuite: âncora ID (CID) ausente")
+		return Identity{}, errors.New("EyeSuite: âncora ID (CID) ausente")
 	}
 
 	var fullName, birthDate string
@@ -237,7 +237,7 @@ func parseEyeSuiteIdentityWords(words []ocr.Word) (eyeSuiteIdentity, error) {
 	}
 
 	if fullName == "" || birthDate == "" {
-		return eyeSuiteIdentity{}, errors.New("EyeSuite: nome/nascimento não localizados")
+		return Identity{}, errors.New("EyeSuite: nome/nascimento não localizados")
 	}
 
 	var examDate, examTime string
@@ -260,10 +260,10 @@ func parseEyeSuiteIdentityWords(words []ocr.Word) (eyeSuiteIdentity, error) {
 	}
 
 	if examDate == "" || examTime == "" {
-		return eyeSuiteIdentity{}, errors.New("EyeSuite: timestamp não localizado")
+		return Identity{}, errors.New("EyeSuite: timestamp não localizado")
 	}
 
-	return eyeSuiteIdentity{
+	return Identity{
 		FullName:     fullName,
 		BirthDateRaw: birthDate,
 		TimestampRaw: examDate + " " + examTime,

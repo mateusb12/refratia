@@ -18,6 +18,7 @@ import {
   Moon,
   Plus,
   Settings,
+  Gauge,
   ShieldAlert,
   ShieldCheck,
   Stethoscope,
@@ -29,6 +30,7 @@ import {
 } from 'lucide-react'
 import patientData from '../data/paciente_compilado.json'
 import RoadmapPage from './components/roadmap/RoadmapPage'
+import BenchmarkOcrPage from './components/benchmark/BenchmarkOcrPage'
 import { isIntakePreview, normalizeSavedAnalysis, type IntakeAnalysis, type IntakePreview } from './contracts/patient-analysis'
 import { assessExamContract } from './contracts/exam-contracts'
 
@@ -710,6 +712,7 @@ const sidebarRoutes: Record<string, string> = {
   'Nova análise': 'nova-analise',
   Relatórios: 'relatorios',
   Configurações: 'configuracoes',
+  'Benchmark OCR': 'benchmark-ocr',
   Roadmap: 'roadmap',
 }
 
@@ -2236,6 +2239,17 @@ function App() {
             <Settings size={19} /> Configurações
           </button>
           <button
+            aria-current={activeSection === 'Benchmark OCR' ? 'page' : undefined}
+            className={clsx(
+              'flex w-full items-center gap-3 rounded-[10px] border-0 px-[13px] py-[11px] text-left text-sm font-medium',
+              activeSection === 'Benchmark OCR' ? 'bg-[rgb(103_205_171_/_14%)] text-[#9be0c9]' : 'bg-transparent text-sidebar-muted hover:bg-white/[0.05] hover:text-sidebar-text',
+            )}
+            onClick={() => navigateSection('Benchmark OCR')}
+            type="button"
+          >
+            <Gauge size={19} /> Benchmark OCR
+          </button>
+          <button
             aria-current={activeSection === 'Roadmap' ? 'page' : undefined}
             className={clsx(
               'flex w-full items-center gap-3 rounded-[10px] border-0 px-[13px] py-[11px] text-left text-sm font-medium',
@@ -2282,7 +2296,9 @@ function App() {
         </header>
 
         <section className="mx-auto w-full max-w-[1320px] overflow-x-hidden px-[clamp(16px,4vw,56px)] pb-14 pt-8">
-          {activeSection === 'Roadmap' ? <RoadmapPage /> : activeSection === 'Configurações' ? (
+          {activeSection === 'Roadmap' ? <RoadmapPage /> : activeSection === 'Benchmark OCR' ? (
+            <BenchmarkOcrPage />
+          ) : activeSection === 'Configurações' ? (
             <section className="mt-5 rounded-2xl border border-border bg-surface p-6 shadow-sm">
               <Eyebrow>SISTEMA</Eyebrow>
               <h2 className="mb-0 mt-1 font-display text-xl">Configurações</h2>

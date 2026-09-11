@@ -1,4 +1,4 @@
-package main
+package eyesuite
 
 import (
 	"context"
@@ -9,22 +9,14 @@ import (
 	pdfutil "refratia/backend/shared/pdf"
 )
 
-type eyeSuiteLocalBundle struct {
+type Result struct {
 	Exam     map[string]any
-	Identity *eyeSuiteIdentity
+	Identity *Identity
 }
 
-func extractEyeSuitePDFLocal(ctx context.Context, data []byte) (map[string]any, error) {
-	bundle, err := extractEyeSuitePDFLocalBundle(ctx, data)
-	if err != nil {
-		return nil, err
-	}
-	return bundle.Exam, nil
-}
-
-func extractEyeSuitePDFLocalBundle(ctx context.Context, data []byte) (eyeSuiteLocalBundle, error) {
+func ExtractPDF(ctx context.Context, data []byte) (Result, error) {
 	if _, _, err := pdfutil.Inspect(ctx, data); err != nil {
-		return eyeSuiteLocalBundle{}, err
+		return Result{}, err
 	}
 
 	var bestExam map[string]any
@@ -55,7 +47,7 @@ func extractEyeSuitePDFLocalBundle(ctx context.Context, data []byte) (eyeSuiteLo
 
 		identity, identityErr := parseEyeSuiteIdentityTSV(tsv)
 		if identityErr == nil {
-			return eyeSuiteLocalBundle{
+			return Result{
 				Exam:     exam,
 				Identity: &identity,
 			}, nil
@@ -65,11 +57,11 @@ func extractEyeSuitePDFLocalBundle(ctx context.Context, data []byte) (eyeSuiteLo
 	}
 
 	if bestExam != nil {
-		return eyeSuiteLocalBundle{Exam: bestExam}, nil
+		return Result{Exam: bestExam}, nil
 	}
 
 	if lastErr == nil {
 		lastErr = fmt.Errorf("extração local não produziu resultado")
 	}
-	return eyeSuiteLocalBundle{}, fmt.Errorf("EyeSuite: %w", lastErr)
+	return Result{}, fmt.Errorf("EyeSuite: %w", lastErr)
 }

@@ -50,18 +50,6 @@ func TestDeleteCaseRequiresToken(t *testing.T) {
 	}
 }
 
-func TestValidatePatientJSONUsesOfficialExamKeys(t *testing.T) {
-	valid := `{"patient":{},"exams":{"pentacam_corneal_tomography":{"source":[]}}}`
-	if err := validatePatientJSON(valid); err != nil {
-		t.Fatalf("expected official contract: %v", err)
-	}
-
-	unknown := `{"patient":{},"exams":{"pentacam":{"source":[]}}}`
-	if err := validatePatientJSON(unknown); err == nil {
-		t.Fatal("expected unknown exam key to be rejected")
-	}
-}
-
 func TestDecodeAnalysisAllowsSingleExamWithMalformedAbsentExam(t *testing.T) {
 	analysis, err := decodeAnalysis(`{"patient":{"full_name":"Paciente"},"exams":{"fundus_retinography":{"source":["olho.jpeg"]},"iol_calculation":null}}`)
 	if err != nil {
@@ -188,5 +176,38 @@ func TestNormalizeExtractionMetadataMovesIdentityVerification(t *testing.T) {
 
 	if _, exists := exams["pentacam_corneal_tomography"]; !exists {
 		t.Fatal("o exame real não pode ser removido pela normalização")
+	}
+}
+
+func TestDropMalformedOptionalExamsTreatsNullAsAbsent(t *testing.T) {
+	analysis := map[string]any{
+		"exams": map[string]any{
+			"iol_calculation": nil,
+			"oct_retina":      nil,
+		},
+	}
+
+	dropMalformedOptionalExams(analysis)
+
+	exams := analysis["exams"].(map[string]any)
+
+	if _, exists := exams["iol_calculation"]; exists {
+		t.Fatal("null IOL must be treated as absent")
+	}
+
+	if _, exists := exams["oct_retina"]; exists {
+		t.Fatal("null OCT must be treated as absent")
+	}
+
+	notes, _ := analysis["extraction_notes"].(map[string]any)
+	if notes == nil {
+		return
+	}
+
+	if invalid, _ := notes["invalid_exams"].([]any); len(invalid) != 0 {
+		t.Fatalf(
+			"null optional exams must not generate invalid_exams: %#v",
+			invalid,
+		)
 	}
 }

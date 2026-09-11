@@ -1,4 +1,32 @@
-# Add patterns to ignore here, one per line
-# Example:
-# *.log
-# tmp/
+# Saída gerada pelo próprio Repomix
+backend.md
+
+# Segredos e configurações locais
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.crt
+
+# Builds e artefatos de teste
+refratia-backend
+*.test
+coverage.out
+coverage.html
+*.prof
+
+# Arquivos temporários e dados de execução
+tmp/
+temp/
+uploads/
+storage/
+data/
+
+# Documentos e imagens potencialmente sensíveis
+*.pdf
+*.png
+*.jpg
+*.jpeg
+*.gif

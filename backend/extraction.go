@@ -15,6 +15,10 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	progressutil "refratia/backend/shared/progress"
+
+	patientfeature "refratia/backend/features/patient"
 )
 
 const extractionPrompt = `Extraia e consolide TODOS os dados alfanuméricos legíveis dos documentos oftalmológicos enviados em um único JSON. Não faça diagnóstico, não invente valores e use null quando um dado não estiver visível.
@@ -107,7 +111,7 @@ func extractPatient(
 	ctx context.Context,
 	files []uploadedFile,
 ) (map[string]any, error) {
-	reportProgress(
+	progressutil.Report(
 		ctx,
 		0,
 		"ocr",
@@ -115,11 +119,11 @@ func extractPatient(
 	)
 
 	analysis := extractPatientLocal(
-		withProgressRange(ctx, 0, 82),
+		progressutil.WithRange(ctx, 0, 82),
 		files,
 	)
 
-	reportProgress(
+	progressutil.Report(
 		ctx,
 		83,
 		"validation",
@@ -134,7 +138,7 @@ func extractPatient(
 	var prepared []preparedFile
 
 	if len(gaps) > 0 {
-		reportProgress(
+		progressutil.Report(
 			ctx,
 			85,
 			"fallback",
@@ -157,7 +161,7 @@ func extractPatient(
 			return nil, err
 		}
 
-		reportProgress(
+		progressutil.Report(
 			ctx,
 			90,
 			"fallback",
@@ -197,7 +201,7 @@ func extractPatient(
 			fallback,
 		)
 
-		reportProgress(
+		progressutil.Report(
 			ctx,
 			95,
 			"fallback",
@@ -209,7 +213,7 @@ func extractPatient(
 		analysis,
 		files,
 	); len(repairFiles) > 0 {
-		reportProgress(
+		progressutil.Report(
 			ctx,
 			96,
 			"iol",
@@ -253,7 +257,7 @@ func extractPatient(
 		}
 	}
 
-	reportProgress(
+	progressutil.Report(
 		ctx,
 		99,
 		"consolidation",
@@ -265,7 +269,7 @@ func extractPatient(
 		files,
 	)
 
-	reportProgress(
+	progressutil.Report(
 		ctx,
 		100,
 		"consolidation",
@@ -590,13 +594,13 @@ func decodeAnalysis(raw string) (map[string]any, error) {
 		)
 	}
 	normalizeExtractionMetadata(analysis)
-	normalizePatientIdentityFields(analysis)
+	patientfeature.NormalizeIdentityFields(analysis)
 	dropMalformedOptionalExams(analysis)
 	normalized, err := json.Marshal(analysis)
 	if err != nil {
 		return nil, errors.New("o serviço de extração não retornou um JSON válido")
 	}
-	if err := validatePatientJSON(string(normalized)); err != nil {
+	if err := patientfeature.ValidateJSON(string(normalized)); err != nil {
 		return nil, err
 	}
 	return analysis, nil
@@ -636,9 +640,17 @@ func dropMalformedOptionalExams(analysis map[string]any) {
 		return
 	}
 	for key, rawExam := range exams {
-		if !officialExamKeys[key] {
+		if !patientfeature.IsOfficialExamKey(key) {
 			continue
 		}
+
+		// Exames opcionais podem vir explicitamente como null no fallback.
+		// Isso significa "ausente", não "malformado".
+		if rawExam == nil {
+			delete(exams, key)
+			continue
+		}
+
 		exam, ok := rawExam.(map[string]any)
 		if !ok {
 			recordMalformedExam(analysis, key, "payload não é um objeto")

@@ -5,53 +5,24 @@ import (
 	"fmt"
 	"strings"
 
-	pdfutil "refratia/backend/shared/pdf"
+	progressutil "refratia/backend/shared/progress"
+
+	"refratia/backend/features/pentacam"
 )
-
-func detectPentacamEyeLocal(ctx context.Context, data []byte) (string, error) {
-	image, err := pdfutil.RenderPageAtDPI(ctx, data, 9, 220)
-	if err != nil {
-		return "", err
-	}
-
-	text, err := runTesseractTextPSM(ctx, image, 11)
-	if err != nil {
-		return "", err
-	}
-
-	text = strings.ToLower(text)
-
-	if !strings.Contains(text, "pentacam") &&
-		!strings.Contains(text, "oculus") {
-		return "", fmt.Errorf("documento não identificado como Pentacam")
-	}
-
-	hasRight := strings.Contains(text, "direito")
-	hasLeft := strings.Contains(text, "esquerdo")
-
-	switch {
-	case hasRight && !hasLeft:
-		return "OD", nil
-	case hasLeft && !hasRight:
-		return "OS", nil
-	default:
-		return "", fmt.Errorf("lateralidade Pentacam não resolvida")
-	}
-}
 
 func tryExtractPentacamLocal(
 	ctx context.Context,
 	file uploadedFile,
 	analysis map[string]any,
 ) bool {
-	reportProgress(
+	progressutil.Report(
 		ctx,
 		2,
 		"pentacam",
 		"Identificando lateralidade do Pentacam",
 	)
 
-	eye, err := detectPentacamEyeLocal(
+	eye, err := pentacam.DetectEye(
 		ctx,
 		file.Data,
 	)
@@ -65,15 +36,15 @@ func tryExtractPentacamLocal(
 		eyeLabel = "olho esquerdo"
 	}
 
-	reportProgress(
+	progressutil.Report(
 		ctx,
 		8,
 		"pentacam",
 		"Pentacam — "+eyeLabel,
 	)
 
-	exam, err := extractPentacamPDFLocal(
-		withProgressRange(ctx, 8, 96),
+	exam, err := pentacam.ExtractPDF(
+		progressutil.WithRange(ctx, 8, 96),
 		file.Data,
 	)
 
@@ -88,7 +59,7 @@ func tryExtractPentacamLocal(
 		exam,
 	)
 
-	reportProgress(
+	progressutil.Report(
 		ctx,
 		100,
 		"pentacam",

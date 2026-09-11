@@ -1,4 +1,4 @@
-package main
+package pentacam
 
 import (
 	"errors"
@@ -235,4 +235,29 @@ func pentacamContractComplete(eye map[string]any) error {
 	}
 
 	return nil
+}
+
+func hasNumberAtAnyPath(
+	root map[string]any,
+	paths ...[]string,
+) bool {
+	for _, path := range paths {
+		var value any = root
+
+		for _, key := range path {
+			object, ok := value.(map[string]any)
+			if !ok {
+				value = nil
+				break
+			}
+
+			value = object[key]
+		}
+
+		if _, ok := value.(float64); ok {
+			return true
+		}
+	}
+
+	return false
 }

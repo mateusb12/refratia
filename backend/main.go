@@ -21,6 +21,10 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+
+	progressutil "refratia/backend/shared/progress"
+
+	patientfeature "refratia/backend/features/patient"
 )
 
 const (
@@ -64,6 +68,7 @@ func main() {
 	http.HandleFunc("/api/cases", casesHandler)
 	http.HandleFunc("/api/cases/", caseHandler)
 	http.HandleFunc("/api/intakes/analyze", analyzeIntakeHandler)
+	http.HandleFunc("/api/benchmark/extract-fields", benchmarkExtractFieldsHandler)
 	http.HandleFunc("/api/intakes/confirm", confirmIntakeHandler)
 	http.HandleFunc("/api/intakes/", intakeHandler)
 
@@ -363,12 +368,12 @@ func analyzeIntakeHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		ctx = withProgressReporter(
+		ctx = progressutil.WithReporter(
 			ctx,
 			stream.reporter,
 		)
 
-		reportProgress(
+		progressutil.Report(
 			ctx,
 			4,
 			"upload",
@@ -385,7 +390,7 @@ func analyzeIntakeHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, status, message)
 	}
 
-	reportProgress(
+	progressutil.Report(
 		ctx,
 		8,
 		"ocr",
@@ -393,7 +398,7 @@ func analyzeIntakeHandler(w http.ResponseWriter, r *http.Request) {
 	)
 
 	analysis, extractionErr := extractPatient(
-		withProgressRange(ctx, 8, 88),
+		progressutil.WithRange(ctx, 8, 88),
 		files,
 	)
 
@@ -405,7 +410,7 @@ func analyzeIntakeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	reportProgress(
+	progressutil.Report(
 		ctx,
 		90,
 		"identity",
@@ -435,7 +440,7 @@ func analyzeIntakeHandler(w http.ResponseWriter, r *http.Request) {
 
 	var changePreview any
 
-	_, identifiable := patientIdentity(analysis)
+	_, identifiable := patientfeature.Identity(analysis)
 
 	var existingCaseID string
 	var existingAnalysis map[string]any
@@ -469,7 +474,7 @@ func analyzeIntakeHandler(w http.ResponseWriter, r *http.Request) {
 		patientMatch["status"] = "existing"
 		patientMatch["caseId"] = existingCaseID
 
-		changePreview = buildPatientChangePreview(
+		changePreview = patientfeature.BuildChangePreview(
 			existingAnalysis,
 			analysis,
 		)
@@ -481,7 +486,7 @@ func analyzeIntakeHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	reportProgress(
+	progressutil.Report(
 		ctx,
 		93,
 		"storage",
@@ -498,7 +503,7 @@ func analyzeIntakeHandler(w http.ResponseWriter, r *http.Request) {
 			percent += index * 4 / len(files)
 		}
 
-		reportProgress(
+		progressutil.Report(
 			ctx,
 			percent,
 			"storage",
@@ -597,7 +602,7 @@ func analyzeIntakeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	reportProgress(
+	progressutil.Report(
 		ctx,
 		99,
 		"preview",
@@ -642,7 +647,7 @@ func analyzeIntakeHandler(w http.ResponseWriter, r *http.Request) {
 		"message":       "Documentos e análise armazenados. Confira a extração antes de confirmar.",
 	}
 
-	reportProgress(
+	progressutil.Report(
 		ctx,
 		100,
 		"complete",
@@ -779,7 +784,7 @@ func confirmIntakeHandler(w http.ResponseWriter, r *http.Request) {
 
 	finalAnalysis := draft.Analysis
 	if existingAnalysis != nil {
-		finalAnalysis = mergePatientCase(existingAnalysis, draft.Analysis)
+		finalAnalysis = patientfeature.Merge(existingAnalysis, draft.Analysis)
 	}
 
 	compiled, marshalErr := json.MarshalIndent(finalAnalysis, "", "  ")
@@ -803,7 +808,7 @@ func confirmIntakeHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Se exatamente o mesmo arquivo for reenviado, source_files é deduplicado
 	// por SHA-256. Nesse caso não deixamos a cópia redundante órfã no bucket.
-	referenced := referencedSourcePaths(finalAnalysis)
+	referenced := patientfeature.ReferencedSourcePaths(finalAnalysis)
 	orphanedCopies := make([]string, 0)
 
 	for _, key := range copiedKeys {

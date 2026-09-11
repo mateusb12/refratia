@@ -1,4 +1,4 @@
-package main
+package pentacam
 
 import (
 	"context"
@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	pdfutil "refratia/backend/shared/pdf"
+
+	progressutil "refratia/backend/shared/progress"
 )
 
 type pentacamFocusedField struct {
@@ -15,10 +17,10 @@ type pentacamFocusedField struct {
 	Decimal bool
 }
 
-func extractPentacamPDFLocal(ctx context.Context, data []byte) (map[string]any, error) {
+func ExtractPDF(ctx context.Context, data []byte) (map[string]any, error) {
 	pages := map[int][]byte{}
 
-	reportProgress(
+	progressutil.Report(
 		ctx,
 		0,
 		"pentacam",
@@ -28,7 +30,7 @@ func extractPentacamPDFLocal(ctx context.Context, data []byte) (map[string]any, 
 	renderPages := []int{4, 6, 7, 8, 9}
 
 	for index, page := range renderPages {
-		reportProgress(
+		progressutil.Report(
 			ctx,
 			index*25/len(renderPages),
 			"pentacam",
@@ -49,7 +51,7 @@ func extractPentacamPDFLocal(ctx context.Context, data []byte) (map[string]any, 
 		pages[page] = image
 	}
 
-	reportProgress(
+	progressutil.Report(
 		ctx,
 		25,
 		"pentacam",
@@ -82,7 +84,7 @@ func extractPentacamPDFLocal(ctx context.Context, data []byte) (map[string]any, 
 		return nil
 	}
 
-	reportProgress(
+	progressutil.Report(
 		ctx,
 		30,
 		"pentacam",
@@ -97,7 +99,7 @@ func extractPentacamPDFLocal(ctx context.Context, data []byte) (map[string]any, 
 		{"astigmatism_d", `\bastig\w*`, true},
 	})
 
-	reportProgress(
+	progressutil.Report(
 		ctx,
 		36,
 		"pentacam",
@@ -109,7 +111,7 @@ func extractPentacamPDFLocal(ctx context.Context, data []byte) (map[string]any, 
 		{"thinnest_um", `\bthinnest\W+pachy\b`, false},
 	})
 
-	reportProgress(
+	progressutil.Report(
 		ctx,
 		42,
 		"pentacam",
@@ -144,7 +146,7 @@ func extractPentacamPDFLocal(ctx context.Context, data []byte) (map[string]any, 
 		values["tkc"] = tkc
 	}
 
-	reportProgress(
+	progressutil.Report(
 		ctx,
 		48,
 		"pentacam",
@@ -156,7 +158,7 @@ func extractPentacamPDFLocal(ctx context.Context, data []byte) (map[string]any, 
 		{"bad_d", `\bbad\W*d`, true},
 	})
 
-	reportProgress(
+	progressutil.Report(
 		ctx,
 		52,
 		"pentacam",
@@ -168,7 +170,7 @@ func extractPentacamPDFLocal(ctx context.Context, data []byte) (map[string]any, 
 		{"z40_6mm_um", `\bz40\b`, true},
 	})
 
-	reportProgress(
+	progressutil.Report(
 		ctx,
 		56,
 		"pentacam",
@@ -184,7 +186,7 @@ func extractPentacamPDFLocal(ctx context.Context, data []byte) (map[string]any, 
 		},
 	})
 
-	reportProgress(
+	progressutil.Report(
 		ctx,
 		60,
 		"pentacam",
@@ -196,7 +198,7 @@ func extractPentacamPDFLocal(ctx context.Context, data []byte) (map[string]any, 
 		{"art_max", `\bartmax\b`, false},
 	})
 
-	reportProgress(
+	progressutil.Report(
 		ctx,
 		64,
 		"pentacam",
@@ -209,7 +211,7 @@ func extractPentacamPDFLocal(ctx context.Context, data []byte) (map[string]any, 
 	})
 
 	// Segunda passada: célula numérica exata, sem inferência de decimal.
-	reportProgress(
+	progressutil.Report(
 		ctx,
 		68,
 		"pentacam",
@@ -218,7 +220,7 @@ func extractPentacamPDFLocal(ctx context.Context, data []byte) (map[string]any, 
 
 	fillPentacamFocusedCells(ctx, pages, values)
 
-	reportProgress(
+	progressutil.Report(
 		ctx,
 		75,
 		"pentacam",
@@ -229,7 +231,7 @@ func extractPentacamPDFLocal(ctx context.Context, data []byte) (map[string]any, 
 	// - três dígitos estáveis em múltiplos thresholds
 	// - separador decimal comprovado geometricamente nos pixels
 	// - nenhuma inferência de casa decimal
-	reportProgress(
+	progressutil.Report(
 		ctx,
 		78,
 		"pentacam",
@@ -244,7 +246,7 @@ func extractPentacamPDFLocal(ctx context.Context, data []byte) (map[string]any, 
 
 	// K1 rescue determinístico:
 	// mesmo decimal em >=3 thresholds e >=2 crops.
-	reportProgress(
+	progressutil.Report(
 		ctx,
 		84,
 		"pentacam",
@@ -257,7 +259,7 @@ func extractPentacamPDFLocal(ctx context.Context, data []byte) (map[string]any, 
 		}
 	}
 
-	reportProgress(
+	progressutil.Report(
 		ctx,
 		90,
 		"pentacam",
@@ -272,7 +274,7 @@ func extractPentacamPDFLocal(ctx context.Context, data []byte) (map[string]any, 
 		}
 	}
 
-	reportProgress(
+	progressutil.Report(
 		ctx,
 		96,
 		"pentacam",
@@ -285,7 +287,7 @@ func extractPentacamPDFLocal(ctx context.Context, data []byte) (map[string]any, 
 		}
 	}
 
-	reportProgress(
+	progressutil.Report(
 		ctx,
 		100,
 		"pentacam",

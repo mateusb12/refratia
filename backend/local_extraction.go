@@ -5,6 +5,12 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"refratia/backend/features/eyesuite"
+
+	progressutil "refratia/backend/shared/progress"
+
+	patientfeature "refratia/backend/features/patient"
 )
 
 func extractPatientLocal(
@@ -23,13 +29,13 @@ func extractPatientLocal(
 	}
 
 	for index, file := range files {
-		fileCtx := withProgressRange(
+		fileCtx := progressutil.WithRange(
 			ctx,
 			index*100/total,
 			(index+1)*100/total,
 		)
 
-		reportProgress(
+		progressutil.Report(
 			fileCtx,
 			2,
 			"document",
@@ -41,7 +47,7 @@ func extractPatientLocal(
 		)
 
 		if file.Metadata.ContentType != "application/pdf" {
-			reportProgress(
+			progressutil.Report(
 				fileCtx,
 				100,
 				"document",
@@ -50,7 +56,7 @@ func extractPatientLocal(
 			continue
 		}
 
-		reportProgress(
+		progressutil.Report(
 			fileCtx,
 			8,
 			"eyesuite",
@@ -58,7 +64,7 @@ func extractPatientLocal(
 		)
 
 		if bundle, err :=
-			extractEyeSuitePDFLocalBundle(
+			eyesuite.ExtractPDF(
 				fileCtx,
 				file.Data,
 			); err == nil {
@@ -89,7 +95,7 @@ func extractPatientLocal(
 					}
 
 				if birthDate, ok :=
-					canonicalPatientBirthDate(
+					patientfeature.CanonicalBirthDate(
 						analysis,
 					); ok {
 					patient["birth_date"] =
@@ -97,7 +103,7 @@ func extractPatientLocal(
 				}
 			}
 
-			reportProgress(
+			progressutil.Report(
 				fileCtx,
 				100,
 				"eyesuite",
@@ -107,7 +113,7 @@ func extractPatientLocal(
 			continue
 		}
 
-		reportProgress(
+		progressutil.Report(
 			fileCtx,
 			14,
 			"pentacam",
@@ -115,7 +121,7 @@ func extractPatientLocal(
 		)
 
 		if tryExtractPentacamLocal(
-			withProgressRange(
+			progressutil.WithRange(
 				fileCtx,
 				14,
 				100,
@@ -126,7 +132,7 @@ func extractPatientLocal(
 			continue
 		}
 
-		reportProgress(
+		progressutil.Report(
 			fileCtx,
 			100,
 			"document",
@@ -304,9 +310,54 @@ Os valores locais são autoritativos e serão preservados pelo backend.`,
 	)
 }
 
-func stripLocallyResolvedExams(analysis map[string]any, resolved map[string]bool) {
+func stripLocallyResolvedExams(
+	analysis map[string]any,
+	resolved map[string]bool,
+) {
 	exams, _ := analysis["exams"].(map[string]any)
+
 	for key := range resolved {
 		delete(exams, key)
 	}
+
+	// decodeAnalysis pode ter registrado um warning intermediário antes
+	// de descobrirmos que esse exame já foi resolvido localmente.
+	//
+	// Ao remover o exame do fallback, removemos também warnings referentes
+	// a ele para que extraction_notes descreva o estado final, não um estado
+	// intermediário da pipeline.
+	notes, _ := analysis["extraction_notes"].(map[string]any)
+	if notes == nil {
+		return
+	}
+
+	items, _ := notes["invalid_exams"].([]any)
+	if len(items) == 0 {
+		return
+	}
+
+	filtered := make([]any, 0, len(items))
+
+	for _, raw := range items {
+		item, ok := raw.(map[string]any)
+		if !ok {
+			filtered = append(filtered, raw)
+			continue
+		}
+
+		exam, _ := item["exam"].(string)
+
+		if resolved[exam] {
+			continue
+		}
+
+		filtered = append(filtered, raw)
+	}
+
+	if len(filtered) == 0 {
+		delete(notes, "invalid_exams")
+		return
+	}
+
+	notes["invalid_exams"] = filtered
 }

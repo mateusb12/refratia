@@ -1,4 +1,4 @@
-package main
+package patient
 
 import (
 	"encoding/json"
@@ -15,6 +15,10 @@ var officialExamKeys = map[string]bool{
 	"specular_microscopy":         true,
 }
 
+func IsOfficialExamKey(key string) bool {
+	return officialExamKeys[key]
+}
+
 // patientJSONContract is the backend output contract. Exam payloads remain
 // source-specific, while this envelope and its exam names are stable.
 type patientJSONContract struct {
@@ -29,7 +33,7 @@ type patientJSONContract struct {
 	ExtractionNotes map[string]any             `json:"extraction_notes,omitempty"`
 }
 
-func validatePatientJSON(raw string) error {
+func ValidateJSON(raw string) error {
 	var contract patientJSONContract
 	if err := json.Unmarshal([]byte(raw), &contract); err != nil {
 		return errors.New("o serviço de extração não retornou um JSON válido")
