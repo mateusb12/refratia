@@ -40,7 +40,7 @@ type Theme = 'light' | 'dark'
 type CaseKind = 'demo' | 'real'
 type NoticeTone = 'information' | 'warning' | 'blocking'
 type DataKind = 'Dado bruto' | 'Dado calculado' | 'Dado ausente'
-type Confidence = 'Consistente' | 'Suspeita — revisar'
+type Confidence = 'Consistente' | 'Suspeita — revisar' | 'Não informado' | 'Fora do contrato mínimo'
 type Eye = 'OD' | 'OS'
 interface SavedCase {
   caseId: string
@@ -64,6 +64,20 @@ function readableBirthDate(value: unknown) {
 
 function formatNumber(value: unknown, options?: Intl.NumberFormatOptions) {
   return typeof value === 'number' && Number.isFinite(value) ? value.toLocaleString('pt-BR', options) : 'não informado'
+}
+
+function hasReportValue(value: unknown) {
+  if (typeof value === 'number') return Number.isFinite(value)
+  if (typeof value === 'string') return value.trim() !== '' && value.trim().toLocaleLowerCase() !== 'não informado'
+  return value !== null && value !== undefined
+}
+
+function reportConfidence(value: unknown): Confidence {
+  return hasReportValue(value) ? 'Consistente' : 'Não informado'
+}
+
+function reportDataKind(value: unknown): DataKind {
+  return hasReportValue(value) ? 'Dado bruto' : 'Dado ausente'
 }
 
 function formatContractValue(value: unknown) {
@@ -384,6 +398,7 @@ interface ExtractedDatum {
   field: string
   crossCheck?: string
   formula?: string
+  contractNote?: string
 }
 
 const steps = [
@@ -581,8 +596,8 @@ function getReportExtractedData(data: ReportData): ExtractedDatum[] {
       value: formatNumber(pentacam.pachymetry.thinnest_um),
       unit: 'µm',
       source,
-      kind: 'Dado bruto',
-      confidence: 'Consistente',
+      kind: reportDataKind(pentacam.pachymetry.thinnest_um),
+      confidence: reportConfidence(pentacam.pachymetry.thinnest_um),
       document: fileBaseName(pentacam.source_file, source),
       screen: 'Pachymetry',
       field: 'Thinnest',
@@ -593,19 +608,20 @@ function getReportExtractedData(data: ReportData): ExtractedDatum[] {
       value: formatNumber(pentacam.anterior_cornea.kmax_d),
       unit: 'D',
       source,
-      kind: 'Dado bruto',
-      confidence: 'Consistente',
+      kind: reportDataKind(pentacam.anterior_cornea.kmax_d),
+      confidence: reportConfidence(pentacam.anterior_cornea.kmax_d),
       document: fileBaseName(pentacam.source_file, source),
       screen: 'Topometric',
       field: 'Kmax',
+      contractNote: 'Campo adicional — fora do contrato clínico mínimo do Pentacam.',
     },
     {
       name: `BAD-D · ${label}`,
       fullName: 'Belin/Ambrósio Enhanced Ectasia Display',
       value: formatNumber(pentacam.belin_ambrosio.d),
       source,
-      kind: 'Dado bruto',
-      confidence: 'Consistente',
+      kind: reportDataKind(pentacam.belin_ambrosio.d),
+      confidence: reportConfidence(pentacam.belin_ambrosio.d),
       document: fileBaseName(pentacam.source_file, source),
       screen: 'Belin/Ambrósio',
       field: 'Final D',
@@ -615,8 +631,8 @@ function getReportExtractedData(data: ReportData): ExtractedDatum[] {
       fullName: 'Ambrósio Relational Thickness máximo',
       value: formatNumber(pentacam.belin_ambrosio.art_max),
       source,
-      kind: 'Dado bruto',
-      confidence: 'Consistente',
+      kind: reportDataKind(pentacam.belin_ambrosio.art_max),
+      confidence: reportConfidence(pentacam.belin_ambrosio.art_max),
       document: fileBaseName(pentacam.source_file, source),
       screen: 'Belin/Ambrósio',
       field: 'ARTmax',
@@ -627,8 +643,8 @@ function getReportExtractedData(data: ReportData): ExtractedDatum[] {
       value: formatNumber(microscopy.cell_density_cells_per_mm2),
       unit: 'células/mm²',
       source: `Microscopia especular ${label}`,
-      kind: 'Dado bruto',
-      confidence: 'Consistente',
+      kind: reportDataKind(microscopy.cell_density_cells_per_mm2),
+      confidence: reportConfidence(microscopy.cell_density_cells_per_mm2),
       document: fileBaseName(data.exams.specular_microscopy.source[0], source),
       screen: 'NIDEK',
       field: 'Cell Density (CD)',
@@ -638,8 +654,8 @@ function getReportExtractedData(data: ReportData): ExtractedDatum[] {
       value: formatNumber(biometry.axial_length_mm),
       unit: 'mm',
       source: `Biometria ${label}`,
-      kind: 'Dado bruto',
-      confidence: 'Consistente',
+      kind: reportDataKind(biometry.axial_length_mm),
+      confidence: reportConfidence(biometry.axial_length_mm),
       document: 'BIO SRK-T AO.pdf',
       screen: 'EyeSuite IOL',
       field: 'Axial length',
@@ -1029,6 +1045,7 @@ function ExtractedDataReview({
               </StatusBadge>
             </div>
 
+            {data.contractNote && <p className="mb-0 mt-3 text-xs text-warning">{data.contractNote}</p>}
             <p className="mb-0 mt-3 text-xs text-text-muted">Origem: <span className="font-semibold text-text-secondary">{data.source}</span></p>
             <button
               className="mt-auto self-start pt-4 text-xs font-bold text-primary hover:underline"

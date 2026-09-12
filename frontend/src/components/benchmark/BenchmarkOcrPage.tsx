@@ -12,6 +12,7 @@ const API_URL = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '')
 interface BenchmarkField {
   key: string
   label: string
+  unit?: string
   found: boolean
 }
 
@@ -526,7 +527,9 @@ export default function BenchmarkOcrPage() {
                         )}
 
                         <span className="min-w-0 text-sm font-medium text-text-primary">
-                          {field.label}
+                          <span className="block">{field.label}</span>
+                          {field.unit && <span className="mt-1 block text-xs text-text-muted">{field.unit}</span>}
+                          {!field.found && <span className="mt-1 block text-xs text-danger">Não extraído</span>}
                         </span>
                       </div>
                     ))}

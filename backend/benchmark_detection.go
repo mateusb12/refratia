@@ -18,6 +18,7 @@ import (
 type benchmarkField struct {
 	Key   string `json:"key"`
 	Label string `json:"label"`
+	Unit  string `json:"unit,omitempty"`
 	Found bool   `json:"found"`
 }
 
@@ -180,6 +181,20 @@ var pentacamBenchmarkFields = []pentacamBenchmarkSpec{
 	},
 }
 
+type specularMicroscopyBenchmarkSpec struct {
+	Key   string
+	Label string
+	Unit  string
+}
+
+var specularMicroscopyBenchmarkFields = []specularMicroscopyBenchmarkSpec{
+	{
+		Key:   "cell_density",
+		Label: "Densidade endotelial",
+		Unit:  "células/mm²",
+	},
+}
+
 func benchmarkPathValue(
 	root map[string]any,
 	path []string,
@@ -259,6 +274,23 @@ func benchmarkPentacamResult(
 	}
 
 	return fields, extracted
+}
+
+func benchmarkSpecularMicroscopyResult() ([]benchmarkField, int) {
+	fields := make([]benchmarkField, 0, len(specularMicroscopyBenchmarkFields))
+
+	for _, spec := range specularMicroscopyBenchmarkFields {
+		// A microscopia ainda não possui extrator clínico. O filename identifica
+		// o documento, mas nunca preenche um valor clínico.
+		fields = append(fields, benchmarkField{
+			Key:   spec.Key,
+			Label: spec.Label,
+			Unit:  spec.Unit,
+			Found: false,
+		})
+	}
+
+	return fields, 0
 }
 
 func benchmarkFlattenExtracted(
@@ -593,6 +625,28 @@ func benchmarkExtractFieldsHandler(
 				ElapsedMS: time.Since(started).Milliseconds(),
 				Fields:    fields,
 				Extracted: len(fields),
+				Total:     len(fields),
+				Supported: true,
+			},
+		)
+
+	case "MICROSCOPIA_ESPECULAR":
+		fields, extracted := benchmarkSpecularMicroscopyResult()
+
+		emit(
+			benchmarkFieldsEvent{
+				Type:    "result",
+				Percent: 100,
+				Message: fmt.Sprintf(
+					"%d/%d campos extraídos; arquivo identificado pelo filename",
+					extracted,
+					len(fields),
+				),
+				ExamType:  meta.ExamType,
+				Eye:       meta.Eye,
+				ElapsedMS: time.Since(started).Milliseconds(),
+				Fields:    fields,
+				Extracted: extracted,
 				Total:     len(fields),
 				Supported: true,
 			},
