@@ -8,6 +8,7 @@ import (
 
 	"refratia/backend/features/eyesuite"
 	"refratia/backend/features/retinography"
+	"refratia/backend/features/specularmicroscopy"
 
 	progressutil "refratia/backend/shared/progress"
 
@@ -268,6 +269,25 @@ func tryExtractRetinographyLocal(
 	return true, nil
 }
 
+func tryExtractSpecularMicroscopyLocal(ctx context.Context, file uploadedFile, analysis map[string]any) (bool, error) {
+	result, err := specularmicroscopy.Extract(ctx, file.Data)
+	if err != nil {
+		return false, err
+	}
+	eyes, _ := result.Exam["eyes"].(map[string]any)
+	if len(eyes) == 0 {
+		return false, fmt.Errorf("microscopia especular: nenhum olho extraído")
+	}
+	result.Exam["source"] = []any{file.Metadata.Filename}
+	exams, _ := analysis["exams"].(map[string]any)
+	if exams == nil {
+		exams = map[string]any{}
+		analysis["exams"] = exams
+	}
+	exams["specular_microscopy"] = result.Exam
+	return true, nil
+}
+
 func emitLocalPartial(
 	ctx context.Context,
 	filename,
@@ -399,6 +419,19 @@ func extractPatientLocal(
 				nil,
 			)
 
+			continue
+		}
+
+		if examType == "MICROSCOPIA_ESPECULAR" {
+			progressutil.Report(fileCtx, 8, "microscopy_preprocess", "Extraindo microscopia especular")
+			ok, err := tryExtractSpecularMicroscopyLocal(progressutil.WithRange(fileCtx, 8, 96), file, analysis)
+			if ok {
+				emitLocalPartial(fileCtx, file.Metadata.Filename, "Microscopia especular concluída", analysis)
+				emitLocalFileResult(fileCtx, file.Metadata.Filename, examType, examEye, "extracted", "Microscopia especular extraída", analysis)
+				continue
+			}
+			progressutil.Report(fileCtx, 96, "microscopy_parse", "Microscopia especular não pôde ser extraída localmente")
+			emitLocalFileResult(fileCtx, file.Metadata.Filename, examType, examEye, "failed", err.Error(), nil)
 			continue
 		}
 
@@ -630,6 +663,10 @@ func localResolvedExamKeys(analysis map[string]any) map[string]bool {
 		resolved["pentacam_corneal_tomography"] = true
 	}
 
+	if specularMicroscopyLocalComplete(analysis) {
+		resolved["specular_microscopy"] = true
+	}
+
 	if retinographyLocalComplete(analysis) {
 		resolved["fundus_retinography"] = true
 	}
@@ -706,6 +743,20 @@ func retinographyLocalComplete(
 		}
 	}
 
+	return true
+}
+
+func specularMicroscopyLocalComplete(analysis map[string]any) bool {
+	exams, _ := analysis["exams"].(map[string]any)
+	exam, _ := exams["specular_microscopy"].(map[string]any)
+	eyes, _ := exam["eyes"].(map[string]any)
+	for _, eye := range []string{"OD", "OS"} {
+		payload, _ := eyes[eye].(map[string]any)
+		value, ok := payload["cell_density_cells_per_mm2"].(float64)
+		if !ok || value <= 0 {
+			return false
+		}
+	}
 	return true
 }
 

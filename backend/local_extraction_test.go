@@ -94,6 +94,22 @@ func TestCompleteLocalExtractionHasZeroGaps(t *testing.T) {
 	}
 }
 
+func TestCompleteLocalSpecularMicroscopyIsResolved(t *testing.T) {
+	analysis := map[string]any{
+		"exams": map[string]any{
+			"specular_microscopy": map[string]any{
+				"eyes": map[string]any{
+					"OD": map[string]any{"cell_density_cells_per_mm2": 2403.0},
+					"OS": map[string]any{"cell_density_cells_per_mm2": 2184.0},
+				},
+			},
+		},
+	}
+	if !localResolvedExamKeys(analysis)["specular_microscopy"] {
+		t.Fatal("microscopia especular completa não foi marcada como resolvida")
+	}
+}
+
 func TestStripLocallyResolvedExamsRemovesStaleInvalidExamWarning(t *testing.T) {
 	analysis := map[string]any{
 		"exams": map[string]any{
