@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 
 	"refratia/backend/features/eyesuite"
 	"refratia/backend/features/pentacam"
+	"refratia/backend/features/specularmicroscopy"
 	"refratia/backend/shared/progress"
 )
 
@@ -185,6 +187,7 @@ type specularMicroscopyBenchmarkSpec struct {
 	Key   string
 	Label string
 	Unit  string
+	Path  []string
 }
 
 var specularMicroscopyBenchmarkFields = []specularMicroscopyBenchmarkSpec{
@@ -192,6 +195,7 @@ var specularMicroscopyBenchmarkFields = []specularMicroscopyBenchmarkSpec{
 		Key:   "cell_density",
 		Label: "Densidade endotelial",
 		Unit:  "células/mm²",
+		Path:  []string{"cell_density_cells_per_mm2"},
 	},
 }
 
@@ -276,21 +280,29 @@ func benchmarkPentacamResult(
 	return fields, extracted
 }
 
-func benchmarkSpecularMicroscopyResult() ([]benchmarkField, int) {
-	fields := make([]benchmarkField, 0, len(specularMicroscopyBenchmarkFields))
-
-	for _, spec := range specularMicroscopyBenchmarkFields {
-		// A microscopia ainda não possui extrator clínico. O filename identifica
-		// o documento, mas nunca preenche um valor clínico.
-		fields = append(fields, benchmarkField{
-			Key:   spec.Key,
-			Label: spec.Label,
-			Unit:  spec.Unit,
-			Found: false,
-		})
+func benchmarkSpecularMicroscopyResult(exam map[string]any, expectedEye string) ([]benchmarkField, int) {
+	eyes := []string{expectedEye}
+	if expectedEye == "AO" {
+		eyes = []string{"OD", "OS"}
 	}
 
-	return fields, 0
+	fields := make([]benchmarkField, 0, len(eyes))
+	extracted := 0
+	for _, eye := range eyes {
+		spec := specularMicroscopyBenchmarkFields[0]
+		path := append([]string{"eyes", eye}, spec.Path...)
+		_, found := benchmarkPathValue(exam, path)
+		fields = append(fields, benchmarkField{
+			Key:   spec.Key + "_" + strings.ToLower(eye),
+			Label: spec.Label + " · " + eye,
+			Unit:  spec.Unit,
+			Found: found,
+		})
+		if found {
+			extracted++
+		}
+	}
+	return fields, extracted
 }
 
 func benchmarkFlattenExtracted(
@@ -474,6 +486,7 @@ func benchmarkExtractFieldsHandler(
 			)
 		},
 	)
+	ctx = progress.WithFilename(ctx, file.Metadata.Filename)
 
 	emit(
 		benchmarkFieldsEvent{
@@ -631,14 +644,34 @@ func benchmarkExtractFieldsHandler(
 		)
 
 	case "MICROSCOPIA_ESPECULAR":
-		fields, extracted := benchmarkSpecularMicroscopyResult()
+		if meta.Eye != "OD" && meta.Eye != "OS" && meta.Eye != "AO" {
+			emit(benchmarkFieldsEvent{Type: "error", Error: "Microscopia especular precisa usar lateralidade OD, OS ou AO"})
+			return
+		}
+		emit(benchmarkFieldsEvent{Type: "progress", Percent: 7, Message: "Executando extrator local de microscopia especular", ExamType: meta.ExamType, Eye: meta.Eye})
+		result, extractErr := specularmicroscopy.Extract(progress.WithRange(ctx, 7, 96), file.Data)
+		if extractErr != nil {
+			if errors.Is(extractErr, specularmicroscopy.ErrNoClinicalData) {
+				fields, extracted := benchmarkSpecularMicroscopyResult(map[string]any{}, meta.Eye)
+				emit(benchmarkFieldsEvent{
+					Type: "result", Percent: 100,
+					Message:  fmt.Sprintf("%d/%d campos extraídos; conteúdo clínico não encontrado", extracted, len(fields)),
+					ExamType: meta.ExamType, Eye: meta.Eye, ElapsedMS: time.Since(started).Milliseconds(),
+					Fields: fields, Extracted: extracted, Total: len(fields), Supported: true,
+				})
+				return
+			}
+			emit(benchmarkFieldsEvent{Type: "error", Error: extractErr.Error()})
+			return
+		}
+		fields, extracted := benchmarkSpecularMicroscopyResult(result.Exam, meta.Eye)
 
 		emit(
 			benchmarkFieldsEvent{
 				Type:    "result",
 				Percent: 100,
 				Message: fmt.Sprintf(
-					"%d/%d campos extraídos; arquivo identificado pelo filename",
+					"%d/%d campos extraídos; conteúdo clínico lido do JPEG",
 					extracted,
 					len(fields),
 				),

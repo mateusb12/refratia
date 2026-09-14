@@ -29,9 +29,32 @@ func TestBenchmarkPentacamKeepsSixteenFields(t *testing.T) {
 }
 
 func TestBenchmarkMicroscopyFilenameDoesNotCountAsExtraction(t *testing.T) {
-	fields, extracted := benchmarkSpecularMicroscopyResult()
+	fields, extracted := benchmarkSpecularMicroscopyResult(map[string]any{}, "AO")
 
-	if len(fields) != 1 || extracted != 0 || fields[0].Found {
-		t.Fatalf("microscopy benchmark must remain 0/1, got %#v and %d/%d", fields, extracted, len(fields))
+	if len(fields) != 2 || extracted != 0 || fields[0].Found || fields[1].Found {
+		t.Fatalf("microscopy benchmark must remain 0/2, got %#v and %d/%d", fields, extracted, len(fields))
+	}
+}
+
+func TestBenchmarkMicroscopyAOIsIncompleteWhenOneEyeIsMissing(t *testing.T) {
+	fields, extracted := benchmarkSpecularMicroscopyResult(map[string]any{
+		"eyes": map[string]any{
+			"OD": map[string]any{"cell_density_cells_per_mm2": 2403.0},
+		},
+	}, "AO")
+	if len(fields) != 2 || extracted != 1 || !fields[0].Found || fields[1].Found {
+		t.Fatalf("expected 1/2 microscopy coverage, got %#v and %d/%d", fields, extracted, len(fields))
+	}
+}
+
+func TestBenchmarkMicroscopyAOIsCompleteWhenBothEyesExist(t *testing.T) {
+	fields, extracted := benchmarkSpecularMicroscopyResult(map[string]any{
+		"eyes": map[string]any{
+			"OD": map[string]any{"cell_density_cells_per_mm2": 2403.0},
+			"OS": map[string]any{"cell_density_cells_per_mm2": 2184.0},
+		},
+	}, "AO")
+	if len(fields) != 2 || extracted != 2 || !fields[0].Found || !fields[1].Found {
+		t.Fatalf("expected 2/2 microscopy coverage, got %#v and %d/%d", fields, extracted, len(fields))
 	}
 }
