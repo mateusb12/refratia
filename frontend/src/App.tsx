@@ -1638,6 +1638,8 @@ function App() {
   const [intakePreview, setIntakePreview] = useState<IntakePreview | null>(null)
   const [intakeBusy, setIntakeBusy] = useState(false)
   const intakeAbortController = useRef<AbortController | null>(null)
+  const [isDemoNavigationHidden, setIsDemoNavigationHidden] = useState(false)
+  const demoNavigationTimer = useRef<number | null>(null)
   const [intakeProgress, setIntakeProgress] = useState(0)
   const [intakeProgressStage, setIntakeProgressStage] = useState('')
   const [intakeProgressMessage, setIntakeProgressMessage] = useState('')
@@ -1669,6 +1671,10 @@ function App() {
     document.documentElement.dataset.theme = theme
     localStorage.setItem('refratia-theme', theme)
   }, [theme])
+
+  useEffect(() => () => {
+    if (demoNavigationTimer.current !== null) window.clearTimeout(demoNavigationTimer.current)
+  }, [])
 
   useEffect(() => {
     const onPopState = () => {
@@ -1706,6 +1712,15 @@ function App() {
     setIsReviewed(false)
     setExpandedDocument(null)
     setTraceData(null)
+  }
+
+  function hideDemoNavigation() {
+    setIsDemoNavigationHidden(true)
+    if (demoNavigationTimer.current !== null) window.clearTimeout(demoNavigationTimer.current)
+    demoNavigationTimer.current = window.setTimeout(() => {
+      setIsDemoNavigationHidden(false)
+      demoNavigationTimer.current = null
+    }, 10_000)
   }
 
   function backToReports() {
@@ -2317,60 +2332,60 @@ function App() {
         </div>
 
         <nav className="flex flex-col gap-[5px] max-[820px]:hidden" aria-label="Navegação principal">
-          <span className="mx-3 mb-2 mt-1 text-xs font-bold tracking-[0.14em] text-sidebar-muted">PLATAFORMA</span>
-          {[
-            { label: 'Visão geral', icon: <LayoutDashboard size={19} /> },
-            { label: 'Nova análise', icon: <Plus size={19} /> },
-            { label: 'Relatórios', icon: <FileText size={19} /> },
-          ].map((item) => (
+            <span className="mx-3 mb-2 mt-1 text-xs font-bold tracking-[0.14em] text-sidebar-muted">PLATAFORMA</span>
+            {[
+              { label: 'Visão geral', icon: <LayoutDashboard size={19} /> },
+              { label: 'Nova análise', icon: <Plus size={19} /> },
+              { label: 'Relatórios', icon: <FileText size={19} /> },
+            ].map((item) => (
+              <button
+                key={item.label}
+                className={clsx(
+                  'flex w-full items-center gap-3 rounded-[10px] border-0 px-[13px] py-[11px] text-left text-sm font-medium',
+                  activeSection === item.label ? 'bg-[rgb(103_205_171_/_14%)] text-[#9be0c9]' : 'bg-transparent text-sidebar-muted hover:bg-white/[0.05] hover:text-sidebar-text',
+                )}
+                onClick={() => {
+                  navigateSection(item.label)
+                }}
+                type="button"
+              >
+                {item.icon}{item.label}
+              </button>
+            ))}
+            <span className="mx-3 mb-2 mt-6 text-xs font-bold tracking-[0.14em] text-sidebar-muted">SISTEMA</span>
             <button
-              key={item.label}
+              aria-current={activeSection === 'Configurações' ? 'page' : undefined}
               className={clsx(
-                'flex w-full items-center gap-3 rounded-[10px] border-0 px-[13px] py-[11px] text-left text-sm font-medium',
-                activeSection === item.label ? 'bg-[rgb(103_205_171_/_14%)] text-[#9be0c9]' : 'bg-transparent text-sidebar-muted hover:bg-white/[0.05] hover:text-sidebar-text',
+                'flex w-full items-center gap-3 rounded-[10px] px-[13px] py-[11px] text-left text-sm',
+                activeSection === 'Configurações' ? 'bg-[rgb(103_205_171_/_14%)] text-[#9be0c9]' : 'text-sidebar-muted hover:bg-white/[0.05] hover:text-sidebar-text',
               )}
-              onClick={() => {
-                navigateSection(item.label)
-              }}
+              onClick={() => navigateSection('Configurações')}
               type="button"
             >
-              {item.icon}{item.label}
+              <Settings size={19} /> Configurações
             </button>
-          ))}
-          <span className="mx-3 mb-2 mt-6 text-xs font-bold tracking-[0.14em] text-sidebar-muted">SISTEMA</span>
-          <button
-            aria-current={activeSection === 'Configurações' ? 'page' : undefined}
-            className={clsx(
-              'flex w-full items-center gap-3 rounded-[10px] px-[13px] py-[11px] text-left text-sm',
-              activeSection === 'Configurações' ? 'bg-[rgb(103_205_171_/_14%)] text-[#9be0c9]' : 'text-sidebar-muted hover:bg-white/[0.05] hover:text-sidebar-text',
-            )}
-            onClick={() => navigateSection('Configurações')}
-            type="button"
-          >
-            <Settings size={19} /> Configurações
-          </button>
-          <button
-            aria-current={activeSection === 'Benchmark OCR' ? 'page' : undefined}
-            className={clsx(
-              'flex w-full items-center gap-3 rounded-[10px] border-0 px-[13px] py-[11px] text-left text-sm font-medium',
-              activeSection === 'Benchmark OCR' ? 'bg-[rgb(103_205_171_/_14%)] text-[#9be0c9]' : 'bg-transparent text-sidebar-muted hover:bg-white/[0.05] hover:text-sidebar-text',
-            )}
-            onClick={() => navigateSection('Benchmark OCR')}
-            type="button"
-          >
-            <Gauge size={19} /> Benchmark OCR
-          </button>
-          <button
-            aria-current={activeSection === 'Roadmap' ? 'page' : undefined}
-            className={clsx(
-              'flex w-full items-center gap-3 rounded-[10px] border-0 px-[13px] py-[11px] text-left text-sm font-medium',
-              activeSection === 'Roadmap' ? 'bg-[rgb(103_205_171_/_14%)] text-[#9be0c9]' : 'bg-transparent text-sidebar-muted hover:bg-white/[0.05] hover:text-sidebar-text',
-            )}
-            onClick={() => navigateSection('Roadmap')}
-            type="button"
-          >
-            <Map size={19} /> Roadmap
-          </button>
+            <button
+              aria-current={activeSection === 'Benchmark OCR' ? 'page' : undefined}
+              className={clsx(
+                'flex w-full items-center gap-3 rounded-[10px] border-0 px-[13px] py-[11px] text-left text-sm font-medium',
+                activeSection === 'Benchmark OCR' ? 'bg-[rgb(103_205_171_/_14%)] text-[#9be0c9]' : 'bg-transparent text-sidebar-muted hover:bg-white/[0.05] hover:text-sidebar-text',
+              )}
+              onClick={() => navigateSection('Benchmark OCR')}
+              type="button"
+            >
+              <Gauge size={19} /> Benchmark OCR
+            </button>
+            <button
+              aria-current={activeSection === 'Roadmap' ? 'page' : undefined}
+              className={clsx(
+                'flex w-full items-center gap-3 rounded-[10px] px-[13px] py-[11px] text-left text-sm font-medium',
+                activeSection === 'Roadmap' ? 'bg-[rgb(103_205_171_/_14%)] text-[#9be0c9]' : 'text-sidebar-muted hover:bg-white/[0.05] hover:text-sidebar-text',
+              )}
+              onClick={() => navigateSection('Roadmap')}
+              type="button"
+            >
+              <Map size={19} /> Roadmap
+            </button>
         </nav>
 
         <div className="mt-auto max-[820px]:hidden">
@@ -2385,16 +2400,29 @@ function App() {
       </aside>
 
       <main className="min-w-0">
-        <header className="sticky top-0 z-50 flex min-h-[90px] items-center justify-between gap-6 border-b border-border bg-surface px-[clamp(16px,4vw,56px)] py-5 shadow-sm">
+        {!isDemoNavigationHidden && <header className="sticky top-0 z-50 flex min-h-[90px] items-center justify-between gap-6 border-b border-border bg-surface px-[clamp(16px,4vw,56px)] py-5 shadow-sm">
           <div>
             <Eyebrow>PROTOCOLO DEMONSTRATIVO</Eyebrow>
             <h1 className="mb-0 mt-1 font-display text-2xl tracking-[-0.035em]">{activeSection}</h1>
           </div>
           <div className="flex items-center gap-3">
-            <span className="hidden items-center gap-2 rounded-full border border-border bg-surface px-3 py-2 text-sm text-text-secondary sm:flex">
-              <span className={clsx('h-[7px] w-[7px] rounded-full', isRealCase ? 'bg-danger' : 'bg-warning')} />
-              {isRealCase ? 'Caso real' : 'Ambiente demonstrativo'}
-            </span>
+            {isRealCase ? (
+              <span className="hidden items-center gap-2 rounded-full border border-border bg-surface px-3 py-2 text-sm text-text-secondary sm:flex">
+                <span className="h-[7px] w-[7px] rounded-full bg-danger" />
+                Caso real
+              </span>
+            ) : (
+              <button
+                aria-label="Ocultar a navegação por 10 segundos"
+                className="hidden items-center gap-2 rounded-full border border-border bg-surface px-3 py-2 text-sm text-text-secondary hover:border-border-strong sm:flex"
+                onClick={hideDemoNavigation}
+                title="Ocultar navegação por 10 segundos"
+                type="button"
+              >
+                <span className="h-[7px] w-[7px] rounded-full bg-warning" />
+                Ambiente demonstrativo
+              </button>
+            )}
             <button
               aria-label={theme === 'dark' ? 'Ativar tema claro' : 'Ativar tema escuro'}
               className="grid h-[39px] w-[39px] place-items-center rounded-[11px] border border-border bg-surface shadow-sm hover:border-border-strong"
@@ -2404,7 +2432,7 @@ function App() {
               {theme === 'dark' ? <Sun size={19} /> : <Moon size={19} />}
             </button>
           </div>
-        </header>
+        </header>}
 
         <section className="mx-auto w-full max-w-[1320px] overflow-x-hidden px-[clamp(16px,4vw,56px)] pb-14 pt-8">
           {activeSection === 'Roadmap' ? <RoadmapPage /> : activeSection === 'Benchmark OCR' ? (
