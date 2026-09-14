@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"refratia/backend/features/eyesuite"
+	"refratia/backend/features/retinography"
 
 	progressutil "refratia/backend/shared/progress"
 
@@ -135,6 +136,138 @@ func tryExtractEyeSuiteLocal(
 	return true
 }
 
+func tryExtractRetinographyLocal(
+	ctx context.Context,
+	file uploadedFile,
+	analysis map[string]any,
+) (bool, error) {
+	result, err := retinography.Extract(
+		ctx,
+		file.Data,
+	)
+	if err != nil {
+		return false, err
+	}
+
+	if result.Eye != "OD" && result.Eye != "OS" {
+		return false, fmt.Errorf(
+			"retinografia: lateralidade OCR inválida: %q",
+			result.Eye,
+		)
+	}
+
+	exams, _ := analysis["exams"].(map[string]any)
+	if exams == nil {
+		exams = map[string]any{}
+		analysis["exams"] = exams
+	}
+
+	exam, _ := exams["fundus_retinography"].(map[string]any)
+	if exam == nil {
+		exam = map[string]any{}
+		exams["fundus_retinography"] = exam
+	}
+
+	if existing, ok := exam["id"].(string); ok {
+		existing = strings.TrimSpace(existing)
+
+		if existing != "" &&
+			!strings.EqualFold(
+				existing,
+				strings.TrimSpace(result.PatientID),
+			) {
+
+			return false, fmt.Errorf(
+				"retinografia: divergência de identidade entre imagens: %q != %q",
+				existing,
+				result.PatientID,
+			)
+		}
+	}
+
+	exam["id"] = result.PatientID
+	exam["device_or_mode"] = result.Mode
+
+	eyes, _ := exam["eyes"].(map[string]any)
+	if eyes == nil {
+		eyes = map[string]any{}
+		exam["eyes"] = eyes
+	}
+
+	resultEyes, _ := result.Exam["eyes"].(map[string]any)
+
+	eyePayload, _ := resultEyes[result.Eye].(map[string]any)
+	if eyePayload == nil {
+		return false, fmt.Errorf(
+			"retinografia: payload OCR do olho %s ausente",
+			result.Eye,
+		)
+	}
+
+	eyes[result.Eye] = eyePayload
+
+	sources, _ := exam["source"].([]any)
+
+	alreadyPresent := false
+
+	for _, source := range sources {
+		if fmt.Sprint(source) == file.Metadata.Filename {
+			alreadyPresent = true
+			break
+		}
+	}
+
+	if !alreadyPresent {
+		exam["source"] = append(
+			sources,
+			file.Metadata.Filename,
+		)
+	}
+
+	patient, _ := analysis["patient"].(map[string]any)
+	if patient == nil {
+		patient = map[string]any{}
+		analysis["patient"] = patient
+	}
+
+	currentName, _ := patient["full_name"].(string)
+
+	if strings.TrimSpace(currentName) == "" {
+		patient["full_name"] = result.PatientID
+	}
+
+	verification, _ := analysis["verificacao_identidade"].([]any)
+
+	hasVerification := false
+
+	for _, raw := range verification {
+		item, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+
+		if fmt.Sprint(item["source"]) == file.Metadata.Filename {
+			hasVerification = true
+			break
+		}
+	}
+
+	if !hasVerification {
+		analysis["verificacao_identidade"] = append(
+			verification,
+			map[string]any{
+				"source":         file.Metadata.Filename,
+				"nome_lido":      result.PatientID,
+				"timestamp_lido": result.ExamDateTime,
+				"confidence":     "deterministic_template",
+				"method":         "local_ocr_tesseract",
+			},
+		)
+	}
+
+	return true, nil
+}
+
 func emitLocalPartial(
 	ctx context.Context,
 	filename,
@@ -202,6 +335,72 @@ func extractPatientLocal(
 				total,
 			),
 		)
+
+		if examType == "RETINA" {
+			progressutil.Report(
+				fileCtx,
+				8,
+				"retinography_preprocess",
+				"Extraindo retinografia",
+			)
+
+			ok, err := tryExtractRetinographyLocal(
+				progressutil.WithRange(
+					fileCtx,
+					8,
+					96,
+				),
+				file,
+				analysis,
+			)
+
+			if ok {
+				emitLocalPartial(
+					fileCtx,
+					file.Metadata.Filename,
+					"Retinografia concluída",
+					analysis,
+				)
+
+				emitLocalFileResult(
+					fileCtx,
+					file.Metadata.Filename,
+					examType,
+					examEye,
+					"extracted",
+					"Retinografia extraída por OCR local",
+					analysis,
+				)
+
+				continue
+			}
+
+			message :=
+				"retinografia: extração local falhou"
+
+			if err != nil {
+				message = err.Error()
+			}
+
+			progressutil.Report(
+				fileCtx,
+				96,
+				"retinography_parse",
+				"Retinografia não pôde ser extraída localmente",
+			)
+
+			emitLocalFileResult(
+				fileCtx,
+				file.Metadata.Filename,
+				examType,
+				examEye,
+				"failed",
+				message,
+				nil,
+			)
+
+			continue
+		}
 
 		// Arquivos de imagem já são identificados
 		// pelo filename, mas ainda não possuem todos
@@ -431,7 +630,83 @@ func localResolvedExamKeys(analysis map[string]any) map[string]bool {
 		resolved["pentacam_corneal_tomography"] = true
 	}
 
+	if retinographyLocalComplete(analysis) {
+		resolved["fundus_retinography"] = true
+	}
+
 	return resolved
+}
+
+func retinographyLocalComplete(
+	analysis map[string]any,
+) bool {
+	exams, _ := analysis["exams"].(map[string]any)
+
+	exam, _ := exams["fundus_retinography"].(map[string]any)
+	if exam == nil {
+		return false
+	}
+
+	id, _ := exam["id"].(string)
+	id = strings.TrimSpace(id)
+
+	if id == "" {
+		return false
+	}
+
+	mode, _ := exam["device_or_mode"].(string)
+
+	if !strings.EqualFold(
+		strings.TrimSpace(mode),
+		"Retina",
+	) {
+		return false
+	}
+
+	eyes, _ := exam["eyes"].(map[string]any)
+
+	for _, eye := range []string{"OD", "OS"} {
+		payload, _ := eyes[eye].(map[string]any)
+		if payload == nil {
+			return false
+		}
+
+		patientID, _ := payload["patient_id"].(string)
+
+		if !strings.EqualFold(
+			strings.TrimSpace(patientID),
+			id,
+		) {
+			return false
+		}
+
+		payloadEye, _ := payload["eye"].(string)
+
+		if !strings.EqualFold(
+			strings.TrimSpace(payloadEye),
+			eye,
+		) {
+			return false
+		}
+
+		examDateTime, _ :=
+			payload["exam_datetime"].(string)
+
+		if strings.TrimSpace(examDateTime) == "" {
+			return false
+		}
+
+		eyeMode, _ := payload["mode"].(string)
+
+		if !strings.EqualFold(
+			strings.TrimSpace(eyeMode),
+			"Retina",
+		) {
+			return false
+		}
+	}
+
+	return true
 }
 
 func localClaimedFiles(analysis map[string]any) map[string]bool {

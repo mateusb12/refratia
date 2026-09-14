@@ -73,9 +73,42 @@ export const examContracts: Record<string, ExamContract> = {
     key: 'fundus_retinography',
     label: 'Retinografia',
     fields: [
-      { key: 'id', label: 'Nome/ID do paciente', paths: [['id'], ['patient_id'], ['identification', 'id'], ['identification', 'name']] },
-      { key: 'findings', label: 'Achados / observações', paths: [['findings'], ['observations'], ['observacoes'], ['content', 'findings']] },
-      { key: 'timestamp', label: 'Data/hora do exame', paths: [['timestamp'], ['exam_datetime'], ['performed_at'], ['time'], ['metadata', 'time']] },
+      {
+        key: 'id',
+        label: 'Nome/ID do paciente',
+        paths: [
+          ['patient_id'],
+          ['id'],
+          ['identification', 'id'],
+          ['identification', 'name'],
+        ],
+      },
+      {
+        key: 'eye',
+        label: 'Lateralidade',
+        paths: [
+          ['eye'],
+        ],
+      },
+      {
+        key: 'mode',
+        label: 'Modo do exame',
+        paths: [
+          ['mode'],
+          ['device_or_mode'],
+        ],
+      },
+      {
+        key: 'timestamp',
+        label: 'Data/hora do exame',
+        paths: [
+          ['exam_datetime'],
+          ['timestamp'],
+          ['performed_at'],
+          ['time'],
+          ['metadata', 'time'],
+        ],
+      },
     ],
   },
   oct_retina: {
@@ -110,8 +143,46 @@ export function assessExamContract(analysis: IntakeAnalysis, source: Record<stri
   const contract = getExamContract(source.exam)
   if (!contract) return null
   const exam = analysis.exams[contract.key as keyof IntakeAnalysis['exams']]
-  const eye = typeof source.eye === 'string' ? source.eye : undefined
-  const eyePayload = eye && exam?.eyes?.[eye as keyof NonNullable<typeof exam.eyes>]
+
+  // O card representa um arquivo específico. Para selecionar eyes.OD/OS,
+  // usamos primeiro a lateralidade codificada no filename padronizado.
+  //
+  // Isso é somente roteamento entre o arquivo e o payload já extraído;
+  // não transforma o filename em evidência OCR.
+  const sourceFilename = String(
+    source.path
+      ?? source.filename
+      ?? '',
+  )
+
+  const filenameEye = sourceFilename
+    .toUpperCase()
+    .match(/__(OD|OS|AO)__/)
+    ?.[1]
+
+  const metadataEye = typeof source.eye === 'string'
+    ? source.eye.trim().toUpperCase()
+    : undefined
+
+  const requestedEye = filenameEye ?? metadataEye
+
+  const examEyes = exam?.eyes as
+    | Record<string, Record<string, unknown> | undefined>
+    | undefined
+
+  // Também normalizamos as chaves existentes para não quebrar por
+  // whitespace/case vindos de payloads históricos.
+  const eyeKey = requestedEye && examEyes
+    ? Object.keys(examEyes).find(
+        (key) => key.trim().toUpperCase() === requestedEye,
+      )
+    : undefined
+
+  const eye = eyeKey ?? requestedEye
+
+  const eyePayload = eyeKey
+    ? examEyes?.[eyeKey]
+    : undefined
   // Biometria AO frequentemente entrega OD e OS separados, sem um bloco AO.
   // Para auditoria de um arquivo AO, considerar os dois olhos evita falso
   // negativo sem misturar valores em um único olho.

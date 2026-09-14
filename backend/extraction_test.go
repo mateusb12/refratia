@@ -211,3 +211,429 @@ func TestDropMalformedOptionalExamsTreatsNullAsAbsent(t *testing.T) {
 		)
 	}
 }
+
+func TestDecodeFallbackAnalysisAllowsIdentityOnly(
+	t *testing.T,
+) {
+	fallback, err := decodeFallbackAnalysis(
+		`{
+			"verificacao_identidade": [
+				{
+					"source": "microscopia.jpeg",
+					"nome_lido": "PACIENTE TESTE"
+				}
+			]
+		}`,
+	)
+
+	if err != nil {
+		t.Fatalf(
+			"fallback apenas de identidade deveria ser válido: %v",
+			err,
+		)
+	}
+
+	if _, exists := fallback["exams"]; exists {
+		t.Fatal(
+			"fallback de identidade não deveria inventar exams",
+		)
+	}
+
+	entries, ok :=
+		fallback["verificacao_identidade"].([]any)
+
+	if !ok || len(entries) != 1 {
+		t.Fatalf(
+			"verificacao_identidade inesperada: %#v",
+			fallback["verificacao_identidade"],
+		)
+	}
+}
+
+func TestDecodeFallbackAnalysisAllowsPartialExamWithoutSource(
+	t *testing.T,
+) {
+	fallback, err := decodeFallbackAnalysis(
+		`{
+			"exams": {
+				"pentacam_corneal_tomography": {
+					"eyes": {
+						"OD": {
+							"pachymetry": {
+								"thinnest_um": 529
+							}
+						}
+					}
+				}
+			}
+		}`,
+	)
+
+	if err != nil {
+		t.Fatalf(
+			"exame parcial sem source deveria ser válido no fallback: %v",
+			err,
+		)
+	}
+
+	exams, ok :=
+		fallback["exams"].(map[string]any)
+
+	if !ok {
+		t.Fatalf(
+			"exams ausente: %#v",
+			fallback,
+		)
+	}
+
+	if _, exists :=
+		exams["pentacam_corneal_tomography"]; !exists {
+
+		t.Fatal(
+			"exame parcial foi removido indevidamente",
+		)
+	}
+}
+
+func TestDecodeFallbackAnalysisRejectsUnknownExam(
+	t *testing.T,
+) {
+	_, err := decodeFallbackAnalysis(
+		`{
+			"exams": {
+				"exame_inventado": {
+					"foo": "bar"
+				}
+			}
+		}`,
+	)
+
+	if err == nil {
+		t.Fatal(
+			"fallback não pode aceitar tipo de exame desconhecido",
+		)
+	}
+}
+
+func TestDecodeAnalysisRemainsStrictForFinalPayload(
+	t *testing.T,
+) {
+	_, err := decodeAnalysis(
+		`{
+			"verificacao_identidade": [
+				{
+					"source": "arquivo.jpeg"
+				}
+			]
+		}`,
+	)
+
+	if err == nil {
+		t.Fatal(
+			"decoder final deve continuar exigindo contrato completo",
+		)
+	}
+}
+
+func TestIdentityOnlyFallbackDoesNotRemoveLocalExams(
+	t *testing.T,
+) {
+	local := map[string]any{
+		"patient": map[string]any{
+			"full_name":  "PACIENTE TESTE",
+			"birth_date": "1980-01-01",
+		},
+		"exams": map[string]any{
+			"fundus_retinography": map[string]any{
+				"source": []any{
+					"retina-od.jpeg",
+					"retina-os.jpeg",
+				},
+			},
+		},
+	}
+
+	fallback, err := decodeFallbackAnalysis(
+		`{
+			"verificacao_identidade": [
+				{
+					"source": "microscopia.jpeg",
+					"nome_lido": "PACIENTE TESTE"
+				}
+			]
+		}`,
+	)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	mergeFallbackAnalysis(
+		local,
+		fallback,
+	)
+
+	exams, ok := local["exams"].(map[string]any)
+
+	if !ok {
+		t.Fatalf(
+			"exams local desapareceu: %#v",
+			local,
+		)
+	}
+
+	if _, exists :=
+		exams["fundus_retinography"]; !exists {
+
+		t.Fatal(
+			"fallback parcial removeu exame local",
+		)
+	}
+}
+
+func TestNormalizeRetinographyCanonicalAliases(
+	t *testing.T,
+) {
+	analysis := map[string]any{
+		"exams": map[string]any{
+			"fundus_retinography": map[string]any{
+				"eyes": map[string]any{
+					"OD": map[string]any{
+						"patient_id":           "PACIENTE TESTE",
+						"mode":                 "Retina",
+						"acquisition_datetime": "2026-07-30 12:08:22",
+					},
+					"OS": map[string]any{
+						"patient_id":           "PACIENTE TESTE",
+						"mode":                 "Retina",
+						"acquisition_datetime": "2026-07-30 12:10:09",
+					},
+				},
+			},
+		},
+	}
+
+	normalizeRetinographyCanonical(analysis)
+
+	exams := analysis["exams"].(map[string]any)
+	exam := exams["fundus_retinography"].(map[string]any)
+	eyes := exam["eyes"].(map[string]any)
+
+	od := eyes["OD"].(map[string]any)
+	os := eyes["OS"].(map[string]any)
+
+	if od["eye"] != "OD" {
+		t.Fatalf(
+			"OD eye não canonizado: %#v",
+			od,
+		)
+	}
+
+	if os["eye"] != "OS" {
+		t.Fatalf(
+			"OS eye não canonizado: %#v",
+			os,
+		)
+	}
+
+	if od["exam_datetime"] !=
+		"2026-07-30 12:08:22" {
+
+		t.Fatalf(
+			"OD datetime não canonizado: %#v",
+			od,
+		)
+	}
+
+	if os["exam_datetime"] !=
+		"2026-07-30 12:10:09" {
+
+		t.Fatalf(
+			"OS datetime não canonizado: %#v",
+			os,
+		)
+	}
+
+	if exam["id"] != "PACIENTE TESTE" {
+		t.Fatalf(
+			"id não promovido: %#v",
+			exam,
+		)
+	}
+
+	if exam["device_or_mode"] != "Retina" {
+		t.Fatalf(
+			"device_or_mode não promovido: %#v",
+			exam,
+		)
+	}
+}
+
+func TestDecodeAnalysisCanonicalizesRetinography(
+	t *testing.T,
+) {
+	raw := `{
+		"patient": {
+			"full_name": "PACIENTE TESTE"
+		},
+		"exams": {
+			"fundus_retinography": {
+				"source": [
+					"od.jpeg",
+					"os.jpeg"
+				],
+				"eyes": {
+					"OD": {
+						"patient_id": "PACIENTE TESTE",
+						"mode": "Retina",
+						"acquisition_datetime": "2026-07-30 12:08:22"
+					},
+					"OS": {
+						"patient_id": "PACIENTE TESTE",
+						"mode": "Retina",
+						"acquisition_datetime": "2026-07-30 12:10:09"
+					}
+				}
+			}
+		}
+	}`
+
+	analysis, err := decodeAnalysis(raw)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	exams := analysis["exams"].(map[string]any)
+	exam := exams["fundus_retinography"].(map[string]any)
+	eyes := exam["eyes"].(map[string]any)
+	od := eyes["OD"].(map[string]any)
+
+	if od["eye"] != "OD" {
+		t.Fatalf(
+			"decoder não canonizou eye: %#v",
+			od,
+		)
+	}
+
+	if od["exam_datetime"] !=
+		"2026-07-30 12:08:22" {
+
+		t.Fatalf(
+			"decoder não canonizou datetime: %#v",
+			od,
+		)
+	}
+}
+
+func TestNormalizeRetinographyCanonicalDateTimeShape(
+	t *testing.T,
+) {
+	// Reproduz exatamente o formato observado no JSON final real.
+	analysis := map[string]any{
+		"exams": map[string]any{
+			"fundus_retinography": map[string]any{
+				"eyes": map[string]any{
+					"OD": map[string]any{
+						"date_time":  "2026-07-30 12:08:22",
+						"patient_id": "PACIENTE TESTE",
+					},
+					"OS": map[string]any{
+						"date_time":  "2026-07-30 12:10:09",
+						"patient_id": "PACIENTE TESTE",
+					},
+				},
+				"source": []any{
+					"RETINA__OD__PACIENTE_TESTE__20260730_120822.jpeg",
+					"RETINA__OS__PACIENTE_TESTE__20260730_121009.jpeg",
+				},
+			},
+		},
+	}
+
+	normalizeRetinographyCanonical(analysis)
+
+	exams :=
+		analysis["exams"].(map[string]any)
+
+	exam :=
+		exams["fundus_retinography"].(map[string]any)
+
+	eyes :=
+		exam["eyes"].(map[string]any)
+
+	od :=
+		eyes["OD"].(map[string]any)
+
+	os :=
+		eyes["OS"].(map[string]any)
+
+	if od["patient_id"] != "PACIENTE TESTE" {
+		t.Fatalf(
+			"OD patient_id: %#v",
+			od,
+		)
+	}
+
+	if od["eye"] != "OD" {
+		t.Fatalf(
+			"OD eye não canonizado: %#v",
+			od,
+		)
+	}
+
+	if os["eye"] != "OS" {
+		t.Fatalf(
+			"OS eye não canonizado: %#v",
+			os,
+		)
+	}
+
+	if od["mode"] != "Retina" {
+		t.Fatalf(
+			"OD mode não canonizado: %#v",
+			od,
+		)
+	}
+
+	if os["mode"] != "Retina" {
+		t.Fatalf(
+			"OS mode não canonizado: %#v",
+			os,
+		)
+	}
+
+	if od["exam_datetime"] !=
+		"2026-07-30 12:08:22" {
+
+		t.Fatalf(
+			"OD exam_datetime: %#v",
+			od,
+		)
+	}
+
+	if os["exam_datetime"] !=
+		"2026-07-30 12:10:09" {
+
+		t.Fatalf(
+			"OS exam_datetime: %#v",
+			os,
+		)
+	}
+
+	if exam["id"] !=
+		"PACIENTE TESTE" {
+
+		t.Fatalf(
+			"exam.id não promovido: %#v",
+			exam,
+		)
+	}
+
+	if exam["device_or_mode"] != "Retina" {
+		t.Fatalf(
+			"device_or_mode não canonizado: %#v",
+			exam,
+		)
+	}
+}

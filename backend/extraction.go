@@ -38,7 +38,7 @@ Contrato mínimo de campos por exame (não invente valores; quando não estiver 
 - refractometry: refração por olho, com esfera, cilindro e eixo. Preserve sinais. Se o laudo de refratometria claramente omitir cilindro/eixo, registre cylinder_d como 0 e axis_deg como null conforme a convenção clínica do protocolo; se houver dúvida de leitura, use null e não infira;
 - iol_calculation: comprimento axial, K1, K2, Km, astigmatismo e eixo da biometria, ACD, espessura do cristalino, white-to-white e refração alvo;
 - specular_microscopy: contagem/densidade endotelial;
-- fundus_retinography: ID do paciente, data/hora e achados/observações da imagem.
+- fundus_retinography: ID do paciente, lateralidade, modo do exame e data/hora impressos na imagem. Não infira achados clínicos a partir da fotografia; só inclua findings/observations se houver texto explícito de laudo no próprio arquivo.
 - oct_retina: identificação, data/hora e achados/observações do OCT; é informativo e exclusivo do Fluxo C.
 Não inclua um exame no objeto "exams" apenas porque ele é esperado pelo protocolo: inclua somente exames evidenciados pelos arquivos enviados.
 
@@ -182,7 +182,7 @@ func extractPatient(
 			return nil, err
 		}
 
-		fallback, err := decodeAnalysis(output)
+		fallback, err := decodeFallbackAnalysis(output)
 		if err != nil {
 			return nil, err
 		}
@@ -577,6 +577,186 @@ func mergeMissingValues(target, repair map[string]any) {
 	}
 }
 
+func decodeFallbackAnalysis(
+	raw string,
+) (map[string]any, error) {
+	if strings.TrimSpace(raw) == "" {
+		return nil, errors.New(
+			"o fallback não retornou um JSON válido",
+		)
+	}
+
+	var analysis map[string]any
+
+	if err := json.Unmarshal(
+		[]byte(raw),
+		&analysis,
+	); err != nil {
+		return nil, fmt.Errorf(
+			"o fallback não retornou um JSON válido: %w",
+			err,
+		)
+	}
+
+	if analysis == nil {
+		return nil, errors.New(
+			"o fallback retornou um objeto JSON vazio",
+		)
+	}
+
+	// Mantemos as mesmas normalizações seguras do decoder completo.
+	normalizeExtractionMetadata(analysis)
+	patientfeature.NormalizeIdentityFields(analysis)
+	normalizeRetinographyCanonical(analysis)
+
+	// O fallback é deliberadamente PARCIAL.
+	//
+	// Portanto:
+	// - patient pode estar ausente;
+	// - exams pode estar ausente;
+	// - um exame pode conter somente os subcampos solicitados;
+	// - source não é obrigatório aqui, pois o merge ocorre sobre
+	//   o exame local já existente.
+	//
+	// Ainda assim, se exams vier presente, só aceitamos nomes
+	// oficialmente conhecidos e payloads em formato de objeto.
+	rawExams, hasExams := analysis["exams"]
+
+	if hasExams {
+		if rawExams == nil {
+			delete(analysis, "exams")
+		} else {
+			exams, ok := rawExams.(map[string]any)
+			if !ok {
+				return nil, errors.New(
+					"fallback retornou exams em formato inválido",
+				)
+			}
+
+			for key, rawExam := range exams {
+				if !patientfeature.IsOfficialExamKey(key) {
+					return nil, fmt.Errorf(
+						"fallback retornou tipo de exame não previsto: %s",
+						key,
+					)
+				}
+
+				if rawExam == nil {
+					delete(exams, key)
+					continue
+				}
+
+				if _, ok := rawExam.(map[string]any); !ok {
+					return nil, fmt.Errorf(
+						"fallback retornou exame inválido: %s",
+						key,
+					)
+				}
+			}
+
+			if len(exams) == 0 {
+				delete(analysis, "exams")
+			}
+		}
+	}
+
+	if len(analysis) == 0 {
+		return nil, errors.New(
+			"fallback não retornou nenhum dado utilizável",
+		)
+	}
+
+	return analysis, nil
+}
+
+func normalizeRetinographyCanonical(
+	analysis map[string]any,
+) {
+	exams, _ := analysis["exams"].(map[string]any)
+	if exams == nil {
+		return
+	}
+
+	exam, _ := exams["fundus_retinography"].(map[string]any)
+	if exam == nil {
+		return
+	}
+
+	eyes, _ := exam["eyes"].(map[string]any)
+	if eyes == nil {
+		return
+	}
+
+	var firstPatientID string
+
+	for _, eye := range []string{"OD", "OS"} {
+		payload, _ := eyes[eye].(map[string]any)
+		if payload == nil {
+			continue
+		}
+
+		// A chave eyes.OD / eyes.OS é a lateralidade canônica.
+		payload["eye"] = eye
+
+		// O tipo fundus_retinography já determina a modalidade.
+		// Não é inferência clínica; é normalização estrutural.
+		mode, _ := payload["mode"].(string)
+
+		if strings.TrimSpace(mode) == "" {
+			payload["mode"] = "Retina"
+		}
+
+		// Unifica aliases produzidos por OCR, fallback e modelos.
+		examDateTime, _ :=
+			payload["exam_datetime"].(string)
+
+		if strings.TrimSpace(examDateTime) == "" {
+			for _, alias := range []string{
+				"date_time",
+				"acquisition_datetime",
+				"timestamp",
+				"time",
+				"performed_at",
+				"datetime",
+				"dateTime",
+			} {
+				value, _ := payload[alias].(string)
+
+				if strings.TrimSpace(value) != "" {
+					payload["exam_datetime"] =
+						strings.TrimSpace(value)
+
+					break
+				}
+			}
+		}
+
+		if firstPatientID == "" {
+			patientID, _ :=
+				payload["patient_id"].(string)
+
+			if strings.TrimSpace(patientID) != "" {
+				firstPatientID =
+					strings.TrimSpace(patientID)
+			}
+		}
+	}
+
+	id, _ := exam["id"].(string)
+
+	if strings.TrimSpace(id) == "" &&
+		firstPatientID != "" {
+
+		exam["id"] = firstPatientID
+	}
+
+	mode, _ := exam["device_or_mode"].(string)
+
+	if strings.TrimSpace(mode) == "" {
+		exam["device_or_mode"] = "Retina"
+	}
+}
+
 func decodeAnalysis(raw string) (map[string]any, error) {
 	if raw == "" {
 		return nil, errors.New("o serviço de extração não retornou um JSON válido")
@@ -595,6 +775,7 @@ func decodeAnalysis(raw string) (map[string]any, error) {
 	}
 	normalizeExtractionMetadata(analysis)
 	patientfeature.NormalizeIdentityFields(analysis)
+	normalizeRetinographyCanonical(analysis)
 	dropMalformedOptionalExams(analysis)
 	normalized, err := json.Marshal(analysis)
 	if err != nil {

@@ -154,3 +154,110 @@ func TestStripLocallyResolvedExamsRemovesStaleInvalidExamWarning(t *testing.T) {
 		)
 	}
 }
+
+func TestRetinographyLocalCompleteIsResolved(
+	t *testing.T,
+) {
+	analysis := map[string]any{
+		"exams": map[string]any{
+			"fundus_retinography": map[string]any{
+				"id":             "PACIENTE TESTE",
+				"device_or_mode": "Retina",
+				"eyes": map[string]any{
+					"OD": map[string]any{
+						"patient_id":    "PACIENTE TESTE",
+						"eye":           "OD",
+						"exam_datetime": "2026-08-28 16:37:10",
+						"mode":          "Retina",
+					},
+					"OS": map[string]any{
+						"patient_id":    "PACIENTE TESTE",
+						"eye":           "OS",
+						"exam_datetime": "2026-08-28 16:37:38",
+						"mode":          "Retina",
+					},
+				},
+			},
+		},
+	}
+
+	if !retinographyLocalComplete(analysis) {
+		t.Fatal(
+			"retinografia OD+OS completa deveria ser considerada resolvida",
+		)
+	}
+
+	resolved := localResolvedExamKeys(analysis)
+
+	if !resolved["fundus_retinography"] {
+		t.Fatal(
+			"fundus_retinography local completo não foi marcado como resolvido",
+		)
+	}
+}
+
+func TestRetinographyLocalIncompleteEyeIsNotResolved(
+	t *testing.T,
+) {
+	analysis := map[string]any{
+		"exams": map[string]any{
+			"fundus_retinography": map[string]any{
+				"id":             "PACIENTE TESTE",
+				"device_or_mode": "Retina",
+				"eyes": map[string]any{
+					"OD": map[string]any{
+						"patient_id":    "PACIENTE TESTE",
+						"eye":           "OD",
+						"exam_datetime": "2026-08-28 16:37:10",
+						"mode":          "Retina",
+					},
+				},
+			},
+		},
+	}
+
+	if retinographyLocalComplete(analysis) {
+		t.Fatal(
+			"retinografia apenas OD não deve ser considerada completa",
+		)
+	}
+
+	if localResolvedExamKeys(analysis)["fundus_retinography"] {
+		t.Fatal(
+			"fundus_retinography incompleto foi marcado como resolvido",
+		)
+	}
+}
+
+func TestRetinographyLocalRejectsIdentityDivergence(
+	t *testing.T,
+) {
+	analysis := map[string]any{
+		"exams": map[string]any{
+			"fundus_retinography": map[string]any{
+				"id":             "PACIENTE TESTE",
+				"device_or_mode": "Retina",
+				"eyes": map[string]any{
+					"OD": map[string]any{
+						"patient_id":    "PACIENTE TESTE",
+						"eye":           "OD",
+						"exam_datetime": "2026-08-28 16:37:10",
+						"mode":          "Retina",
+					},
+					"OS": map[string]any{
+						"patient_id":    "OUTRO PACIENTE",
+						"eye":           "OS",
+						"exam_datetime": "2026-08-28 16:37:38",
+						"mode":          "Retina",
+					},
+				},
+			},
+		},
+	}
+
+	if retinographyLocalComplete(analysis) {
+		t.Fatal(
+			"divergência de identidade entre OD e OS não pode ser considerada completa",
+		)
+	}
+}
