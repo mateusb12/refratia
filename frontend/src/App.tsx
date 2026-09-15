@@ -1149,16 +1149,54 @@ function RealCaseSummary({ data }: { data: ReportData }) {
         <FlowConnector variant="to-active" />
 
         <div className="grid grid-cols-3 gap-3 max-[820px]:grid-cols-1">
-          <article className="min-h-[134px] rounded-xl border border-border bg-surface-muted p-4 text-text-muted" title="Aplicável apenas a pacientes com menos de 40 anos.">
+          <article className="min-h-[190px] rounded-xl border border-border bg-surface-muted p-4 text-text-muted" title="Aplicável apenas a pacientes com menos de 40 anos.">
             <span className="text-xs font-bold tracking-[0.12em]">FLUXO A</span>
             <h3 className="mb-0 mt-1 text-base font-bold">Córnea ou lente fácica</h3>
-            <p className="mb-0 mt-2 text-xs">Idade &lt; 40 anos · não escolhido: 59 anos</p>
+
+            <div className="mt-3 grid gap-2">
+              <div className="rounded-lg border border-border bg-surface/60 px-3 py-2">
+                <span className="block text-[10px] font-bold uppercase tracking-[0.10em] text-text-muted">
+                  Regra do fluxo
+                </span>
+                <strong className="mt-1 block text-sm text-text-secondary">
+                  Idade &lt; 40 anos
+                </strong>
+              </div>
+
+              <div className="rounded-lg border border-warning/40 bg-warning-soft/40 px-3 py-2">
+                <span className="block text-[10px] font-bold uppercase tracking-[0.10em] text-warning">
+                  Não escolhido
+                </span>
+                <strong className="mt-1 block text-sm text-text-primary">
+                  Paciente com 59 anos
+                </strong>
+              </div>
+            </div>
           </article>
 
-          <article className="min-h-[134px] rounded-xl border border-border bg-surface-muted p-4 text-text-muted" title="Aplicável a pacientes entre 40 e 55 anos.">
+          <article className="min-h-[190px] rounded-xl border border-border bg-surface-muted p-4 text-text-muted" title="Aplicável a pacientes entre 40 e 55 anos.">
             <span className="text-xs font-bold tracking-[0.12em]">FLUXO B</span>
             <h3 className="mb-0 mt-1 text-base font-bold">Presbiopia</h3>
-            <p className="mb-0 mt-2 text-xs">40 a 55 anos · não escolhido: 59 anos</p>
+
+            <div className="mt-3 grid gap-2">
+              <div className="rounded-lg border border-border bg-surface/60 px-3 py-2">
+                <span className="block text-[10px] font-bold uppercase tracking-[0.10em] text-text-muted">
+                  Regra do fluxo
+                </span>
+                <strong className="mt-1 block text-sm text-text-secondary">
+                  Idade entre 40 e 55 anos
+                </strong>
+              </div>
+
+              <div className="rounded-lg border border-warning/40 bg-warning-soft/40 px-3 py-2">
+                <span className="block text-[10px] font-bold uppercase tracking-[0.10em] text-warning">
+                  Não escolhido
+                </span>
+                <strong className="mt-1 block text-sm text-text-primary">
+                  Paciente com 59 anos
+                </strong>
+              </div>
+            </div>
           </article>
 
           <article className="min-h-[134px] rounded-xl border border-success/40 bg-success-soft p-4 shadow-sm">
