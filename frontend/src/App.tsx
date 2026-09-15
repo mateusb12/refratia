@@ -310,7 +310,7 @@ function IntakeDocumentsDebug({ preview, localPreviews }: { preview: IntakePrevi
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <strong className="block truncate text-sm" title={file.filename}>{file.filename}</strong>
-                    <span className="mt-1 block text-xs text-text-muted">{(file.size / 1024 / 1024).toFixed(2)} MB · {source?.exam ? String(source.exam) : 'tipo não identificado'}{source?.eye ? ` · ${String(source.eye)}` : ''}</span>
+                    <span className="mt-1 block text-xs text-text-muted">{(file.size / 1024 / 1024).toFixed(2)} MB · {contractAssessment?.contract.label ?? (source?.exam ? String(source.exam) : 'tipo não identificado')}{(contractAssessment?.eye ?? source?.eye) ? ` · ${String(contractAssessment?.eye ?? source?.eye)}` : ''}</span>
                   </div>
                   <StatusBadge tone={contractAssessment?.missing.length ? 'warning' : 'success'}>
                     {contractAssessment ? `${contractAssessment.extracted.length}/${contractAssessment.contract.fields.length} campos` : fields.length ? 'Extraído' : 'Sem campos'}

@@ -139,8 +139,51 @@ export function getExamContract(examKey: unknown) {
   return typeof examKey === 'string' ? examContracts[examKey] : undefined
 }
 
+export function resolveExamKeyFromSource(
+  source: Record<string, unknown>,
+) {
+  if (
+    typeof source.exam === 'string'
+    && examContracts[source.exam]
+  ) {
+    return source.exam
+  }
+
+  const filename = String(
+    source.path
+      ?? source.filename
+      ?? '',
+  )
+
+  const stem = filename
+    .split(/[\\/]/)
+    .pop()
+    ?.replace(/\.[^.]+$/, '')
+    .toUpperCase()
+
+  const prefix = stem?.split('__')[0]
+
+  switch (prefix) {
+    case 'EYESUITE':
+      return 'iol_calculation'
+
+    case 'PENTACAM':
+      return 'pentacam_corneal_tomography'
+
+    case 'RETINA':
+      return 'fundus_retinography'
+
+    case 'MICROSCOPIA_ESPECULAR':
+      return 'specular_microscopy'
+
+    default:
+      return undefined
+  }
+}
+
 export function assessExamContract(analysis: IntakeAnalysis, source: Record<string, unknown>) {
-  const contract = getExamContract(source.exam)
+  const resolvedExamKey = resolveExamKeyFromSource(source)
+  const contract = getExamContract(resolvedExamKey)
   if (!contract) return null
   const exam = analysis.exams[contract.key as keyof IntakeAnalysis['exams']]
 
@@ -183,24 +226,70 @@ export function assessExamContract(analysis: IntakeAnalysis, source: Record<stri
   const eyePayload = eyeKey
     ? examEyes?.[eyeKey]
     : undefined
-  // Biometria AO frequentemente entrega OD e OS separados, sem um bloco AO.
-  // Para auditoria de um arquivo AO, considerar os dois olhos evita falso
-  // negativo sem misturar valores em um único olho.
   const payload = eyePayload
     ? { ...exam, ...eyePayload }
-    : eye === 'AO' && exam?.eyes
-      ? {
-          ...exam,
-          ...Object.values(exam.eyes).reduce<Record<string, unknown>>((merged, value) => ({ ...merged, ...(value ?? {}) }), {}),
-        }
-      : exam
-  const values = Object.fromEntries(contract.fields.map((field) => [
-    field.key,
-    field.paths.map((path) => valueAtPath(payload, path)).find(hasValue),
-  ]))
+    : exam
+
+  // Um documento AO pode conter OD e OS com valores diferentes.
+  //
+  // Não fazemos merge raso dos dois olhos, porque isso faria o último
+  // olho sobrescrever silenciosamente o primeiro.
+  //
+  // Para auditoria do documento AO, avaliamos o contrato em cada olho
+  // separadamente e preservamos os dois valores na apresentação.
+  const values = Object.fromEntries(contract.fields.map((field) => {
+    if (eye === 'AO' && examEyes) {
+      const valuesByEye = ['OD', 'OS']
+        .map((eyeName) => {
+          const specificEye = examEyes[eyeName]
+
+          if (!specificEye) return undefined
+
+          const eyeSpecificPayload = {
+            ...exam,
+            ...specificEye,
+          }
+
+          const value = field.paths
+            .map((path) => valueAtPath(eyeSpecificPayload, path))
+            .find(hasValue)
+
+          if (!hasValue(value)) return undefined
+
+          const formattedValue = typeof value === 'number'
+            ? value.toLocaleString('pt-BR', {
+                maximumFractionDigits: 4,
+              })
+            : String(value)
+
+          return `${eyeName} ${formattedValue}`
+        })
+        .filter((value): value is string => Boolean(value))
+
+      if (valuesByEye.length > 0) {
+        return [
+          field.key,
+          valuesByEye.join(' · '),
+        ]
+      }
+    }
+
+    return [
+      field.key,
+      field.paths
+        .map((path) => valueAtPath(payload, path))
+        .find(hasValue),
+    ]
+  }))
   if (contract.key === 'refractometry' && Number(values.cylinder) === 0 && !hasValue(values.axis)) {
     values.axis = 'não aplicável — cilindro 0,00 D'
   }
   const extracted = contract.fields.filter((field) => hasValue(values[field.key]))
-  return { contract, extracted, values, missing: contract.fields.filter((field) => !extracted.includes(field)) }
+  return {
+    contract,
+    eye,
+    extracted,
+    values,
+    missing: contract.fields.filter((field) => !extracted.includes(field)),
+  }
 }
