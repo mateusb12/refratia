@@ -29,6 +29,10 @@
   --success-soft: #e8f6ef;
   --warning: #b36a17;
   --warning-soft: #fff3df;
+
+  --toric: #7651c9;
+  --toric-soft: #f1ebff;
+  --toric-border: #d8c8fa;
   --danger: #b74b4b;
   --danger-soft: #fbecec;
   --info: #5865d8;
@@ -64,6 +68,10 @@
   --success-soft: #183b30;
   --warning: #efad58;
   --warning-soft: #3b2b19;
+
+  --toric: #b9a0f5;
+  --toric-soft: #2b2340;
+  --toric-border: #5c4b82;
   --danger: #e78080;
   --danger-soft: #3b2020;
   --info: #9ca8ff;

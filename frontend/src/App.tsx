@@ -562,6 +562,7 @@ const extractedData: ExtractedDatum[] = [
 
 const realPatientName = 'Gerinaldo Alfregildo'
 const endothelialCutoff = 2000
+const toricCutoff = 0.75
 
 function fileBaseName(value: unknown, fallback = 'Documento') {
   const path = typeof value === 'string' ? value : ''
@@ -1138,6 +1139,10 @@ function RealCaseSummary({ data }: { data: ReportData }) {
     ({ endothelialDensity }) => endothelialDensity < endothelialCutoff,
   )
 
+  const hasToricNeed = eyes.some(
+    ({ astigmatism }) => astigmatism >= toricCutoff,
+  )
+
   return (
     <section className="mt-5 rounded-2xl border border-border bg-surface p-6 shadow-sm max-[580px]:p-4">
       <Eyebrow>ETAPA 4 · COMO O PROTOCOLO CHEGOU À INDICAÇÃO</Eyebrow>
@@ -1509,74 +1514,215 @@ function RealCaseSummary({ data }: { data: ReportData }) {
         <article className="mx-auto max-w-[760px] rounded-xl border border-primary-border bg-surface p-4 shadow-sm">
           <span className="text-xs font-bold tracking-[0.12em] text-primary">DECISÃO AVALIADA</span>
           <h3 className="mb-0 mt-1 text-base font-bold">O astigmatismo pede lente tórica?</h3>
-          <p className="mb-0 mt-1 text-xs text-text-muted">Regra: biometria óptica ≥ 0,75 D → versão tórica.</p>
-          <div className="mt-3 grid grid-cols-2 gap-3 max-[580px]:grid-cols-1">
+          <p className="mb-0 mt-1 text-xs text-text-muted">
+            Regra: biometria óptica ≥ {formatNumber(toricCutoff)} D → versão tórica.
+          </p>
+
+          <div className="mt-4 grid grid-cols-2 gap-3 max-[580px]:grid-cols-1">
             {eyes.map(({ eye, astigmatism }) => {
-              const isToric = astigmatism >= 0.75
-              const toricCutoff = 0.75
-              const toricScaleMax = Math.max(toricCutoff * 1.5, ...eyes.map(({ astigmatism: value }) => value))
+              const isToric = astigmatism >= toricCutoff
+
+              const toricScaleMax = Math.max(
+                toricCutoff * 1.5,
+                ...eyes.map(({ astigmatism: value }) => value),
+              )
+
               const toricCutoffWidth = (toricCutoff / toricScaleMax) * 100
               const toricPatientWidth = (astigmatism / toricScaleMax) * 100
-              const toricMargin = astigmatism - toricCutoff
+              const toricMargin = Math.abs(astigmatism - toricCutoff)
+
               return (
                 <div
                   className={clsx(
                     'rounded-xl border p-4',
                     isToric
-                      ? 'border-success/40 bg-success-soft/30'
+                      ? 'border-toric-border bg-toric-soft/40'
                       : 'border-border bg-surface-muted',
                   )}
                   key={eye}
                 >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs font-bold tracking-[0.12em] text-text-secondary">
-                      {eyeLabel(eye)}
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <span className="text-xs font-bold tracking-[0.12em] text-text-secondary">
+                        {eyeLabel(eye)}
+                      </span>
+
+                      <strong className="mt-1 block font-display text-xl">
+                        {formatNumber(astigmatism)} D
+                      </strong>
+                    </div>
+
+                    <span
+                      className={clsx(
+                        'inline-flex rounded-full px-2.5 py-1.5 text-xs font-bold',
+                        isToric
+                          ? 'bg-toric-soft text-toric'
+                          : 'bg-surface text-text-secondary',
+                      )}
+                    >
+                      {isToric ? 'Acima do corte' : 'Abaixo do corte'}
                     </span>
-                    <StatusBadge tone={isToric ? 'success' : 'neutral'}>{isToric ? 'Sim' : 'Não'}</StatusBadge>
                   </div>
-                  <strong className="mt-2 block font-display text-xl">{formatNumber(astigmatism)} D</strong>
+
                   <div className="mt-5 grid gap-4">
                     <div>
                       <div className="flex items-baseline justify-between gap-3">
-                        <span className="text-xs font-semibold text-text-secondary">Ponto de corte</span>
-                        <strong className="text-xs text-text-primary">{formatNumber(toricCutoff)} D</strong>
+                        <span className="text-xs font-semibold text-text-secondary">
+                          Ponto de corte
+                        </span>
+                        <strong className="text-xs text-text-primary">
+                          {formatNumber(toricCutoff)} D
+                        </strong>
                       </div>
+
                       <div className="relative mt-2 h-3 overflow-hidden rounded-full bg-surface-muted">
-                        <div className="h-full rounded-full bg-primary" style={{ width: `${toricCutoffWidth}%` }} />
-                        <span aria-hidden="true" className="absolute inset-y-0 w-0.5 bg-text-primary/70" style={{ left: `calc(${toricCutoffWidth}% - 1px)` }} />
+                        <div
+                          className="h-full rounded-full bg-primary"
+                          style={{ width: `${toricCutoffWidth}%` }}
+                        />
+                        <span
+                          aria-hidden="true"
+                          className="absolute inset-y-0 w-0.5 bg-text-primary/70"
+                          style={{
+                            left: `calc(${toricCutoffWidth}% - 1px)`,
+                          }}
+                        />
                       </div>
                     </div>
+
                     <div>
                       <div className="flex items-baseline justify-between gap-3">
-                        <span className="text-xs font-semibold text-text-secondary">Paciente</span>
-                        <strong className={clsx('text-xs', isToric ? 'text-info' : 'text-text-secondary')}>
+                        <span className="text-xs font-semibold text-text-secondary">
+                          Paciente
+                        </span>
+                        <strong
+                          className={clsx(
+                            'text-xs',
+                            isToric ? 'text-toric' : 'text-text-secondary',
+                          )}
+                        >
                           {formatNumber(astigmatism)} D
                         </strong>
                       </div>
+
                       <div className="relative mt-2 h-3 overflow-hidden rounded-full bg-surface-muted">
-                        <div className="h-full rounded-full bg-primary" style={{ width: `${isToric ? toricCutoffWidth : toricPatientWidth}%` }} />
+                        <div
+                          className="h-full rounded-full bg-primary"
+                          style={{
+                            width: `${isToric ? toricCutoffWidth : toricPatientWidth}%`,
+                          }}
+                        />
+
                         {isToric && (
-                          <div className="absolute inset-y-0 rounded-r-full bg-info" style={{ left: `${toricCutoffWidth}%`, width: `${toricPatientWidth - toricCutoffWidth}%` }} />
+                          <div
+                            aria-hidden="true"
+                            className="absolute inset-y-0 rounded-r-full bg-toric"
+                            style={{
+                              left: `${toricCutoffWidth}%`,
+                              width: `${toricPatientWidth - toricCutoffWidth}%`,
+                            }}
+                          />
                         )}
-                        <span aria-hidden="true" className="absolute inset-y-0 w-0.5 bg-text-primary/70" style={{ left: `calc(${toricCutoffWidth}% - 1px)` }} />
+
+                        <span
+                          aria-hidden="true"
+                          className="absolute inset-y-0 w-0.5 bg-text-primary/70"
+                          style={{
+                            left: `calc(${toricCutoffWidth}% - 1px)`,
+                          }}
+                        />
                       </div>
                     </div>
                   </div>
-                  <div className={clsx(
-                    'mt-4 rounded-lg px-3 py-2 text-xs font-semibold',
-                    isToric ? 'bg-info/10 text-info' : 'bg-surface-muted text-text-secondary',
-                  )}>
+
+                  <div
+                    className={clsx(
+                      'mt-4 rounded-lg px-3 py-2 text-xs font-semibold',
+                      isToric
+                        ? 'bg-toric-soft text-toric'
+                        : 'bg-surface text-text-secondary',
+                    )}
+                  >
                     {isToric
                       ? `+${formatNumber(toricMargin)} D acima do corte · LIO tórica`
-                      : 'Abaixo do corte · LIO não tórica'}
+                      : `${formatNumber(toricMargin)} D abaixo do corte · LIO não tórica`}
                   </div>
                 </div>
               )
             })}
           </div>
+
+          <div className="mt-4 grid grid-cols-2 gap-3 max-[580px]:grid-cols-1">
+            <div
+              className={clsx(
+                'min-h-[112px] rounded-lg border p-3 text-xs',
+                hasToricNeed
+                  ? 'border-toric-border bg-toric-soft/50'
+                  : 'border-border bg-surface-muted text-text-muted',
+              )}
+            >
+              <span
+                className={clsx(
+                  'flex items-center gap-1 font-bold',
+                  hasToricNeed ? 'text-toric' : 'text-text-secondary',
+                )}
+              >
+                {hasToricNeed && <Check size={13} />}
+                Sim
+                {hasToricNeed && ' · rota escolhida'}
+              </span>
+
+              <strong className="mt-2 block">
+                Pelo menos um olho com astigmatismo ≥ {formatNumber(toricCutoff)} D
+              </strong>
+
+              <span className="mt-1 block">
+                Usar versão tórica nos olhos que atingiram o corte.
+              </span>
+            </div>
+
+            <div
+              className={clsx(
+                'min-h-[112px] rounded-lg border p-3 text-xs',
+                !hasToricNeed
+                  ? 'border-success/50 bg-success-soft'
+                  : 'border-border bg-surface-muted text-text-muted',
+              )}
+            >
+              <span
+                className={clsx(
+                  'flex items-center gap-1 font-bold',
+                  !hasToricNeed ? 'text-success' : 'text-text-secondary',
+                )}
+              >
+                {!hasToricNeed && <Check size={13} />}
+                Não
+                {!hasToricNeed && ' · rota escolhida'}
+              </span>
+
+              <strong className="mt-2 block">
+                Nenhum olho atingiu {formatNumber(toricCutoff)} D
+              </strong>
+
+              <span className="mt-1 block">
+                LIO não tórica pelo critério de astigmatismo.
+              </span>
+            </div>
+          </div>
+
+          <p className="mb-0 mt-3 text-[11px] leading-relaxed text-text-muted">
+            As barras dos dois olhos usam a mesma escala. A faixa roxa mostra quanto o astigmatismo ultrapassou o ponto de corte para toricidade.
+          </p>
         </article>
 
-        <FlowConnector variant="straight" />
+        <FlowConnector
+          variant={hasToricNeed ? 'from-left' : 'from-right'}
+          className="mx-auto max-w-[760px] max-[580px]:hidden"
+        />
+        <FlowConnector
+          variant="straight"
+          className="mx-auto hidden max-w-[760px] max-[580px]:block"
+        />
 
         <details className="mx-auto max-w-[760px] rounded-xl border border-border bg-surface-muted p-4">
           <summary className="cursor-pointer list-none text-sm font-bold marker:hidden">Checagens que não alteraram a rota</summary>
