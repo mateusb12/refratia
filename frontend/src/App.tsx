@@ -613,7 +613,6 @@ function getReportExtractedData(data: ReportData): ExtractedDatum[] {
       document: fileBaseName(pentacam.source_file, source),
       screen: 'Topometric',
       field: 'Kmax',
-      contractNote: 'Campo adicional — fora do contrato clínico mínimo do Pentacam.',
     },
     {
       name: `BAD-D · ${label}`,
