@@ -1071,18 +1071,23 @@ function FlowConnector({
   variant,
   className,
 }: {
-  variant: 'straight' | 'to-active' | 'to-center'
+  variant: 'straight' | 'to-active' | 'to-center' | 'from-right'
   className?: string
 }) {
   const paths = {
     straight: 'M50 0 V48',
     'to-active': 'M50 0 V16 C50 21 52 24 56 24 H77 C81 24 83 27 83 32 V48',
     'to-center': 'M83 0 V16 C83 21 81 24 77 24 H56 C52 24 50 27 50 32 V48',
+
+    // Sai do centro do card direito de uma grade de 2 colunas
+    // e converge para a próxima decisão central.
+    'from-right': 'M75 0 V16 C75 21 73 24 69 24 H56 C52 24 50 27 50 32 V48',
   }
   const arrowheads = {
     straight: 'M49.25 39 L50 48 L50.75 39 L50 41 Z',
     'to-active': 'M82.25 39 L83 48 L83.75 39 L83 41 Z',
     'to-center': 'M49.25 39 L50 48 L50.75 39 L50 41 Z',
+    'from-right': 'M49.25 39 L50 48 L50.75 39 L50 41 Z',
   }
 
   const renderSvg = (path: string, arrowhead: string, svgClassName?: string) => (
@@ -1244,7 +1249,16 @@ function RealCaseSummary({ data }: { data: ReportData }) {
           </div>
         </article>
 
-        <div className="mx-auto mt-3 max-w-[760px] rounded-xl border border-primary-border bg-surface p-4">
+        <FlowConnector
+          variant="from-right"
+          className="mx-auto max-w-[760px] max-[580px]:hidden"
+        />
+        <FlowConnector
+          variant="straight"
+          className="mx-auto hidden max-w-[760px] max-[580px]:block"
+        />
+
+        <div className="mx-auto max-w-[760px] rounded-xl border border-primary-border bg-surface p-4">
           <span className="text-xs font-bold tracking-[0.12em] text-primary">DECISÃO AVALIADA</span>
           <h3 className="mb-0 mt-1 text-base font-bold">A celularidade endotelial está abaixo do ponto de corte?</h3>
           <p className="mb-0 mt-1 text-xs text-text-muted">
