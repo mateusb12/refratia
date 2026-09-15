@@ -1140,12 +1140,26 @@ function RealCaseSummary({ data }: { data: ReportData }) {
       </div>
 
       <div className="mt-5 rounded-xl border border-primary-border bg-primary-soft p-5">
-        <span className="text-xs font-bold tracking-[0.12em] text-primary">RESULTADO EM UMA FRASE</span>
-        <p className="mb-0 mt-2 font-display text-lg leading-snug">
-          A idade direciona o caso para implante de lente; a biometria indica lente <strong>{eyes[0].astigmatism >= 0.75 ? 'tórica' : 'não tórica'} no OD</strong> e <strong>{eyes[1].astigmatism >= 0.75 ? 'tórica' : 'não tórica'} no OE</strong>.
-        </p>
-        <p className="mb-0 mt-2 text-xs leading-relaxed text-text-secondary">
-          Multifocal ou EDOF permanece uma escolha do cirurgião, conforme o perfil visual do paciente.
+        <span className="text-xs font-bold tracking-[0.12em] text-primary">VEREDITO DO PROTOCOLO</span>
+
+        <div className="mt-3 flex items-center gap-2">
+          <CircleCheck className="text-success" size={20} />
+          <strong className="font-display text-xl leading-tight">
+            Indicação cirúrgica pelo protocolo: SIM
+          </strong>
+        </div>
+
+        <div className="mt-4 grid grid-cols-2 gap-3 max-[720px]:grid-cols-1">
+          {eyes.map(({ eye, recommendation }) => (
+            <div className="rounded-lg border border-primary-border bg-surface/50 p-3" key={`verdict-${eye}`}>
+              <span className="text-xs font-bold text-text-secondary">{eye}</span>
+              <strong className="mt-1 block text-sm text-text-primary">{recommendation}</strong>
+            </div>
+          ))}
+        </div>
+
+        <p className="mb-0 mt-3 text-xs leading-relaxed text-text-secondary">
+          Resultado preliminar do protocolo — decisão final do médico cirurgião.
         </p>
       </div>
 
@@ -1294,7 +1308,7 @@ function RealCaseSummary({ data }: { data: ReportData }) {
       <div className="mt-6 rounded-xl bg-sidebar px-5 py-5 text-sidebar-text">
         <div className="flex items-center gap-2 text-[#79d4b7]">
           <CircleCheck size={18} />
-          <span className="text-xs font-bold tracking-[0.12em]">FIM DO FLUXO · RECOMENDAÇÃO PRELIMINAR</span>
+          <span className="text-xs font-bold tracking-[0.12em]">CONDUTA PRELIMINAR DO PROTOCOLO</span>
         </div>
         <div className="mt-3 grid grid-cols-2 gap-3 max-[720px]:grid-cols-1">
           {eyes.map(({ eye, recommendation }) => (
