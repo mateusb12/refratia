@@ -34,6 +34,11 @@ func fillPentacamFocusedCells(
 		{"km_d", 4, referenceCrop{535, 1385, 155, 85}, true, 20, 70},
 		{"astigmatism_d", 4, referenceCrop{535, 1455, 180, 70}, true, 0, 15},
 
+		// Página 6 — Topométrico / Estadiamento KC.
+		// Célula K Máx. (ant.), sem incluir as bordas horizontais.
+		// Fixtures reais Rolmey: OD = 44.2 D; OS = 45.5 D.
+		{"kmax_d", 6, referenceCrop{335, 2250, 155, 55}, true, 20, 70},
+
 		{"iva", 6, referenceCrop{842, 2293, 52, 31}, true, 0, 5},
 		{"ki", 6, referenceCrop{830, 2315, 150, 65}, true, 0, 5},
 

@@ -300,6 +300,7 @@ func ExtractPDF(ctx context.Context, data []byte) (map[string]any, error) {
 			"k2_d":          values["k2_d"],
 			"km_d":          values["km_d"],
 			"astigmatism_d": values["astigmatism_d"],
+			"kmax_d":        values["kmax_d"],
 		},
 		"pachymetry": map[string]any{
 			"thinnest_um": values["thinnest_um"],
