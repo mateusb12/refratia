@@ -679,12 +679,6 @@ function getReportMetrics(data: ReportData, extractedData: ExtractedDatum[]): Me
     tone: 'success',
   },
   {
-    label: 'Qualidade Pentacam',
-    value: `${data.exams.pentacam_corneal_tomography.eyes.OD.quality} / ${data.exams.pentacam_corneal_tomography.eyes.OS.quality}`,
-    detail: 'OD / OE',
-    tone: 'success',
-  },
-  {
     label: 'Consolidação',
     value: 'Compatível',
     detail: 'Datas normalizadas',
@@ -2213,7 +2207,10 @@ function App() {
         )}
       </div>
 
-      <div className="mt-5 grid grid-cols-4 gap-4 max-[1100px]:grid-cols-2 max-[580px]:grid-cols-1">
+      <div className={clsx(
+        'mt-5 grid gap-4 max-[1100px]:grid-cols-2 max-[580px]:grid-cols-1',
+        activeMetrics.length === 3 ? 'grid-cols-3' : 'grid-cols-4',
+      )}>
         {activeMetrics.map((metric) => <MetricCard key={metric.label} {...metric} />)}
       </div>
 
