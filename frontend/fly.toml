@@ -1,0 +1,22 @@
+app = 'refratia-web'
+primary_region = 'gru'
+
+[build]
+dockerfile = 'Dockerfile'
+
+[build.args]
+VITE_API_URL = 'https://backend-dry-island-4275.fly.dev'
+
+  VITE_SHOW_DEMO_CASES = 'false'
+[http_service]
+internal_port = 80
+force_https = true
+auto_stop_machines = 'stop'
+auto_start_machines = true
+min_machines_running = 0
+processes = ['app']
+
+[[vm]]
+memory = '256mb'
+cpu_kind = 'shared'
+cpus = 1

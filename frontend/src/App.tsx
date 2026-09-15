@@ -561,6 +561,7 @@ const extractedData: ExtractedDatum[] = [
 ]
 
 const realPatientName = 'Gerinaldo Alfregildo'
+const showDemoCases = import.meta.env.VITE_SHOW_DEMO_CASES !== 'false'
 const endothelialCutoff = 2000
 const toricCutoff = 0.75
 
@@ -707,10 +708,12 @@ interface ReportCase {
   caseId?: string
 }
 
-const recentCases: ReportCase[] = [
-  { initials: 'RA', patient: realPatientName, report: 'Gerado', review: 'Pendente', tone: 'warning' as const, real: true },
-  { initials: 'MS', patient: 'Maria S.', report: 'Parcial', review: 'Pendente', tone: 'warning' as const, real: false },
-]
+const recentCases: ReportCase[] = showDemoCases
+  ? [
+      { initials: 'RA', patient: realPatientName, report: 'Gerado', review: 'Pendente', tone: 'warning' as const, real: true },
+      { initials: 'MS', patient: 'Maria S.', report: 'Parcial', review: 'Pendente', tone: 'warning' as const, real: false },
+    ]
+  : []
 
 function getInitialTheme(): Theme {
   const storedTheme = localStorage.getItem('refratia-theme')
@@ -3191,21 +3194,23 @@ function App() {
                 </div>
                 <ProcessSteps current={processingStep} reviewed={isReviewed} />
                 <div className="mt-5 grid gap-4">
-                  <button
-                    aria-pressed={selectedCase === 'demo'}
-                    className={clsx(
-                      'grid grid-cols-[auto_minmax(0,1fr)] items-center rounded-xl border bg-surface-muted p-[18px] text-left hover:border-primary hover:bg-primary-soft/80',
-                      selectedCase === 'demo' ? 'border-primary ring-2 ring-primary/15' : 'border-border-strong',
-                    )}
-                    onClick={() => loadCase('demo')}
-                    type="button"
-                  >
-                    <span className="grid h-[45px] w-[45px] place-items-center rounded-xl bg-primary-soft text-primary"><UploadCloud size={25} /></span>
-                    <span className="mx-3.5 min-w-0">
-                      <strong className="block truncate text-sm">Maria S.</strong>
-                      <small className="mt-1 block text-xs leading-relaxed text-text-muted">Caso fictício completo</small>
-                    </span>
-                  </button>
+                  {showDemoCases && (
+                    <button
+                      aria-pressed={selectedCase === 'demo'}
+                      className={clsx(
+                        'grid grid-cols-[auto_minmax(0,1fr)] items-center rounded-xl border bg-surface-muted p-[18px] text-left hover:border-primary hover:bg-primary-soft/80',
+                        selectedCase === 'demo' ? 'border-primary ring-2 ring-primary/15' : 'border-border-strong',
+                      )}
+                      onClick={() => loadCase('demo')}
+                      type="button"
+                    >
+                      <span className="grid h-[45px] w-[45px] place-items-center rounded-xl bg-primary-soft text-primary"><UploadCloud size={25} /></span>
+                      <span className="mx-3.5 min-w-0">
+                        <strong className="block truncate text-sm">Maria S.</strong>
+                        <small className="mt-1 block text-xs leading-relaxed text-text-muted">Caso fictício completo</small>
+                      </span>
+                    </button>
+                  )}
 
                 </div>
               </section>
