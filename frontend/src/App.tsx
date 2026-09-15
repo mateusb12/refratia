@@ -1225,42 +1225,84 @@ function RealCaseSummary({ data }: { data: ReportData }) {
         <FlowConnector variant="to-center" className="max-[820px]:hidden" />
         <FlowConnector variant="straight" className="hidden max-[820px]:block" />
 
-        <article className="mx-auto max-w-[760px] rounded-xl border border-primary-border bg-surface p-4 shadow-sm">
+        <article className="mx-auto max-w-[760px] rounded-xl border border-primary-border bg-surface p-5 shadow-sm">
           <div className="flex items-start justify-between gap-3">
             <div>
               <span className="text-xs font-bold tracking-[0.12em] text-primary">DECISÃO AVALIADA</span>
-              <h3 className="mb-0 mt-1 text-base font-bold">Há ceratocone confirmado?</h3>
+              <h3 className="mb-0 mt-1 text-[1.05rem] font-bold">Há ceratocone confirmado?</h3>
             </div>
             <StatusBadge tone="success"><Check size={12} /> Não</StatusBadge>
           </div>
-          <div className="mt-3 grid grid-cols-2 gap-3 max-[580px]:grid-cols-1">
-            {eyes.map(({ eye, badD, artMax, tkc }) => (
-              <div className="rounded-lg border border-border bg-surface-muted p-3 text-xs" key={eye}>
-                <strong>{eyeLabel(eye)}</strong>
-                <div className="mt-2 grid gap-1.5">
-                  <span className="rounded-md bg-surface/60 px-2 py-1 text-text-secondary">
-                    <strong className="font-semibold text-text-primary">BAD-D</strong> {formatNumber(badD)}
-                  </span>
-                  <span className="rounded-md bg-surface/60 px-2 py-1 text-text-secondary">
-                    <strong className="font-semibold text-text-primary">ARTmax</strong> {formatNumber(artMax)} µm
-                  </span>
-                  <span className="rounded-md bg-surface/60 px-2 py-1 text-text-secondary">
-                    <strong className="font-semibold text-text-primary">TKC</strong> {tkc ?? 'em branco'}
-                  </span>
+
+          <div className="mt-4 grid grid-cols-2 gap-4 max-[640px]:grid-cols-1">
+            {eyes.map(({ eye, badD, artMax, tkc }) => {
+              const suspicious = eye === 'OS'
+              return (
+                <div className="rounded-xl border border-border bg-surface-muted p-4" key={eye}>
+                  <div className="flex items-start justify-between gap-3">
+                    <strong className="text-base">{eyeLabel(eye)}</strong>
+                    <span
+                      className={clsx(
+                        'inline-flex rounded-full px-2.5 py-1 text-xs font-bold',
+                        suspicious ? 'bg-warning-soft/60 text-warning' : 'bg-surface text-text-secondary',
+                      )}
+                    >
+                      {suspicious ? 'Índices suspeitos' : 'Sem confirmação'}
+                    </span>
+                  </div>
+
+                  <div className="mt-4 grid gap-3 text-sm">
+                    <div className="grid grid-cols-[88px_1fr] items-center gap-3">
+                      <span className="text-text-muted">BAD-D</span>
+                      <strong className="text-text-primary">{formatNumber(badD)}</strong>
+                    </div>
+
+                    <div className="grid grid-cols-[88px_1fr] items-center gap-3">
+                      <span className="text-text-muted">ARTmax</span>
+                      <strong className="text-text-primary">{formatNumber(artMax)} µm</strong>
+                    </div>
+
+                    <div className="grid grid-cols-[88px_1fr] items-center gap-3">
+                      <span className="text-text-muted">TKC</span>
+                      <strong className="text-text-primary">{tkc ?? 'em branco'}</strong>
+                    </div>
+                  </div>
+
+                  <div
+                    className={clsx(
+                      'mt-4 rounded-lg px-3 py-2 text-sm font-semibold',
+                      suspicious ? 'bg-warning-soft/40 text-warning' : 'bg-surface text-text-secondary',
+                    )}
+                  >
+                    {suspicious ? 'Índices suspeitos; acompanhar' : 'Sem confirmação de ceratocone'}
+                  </div>
                 </div>
-                <span className="mt-2 block font-semibold text-text-primary">{eye === 'OS' ? 'Índices suspeitos; acompanhar' : 'Sem confirmação'}</span>
-              </div>
-            ))}
+              )
+            })}
           </div>
-          <p className="mb-0 mt-3 text-xs text-text-secondary">Sem TKC positivo, a regra global não exclui a indicação. O alerta do OE segue registrado, mas não muda a rota.</p>
-          <div className="mt-3 grid grid-cols-2 gap-3 max-[580px]:grid-cols-1">
-            <div className="min-h-[134px] rounded-lg border border-border bg-surface-muted p-3 text-xs text-text-muted" title="Com ceratocone confirmado, o Fluxo C mantém a indicação de LIO e registra a observação.">
-              <strong className="block text-text-secondary">Sim</strong>
-              <span className="mt-1 block">Registrar ceratocone; LIO permanece indicada no Fluxo C.</span>
+
+          <p className="mb-0 mt-4 text-sm leading-relaxed text-text-secondary">
+            Sem TKC positivo, a regra global não exclui a indicação. O alerta do OE segue registrado, mas não muda a rota.
+          </p>
+
+          <div className="mt-4 grid grid-cols-2 gap-4 max-[640px]:grid-cols-1">
+            <div
+              className="min-h-[120px] rounded-xl border border-border bg-surface-muted p-4"
+              title="Com ceratocone confirmado, o Fluxo C mantém a indicação de LIO e registra a observação."
+            >
+              <strong className="block text-sm text-text-secondary">Sim</strong>
+              <p className="mb-0 mt-2 text-sm leading-relaxed text-text-secondary">
+                Registrar ceratocone; LIO permanece indicada no Fluxo C.
+              </p>
             </div>
-            <div className="min-h-[134px] rounded-lg border border-success/40 bg-success-soft p-3 text-xs">
-              <span className="flex items-center gap-1 font-bold text-success"><Check size={13} /> Não · rota escolhida</span>
-              <strong className="mt-1 block">Seguir para a escolha da lente</strong>
+
+            <div className="min-h-[120px] rounded-xl border border-success/40 bg-success-soft p-4">
+              <span className="flex items-center gap-1 text-sm font-bold text-success">
+                <Check size={14} /> Não · rota escolhida
+              </span>
+              <p className="mb-0 mt-2 text-base font-semibold text-text-primary">
+                Seguir para a escolha da lente
+              </p>
             </div>
           </div>
         </article>
@@ -1471,14 +1513,63 @@ function RealCaseSummary({ data }: { data: ReportData }) {
           <div className="mt-3 grid grid-cols-2 gap-3 max-[580px]:grid-cols-1">
             {eyes.map(({ eye, astigmatism }) => {
               const isToric = astigmatism >= 0.75
+              const toricCutoff = 0.75
+              const toricScaleMax = Math.max(toricCutoff * 1.5, ...eyes.map(({ astigmatism: value }) => value))
+              const toricCutoffWidth = (toricCutoff / toricScaleMax) * 100
+              const toricPatientWidth = (astigmatism / toricScaleMax) * 100
+              const toricMargin = astigmatism - toricCutoff
               return (
-                <div className={clsx('rounded-lg border p-3', isToric ? 'border-success/40 bg-success-soft' : 'border-border bg-surface-muted')} key={eye}>
+                <div
+                  className={clsx(
+                    'rounded-xl border p-4',
+                    isToric
+                      ? 'border-success/40 bg-success-soft/30'
+                      : 'border-border bg-surface-muted',
+                  )}
+                  key={eye}
+                >
                   <div className="flex items-center justify-between gap-2">
-                    <strong>{eyeLabel(eye)}</strong>
+                    <span className="text-xs font-bold tracking-[0.12em] text-text-secondary">
+                      {eyeLabel(eye)}
+                    </span>
                     <StatusBadge tone={isToric ? 'success' : 'neutral'}>{isToric ? 'Sim' : 'Não'}</StatusBadge>
                   </div>
                   <strong className="mt-2 block font-display text-xl">{formatNumber(astigmatism)} D</strong>
-                  <span className="mt-1 block text-xs text-text-secondary">{isToric ? 'LIO tórica' : 'LIO não tórica'}</span>
+                  <div className="mt-5 grid gap-4">
+                    <div>
+                      <div className="flex items-baseline justify-between gap-3">
+                        <span className="text-xs font-semibold text-text-secondary">Ponto de corte</span>
+                        <strong className="text-xs text-text-primary">{formatNumber(toricCutoff)} D</strong>
+                      </div>
+                      <div className="relative mt-2 h-3 overflow-hidden rounded-full bg-surface-muted">
+                        <div className="h-full rounded-full bg-primary" style={{ width: `${toricCutoffWidth}%` }} />
+                        <span aria-hidden="true" className="absolute inset-y-0 w-0.5 bg-text-primary/70" style={{ left: `calc(${toricCutoffWidth}% - 1px)` }} />
+                      </div>
+                    </div>
+                    <div>
+                      <div className="flex items-baseline justify-between gap-3">
+                        <span className="text-xs font-semibold text-text-secondary">Paciente</span>
+                        <strong className={clsx('text-xs', isToric ? 'text-info' : 'text-text-secondary')}>
+                          {formatNumber(astigmatism)} D
+                        </strong>
+                      </div>
+                      <div className="relative mt-2 h-3 overflow-hidden rounded-full bg-surface-muted">
+                        <div className="h-full rounded-full bg-primary" style={{ width: `${isToric ? toricCutoffWidth : toricPatientWidth}%` }} />
+                        {isToric && (
+                          <div className="absolute inset-y-0 rounded-r-full bg-info" style={{ left: `${toricCutoffWidth}%`, width: `${toricPatientWidth - toricCutoffWidth}%` }} />
+                        )}
+                        <span aria-hidden="true" className="absolute inset-y-0 w-0.5 bg-text-primary/70" style={{ left: `calc(${toricCutoffWidth}% - 1px)` }} />
+                      </div>
+                    </div>
+                  </div>
+                  <div className={clsx(
+                    'mt-4 rounded-lg px-3 py-2 text-xs font-semibold',
+                    isToric ? 'bg-info/10 text-info' : 'bg-surface-muted text-text-secondary',
+                  )}>
+                    {isToric
+                      ? `+${formatNumber(toricMargin)} D acima do corte · LIO tórica`
+                      : 'Abaixo do corte · LIO não tórica'}
+                  </div>
                 </div>
               )
             })}

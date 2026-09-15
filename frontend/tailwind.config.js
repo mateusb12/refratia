@@ -23,6 +23,7 @@ export default {
         'warning-soft': 'var(--warning-soft)',
         danger: 'var(--danger)',
         'danger-soft': 'var(--danger-soft)',
+        info: 'var(--info)',
         sidebar: 'var(--sidebar)',
         'sidebar-secondary': 'var(--sidebar-secondary)',
         'sidebar-text': 'var(--sidebar-text)',
