@@ -90,8 +90,19 @@ func pentacamReadNumericCell(
 	votes := map[string]int{}
 	values := map[string]float64{}
 
+	psms := []int{7, 8, 13}
+
+	// Kmax fica em uma célula horizontal curta.
+	//
+	// PSM 7 foi estável semanticamente em host e container.
+	// PSM 13 confundiu 45.5 com 41.5 no ambiente Alpine,
+	// portanto não participa da votação deste campo.
+	if spec.Key == "kmax_d" {
+		psms = []int{7}
+	}
+
 	for _, img := range variants {
-		for _, psm := range []int{7, 8, 13} {
+		for _, psm := range psms {
 			text, err := pentacamNumericOCR(ctx, img, psm)
 			if err != nil {
 				continue
@@ -103,6 +114,23 @@ func pentacamReadNumericCell(
 				spec.Min,
 				spec.Max,
 			)
+
+			// No container Alpine, o Tesseract/Leptonica pode
+			// remover apenas o separador decimal do Kmax:
+			//
+			//   44.20 -> "4420"
+			//   45.50 -> "4550"
+			//
+			// Só aplicamos esta recuperação ao Kmax e somente
+			// quando o parser normal falhou.
+			if !ok && spec.Key == "kmax_d" {
+				value, ok = pentacamRecoverKMaxCompactDecimal(
+					text,
+					spec.Min,
+					spec.Max,
+				)
+			}
+
 			if !ok {
 				continue
 			}
@@ -238,4 +266,63 @@ func pentacamBinaryUpscale(
 	}
 
 	return buf.Bytes(), nil
+}
+
+// pentacamRecoverKMaxCompactDecimal recupera apenas o caso observado
+// em que o OCR do Kmax remove o separador decimal.
+//
+// Exemplos válidos:
+//
+//	"4420" -> 44.20
+//	"4550" -> 45.50
+//
+// Deliberadamente não recuperamos três dígitos:
+//
+//	"550" != 55.0
+//
+// porque esse padrão também apareceu como falso positivo em outros PSMs.
+func pentacamRecoverKMaxCompactDecimal(
+	text string,
+	min float64,
+	max float64,
+) (float64, bool) {
+	digits := make([]byte, 0, 4)
+
+	for i := 0; i < len(text); i++ {
+		ch := text[i]
+
+		if ch < '0' || ch > '9' {
+			continue
+		}
+
+		digits = append(
+			digits,
+			ch,
+		)
+
+		if len(digits) > 4 {
+			return 0, false
+		}
+	}
+
+	if len(digits) != 4 {
+		return 0, false
+	}
+
+	number := 0
+
+	for _, digit := range digits {
+		number =
+			number*10 +
+				int(digit-'0')
+	}
+
+	value :=
+		float64(number) / 100.0
+
+	if value < min || value > max {
+		return 0, false
+	}
+
+	return value, true
 }
