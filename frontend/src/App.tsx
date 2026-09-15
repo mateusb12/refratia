@@ -1168,7 +1168,7 @@ function RealCaseSummary({ data }: { data: ReportData }) {
                 </strong>
               </div>
 
-              <div className="rounded-lg border border-warning/40 bg-warning-soft/40 px-3 py-2">
+              <div className="rounded-lg bg-warning-soft/40 px-3 py-2">
                 <span className="block text-[10px] font-bold uppercase tracking-[0.10em] text-warning">
                   Não escolhido
                 </span>
@@ -1193,7 +1193,7 @@ function RealCaseSummary({ data }: { data: ReportData }) {
                 </strong>
               </div>
 
-              <div className="rounded-lg border border-warning/40 bg-warning-soft/40 px-3 py-2">
+              <div className="rounded-lg bg-warning-soft/40 px-3 py-2">
                 <span className="block text-[10px] font-bold uppercase tracking-[0.10em] text-warning">
                   Não escolhido
                 </span>
@@ -1231,7 +1231,17 @@ function RealCaseSummary({ data }: { data: ReportData }) {
             {eyes.map(({ eye, badD, artMax, tkc }) => (
               <div className="rounded-lg border border-border bg-surface-muted p-3 text-xs" key={eye}>
                 <strong>{eyeLabel(eye)}</strong>
-                <span className="mt-1 block text-text-secondary">BAD-D {formatNumber(badD)} · ARTmax {formatNumber(artMax)} µm · TKC {tkc ?? 'em branco'}</span>
+                <div className="mt-2 grid gap-1.5">
+                  <span className="rounded-md bg-surface/60 px-2 py-1 text-text-secondary">
+                    <strong className="font-semibold text-text-primary">BAD-D</strong> {formatNumber(badD)}
+                  </span>
+                  <span className="rounded-md bg-surface/60 px-2 py-1 text-text-secondary">
+                    <strong className="font-semibold text-text-primary">ARTmax</strong> {formatNumber(artMax)} µm
+                  </span>
+                  <span className="rounded-md bg-surface/60 px-2 py-1 text-text-secondary">
+                    <strong className="font-semibold text-text-primary">TKC</strong> {tkc ?? 'em branco'}
+                  </span>
+                </div>
                 <span className="mt-2 block font-semibold text-text-primary">{eye === 'OS' ? 'Índices suspeitos; acompanhar' : 'Sem confirmação'}</span>
               </div>
             ))}
