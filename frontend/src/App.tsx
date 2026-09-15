@@ -1328,10 +1328,15 @@ function RealCaseSummary({ data }: { data: ReportData }) {
                         </strong>
                       </div>
 
-                      <div className="mt-2 h-3 overflow-hidden rounded-full bg-surface-muted">
+                      <div className="relative mt-2 h-3 overflow-hidden rounded-full bg-surface-muted">
                         <div
                           className="h-full rounded-full bg-primary"
                           style={{ width: `${cutoffWidth}%` }}
+                        />
+                        <span
+                          aria-hidden="true"
+                          className="absolute inset-y-0 w-0.5 bg-text-primary/70"
+                          style={{ left: `calc(${cutoffWidth}% - 1px)` }}
                         />
                       </div>
                     </div>
@@ -1349,13 +1354,28 @@ function RealCaseSummary({ data }: { data: ReportData }) {
                         </strong>
                       </div>
 
-                      <div className="mt-2 h-3 overflow-hidden rounded-full bg-surface-muted">
+                      <div className="relative mt-2 h-3 overflow-hidden rounded-full bg-surface-muted">
                         <div
                           className={clsx(
                             'h-full rounded-full',
-                            belowCutoff ? 'bg-warning' : 'bg-success',
+                            belowCutoff ? 'bg-warning' : 'bg-primary',
                           )}
-                          style={{ width: `${patientWidth}%` }}
+                          style={{ width: `${belowCutoff ? patientWidth : Math.min(patientWidth, cutoffWidth)}%` }}
+                        />
+                        {!belowCutoff && patientWidth > cutoffWidth && (
+                          <div
+                            aria-hidden="true"
+                            className="absolute inset-y-0 rounded-r-full bg-warning"
+                            style={{
+                              left: `${cutoffWidth}%`,
+                              width: `${patientWidth - cutoffWidth}%`,
+                            }}
+                          />
+                        )}
+                        <span
+                          aria-hidden="true"
+                          className="absolute inset-y-0 w-0.5 bg-text-primary/70"
+                          style={{ left: `calc(${cutoffWidth}% - 1px)` }}
                         />
                       </div>
                     </div>
