@@ -1247,35 +1247,108 @@ function RealCaseSummary({ data }: { data: ReportData }) {
         <div className="mx-auto mt-3 max-w-[760px] rounded-xl border border-primary-border bg-surface p-4">
           <span className="text-xs font-bold tracking-[0.12em] text-primary">DECISÃO AVALIADA</span>
           <h3 className="mb-0 mt-1 text-base font-bold">A celularidade endotelial está abaixo do ponto de corte?</h3>
-          <p className="mb-0 mt-1 text-xs text-text-muted">Regra: densidade celular &lt; {endothelialCutoff.toLocaleString('pt-BR')} células/mm² → ponto de atenção.</p>
-          <div className="mt-3 grid grid-cols-2 gap-3 max-[580px]:grid-cols-1">
-            {eyes.flatMap(({ eye, endothelialDensity }) => {
-              const actualBelowCutoff = endothelialDensity < endothelialCutoff
-              return [true, false].map((belowCutoff) => {
-                const selected = belowCutoff === actualBelowCutoff
-                return (
-                  <div
-                    className={clsx(
-                      'rounded-lg border p-3',
-                      selected && belowCutoff && 'border-warning/50 bg-warning-soft',
-                      selected && !belowCutoff && 'border-success/50 bg-success-soft',
-                      !selected && 'border-border bg-surface-muted text-text-muted',
-                    )}
-                    key={`${eye}-${belowCutoff}`}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <strong>{eyeLabel(eye)} · {belowCutoff ? 'Sim' : 'Não'}</strong>
-                      <StatusBadge tone={selected ? (belowCutoff ? 'warning' : 'success') : 'neutral'}>
-                        {selected ? 'Selecionado' : 'Não escolhido'}
-                      </StatusBadge>
+          <p className="mb-0 mt-1 text-xs text-text-muted">
+            Regra: densidade celular &lt; {endothelialCutoff.toLocaleString('pt-BR')} células/mm² → ponto de atenção.
+          </p>
+
+          <div className="mt-4 grid grid-cols-2 gap-3 max-[580px]:grid-cols-1">
+            {eyes.map(({ eye, endothelialDensity }) => {
+              const belowCutoff = endothelialDensity < endothelialCutoff
+              const scaleMax = Math.max(
+                endothelialCutoff * 1.5,
+                ...eyes.map(({ endothelialDensity: density }) => density),
+              )
+              const cutoffWidth = (endothelialCutoff / scaleMax) * 100
+              const patientWidth = (endothelialDensity / scaleMax) * 100
+              const distanceFromCutoff = Math.abs(endothelialDensity - endothelialCutoff)
+
+              return (
+                <div
+                  className={clsx(
+                    'rounded-xl border p-4',
+                    belowCutoff
+                      ? 'border-warning/40 bg-warning-soft/30'
+                      : 'border-success/40 bg-success-soft/30',
+                  )}
+                  key={eye}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <span className="text-xs font-bold tracking-[0.12em] text-text-secondary">
+                        {eyeLabel(eye)}
+                      </span>
+                      <strong className="mt-1 block font-display text-xl">
+                        {formatNumber(endothelialDensity)} células/mm²
+                      </strong>
                     </div>
-                    <strong className="mt-2 block font-display text-xl">{formatNumber(endothelialDensity)} células/mm²</strong>
-                    <span className="mt-1 block text-xs">{belowCutoff ? 'Registrar ponto de atenção' : 'Celularidade adequada'}</span>
+
+                    <StatusBadge tone={belowCutoff ? 'warning' : 'success'}>
+                      {belowCutoff ? 'Abaixo do corte' : 'Acima do corte'}
+                    </StatusBadge>
                   </div>
-                )
-              })
+
+                  <div className="mt-5 grid gap-4">
+                    <div>
+                      <div className="flex items-baseline justify-between gap-3">
+                        <span className="text-xs font-semibold text-text-secondary">
+                          Ponto de corte
+                        </span>
+                        <strong className="text-xs text-text-primary">
+                          {endothelialCutoff.toLocaleString('pt-BR')}
+                        </strong>
+                      </div>
+
+                      <div className="mt-2 h-3 overflow-hidden rounded-full bg-surface-muted">
+                        <div
+                          className="h-full rounded-full bg-primary"
+                          style={{ width: `${cutoffWidth}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="flex items-baseline justify-between gap-3">
+                        <span className="text-xs font-semibold text-text-secondary">
+                          Paciente
+                        </span>
+                        <strong className={clsx(
+                          'text-xs',
+                          belowCutoff ? 'text-warning' : 'text-success',
+                        )}>
+                          {formatNumber(endothelialDensity)}
+                        </strong>
+                      </div>
+
+                      <div className="mt-2 h-3 overflow-hidden rounded-full bg-surface-muted">
+                        <div
+                          className={clsx(
+                            'h-full rounded-full',
+                            belowCutoff ? 'bg-warning' : 'bg-success',
+                          )}
+                          style={{ width: `${patientWidth}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className={clsx(
+                    'mt-4 rounded-lg px-3 py-2 text-xs font-semibold',
+                    belowCutoff
+                      ? 'bg-warning-soft text-warning'
+                      : 'bg-success-soft text-success',
+                  )}>
+                    {belowCutoff
+                      ? `${formatNumber(distanceFromCutoff)} células/mm² abaixo do corte`
+                      : `${formatNumber(distanceFromCutoff)} células/mm² acima do corte`}
+                  </div>
+                </div>
+              )
             })}
           </div>
+
+          <p className="mb-0 mt-3 text-[11px] leading-relaxed text-text-muted">
+            As barras dos dois olhos usam a mesma escala: quanto maior a barra do paciente em relação ao ponto de corte, maior a margem acima do limite.
+          </p>
         </div>
 
         <FlowConnector variant="straight" />
