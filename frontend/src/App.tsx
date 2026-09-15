@@ -1071,13 +1071,14 @@ function FlowConnector({
   variant,
   className,
 }: {
-  variant: 'straight' | 'to-active' | 'to-center' | 'from-right'
+  variant: 'straight' | 'to-active' | 'to-center' | 'from-left' | 'from-right' | 'from-right'
   className?: string
 }) {
   const paths = {
     straight: 'M50 0 V48',
     'to-active': 'M50 0 V16 C50 21 52 24 56 24 H77 C81 24 83 27 83 32 V48',
     'to-center': 'M83 0 V16 C83 21 81 24 77 24 H56 C52 24 50 27 50 32 V48',
+    'from-left': 'M25 0 V16 C25 21 27 24 31 24 H44 C48 24 50 27 50 32 V48',
 
     // Sai do centro do card direito de uma grade de 2 colunas
     // e converge para a próxima decisão central.
@@ -1087,6 +1088,7 @@ function FlowConnector({
     straight: 'M49.25 39 L50 48 L50.75 39 L50 41 Z',
     'to-active': 'M82.25 39 L83 48 L83.75 39 L83 41 Z',
     'to-center': 'M49.25 39 L50 48 L50.75 39 L50 41 Z',
+    'from-left': 'M49.25 39 L50 48 L50.75 39 L50 41 Z',
     'from-right': 'M49.25 39 L50 48 L50.75 39 L50 41 Z',
   }
 
@@ -1131,6 +1133,10 @@ function RealCaseSummary({ data }: { data: ReportData }) {
         : 'LIO multifocal ou EDOF não tórica',
     }
   })
+
+  const hasEndothelialAlert = eyes.some(
+    ({ endothelialDensity }) => endothelialDensity < endothelialCutoff,
+  )
 
   return (
     <section className="mt-5 rounded-2xl border border-border bg-surface p-6 shadow-sm max-[580px]:p-4">
@@ -1270,7 +1276,7 @@ function RealCaseSummary({ data }: { data: ReportData }) {
 
         <div className="mx-auto max-w-[760px] rounded-xl border border-primary-border bg-surface p-4">
           <span className="text-xs font-bold tracking-[0.12em] text-primary">DECISÃO AVALIADA</span>
-          <h3 className="mb-0 mt-1 text-base font-bold">A celularidade endotelial está abaixo do ponto de corte?</h3>
+          <h3 className="mb-0 mt-1 text-base font-bold">Algum olho está abaixo do ponto de corte endotelial?</h3>
           <p className="mb-0 mt-1 text-xs text-text-muted">
             Regra: densidade celular &lt; {endothelialCutoff.toLocaleString('pt-BR')} células/mm² → ponto de atenção.
           </p>
@@ -1370,12 +1376,73 @@ function RealCaseSummary({ data }: { data: ReportData }) {
             })}
           </div>
 
+          <div className="mt-4 grid grid-cols-2 gap-3 max-[580px]:grid-cols-1">
+            <div
+              className={clsx(
+                'min-h-[112px] rounded-lg border p-3 text-xs',
+                hasEndothelialAlert
+                  ? 'border-warning/50 bg-warning-soft'
+                  : 'border-border bg-surface-muted text-text-muted',
+              )}
+            >
+              <span className={clsx(
+                'flex items-center gap-1 font-bold',
+                hasEndothelialAlert ? 'text-warning' : 'text-text-secondary',
+              )}>
+                {hasEndothelialAlert && <Check size={13} />}
+                Sim
+                {hasEndothelialAlert && ' · rota escolhida'}
+              </span>
+
+              <strong className="mt-2 block">
+                Pelo menos um olho abaixo de {endothelialCutoff.toLocaleString('pt-BR')} células/mm²
+              </strong>
+
+              <span className="mt-1 block">
+                Registrar ponto de atenção endotelial.
+              </span>
+            </div>
+
+            <div
+              className={clsx(
+                'min-h-[112px] rounded-lg border p-3 text-xs',
+                !hasEndothelialAlert
+                  ? 'border-success/50 bg-success-soft'
+                  : 'border-border bg-surface-muted text-text-muted',
+              )}
+            >
+              <span className={clsx(
+                'flex items-center gap-1 font-bold',
+                !hasEndothelialAlert ? 'text-success' : 'text-text-secondary',
+              )}>
+                {!hasEndothelialAlert && <Check size={13} />}
+                Não
+                {!hasEndothelialAlert && ' · rota escolhida'}
+              </span>
+
+              <strong className="mt-2 block">
+                Nenhum olho abaixo de {endothelialCutoff.toLocaleString('pt-BR')} células/mm²
+              </strong>
+
+              <span className="mt-1 block">
+                Seguir para a próxima decisão do protocolo.
+              </span>
+            </div>
+          </div>
+
           <p className="mb-0 mt-3 text-[11px] leading-relaxed text-text-muted">
             As barras dos dois olhos usam a mesma escala: quanto maior a barra do paciente em relação ao ponto de corte, maior a margem acima do limite.
           </p>
         </div>
 
-        <FlowConnector variant="straight" />
+        <FlowConnector
+          variant={hasEndothelialAlert ? 'from-left' : 'from-right'}
+          className="mx-auto max-w-[760px] max-[580px]:hidden"
+        />
+        <FlowConnector
+          variant="straight"
+          className="mx-auto hidden max-w-[760px] max-[580px]:block"
+        />
 
         <article className="mx-auto max-w-[760px] rounded-xl border border-primary-border bg-surface p-4 shadow-sm">
           <span className="text-xs font-bold tracking-[0.12em] text-primary">DECISÃO AVALIADA</span>
