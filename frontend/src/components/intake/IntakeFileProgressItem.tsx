@@ -2,6 +2,7 @@ import {
   AlertTriangle,
   Check,
   Circle,
+  Clock3,
   LoaderCircle,
 } from 'lucide-react'
 
@@ -14,6 +15,40 @@ interface IntakeFileProgressItemProps {
   file: File
   progress?: IntakeFileProgressState
   last: boolean
+}
+
+function formatProcessingDuration(
+  startedAtMs?: number,
+  finishedAtMs?: number,
+) {
+  if (!startedAtMs) {
+    return ''
+  }
+
+  const endTimeMs =
+    finishedAtMs ??
+    Date.now()
+
+  const totalSeconds =
+    Math.max(
+      0,
+      Math.floor(
+        (endTimeMs - startedAtMs) /
+          1000,
+      ),
+    )
+
+  const minutes =
+    Math.floor(totalSeconds / 60)
+
+  const seconds =
+    totalSeconds % 60
+
+  if (minutes === 0) {
+    return `${seconds}s`
+  }
+
+  return `${minutes}m${String(seconds).padStart(2, '0')}s`
 }
 
 function statusLabel(
@@ -144,6 +179,12 @@ export default function IntakeFileProgressItem({
   const classes =
     statusClasses(current.status)
 
+  const durationLabel =
+    formatProcessingDuration(
+      current.startedAtMs,
+      current.finishedAtMs,
+    )
+
   const metadata = [
     current.examType,
     current.eye,
@@ -201,14 +242,29 @@ export default function IntakeFileProgressItem({
             </span>
           </div>
 
-          <span
-            className={[
-              'flex-none rounded-full border px-2.5 py-1 text-[10px] font-bold',
-              classes.badge,
-            ].join(' ')}
-          >
-            {statusLabel(current.status)}
-          </span>
+          <div className="flex flex-none items-center gap-2">
+            {durationLabel && (
+              <span
+                className="flex items-center gap-1 font-mono text-[10px] font-semibold text-text-muted"
+                title="Tempo de processamento deste exame"
+              >
+                <Clock3
+                  aria-hidden="true"
+                  size={12}
+                />
+                {durationLabel}
+              </span>
+            )}
+
+            <span
+              className={[
+                'flex-none rounded-full border px-2.5 py-1 text-[10px] font-bold',
+                classes.badge,
+              ].join(' ')}
+            >
+              {statusLabel(current.status)}
+            </span>
+          </div>
         </div>
 
         <div className="mt-3 flex items-center justify-between gap-3">

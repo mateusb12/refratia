@@ -12,6 +12,8 @@ export interface IntakeFileProgressState {
   message: string
   examType?: string
   eye?: string
+  startedAtMs?: number
+  finishedAtMs?: number
 }
 
 export interface IntakeStreamEvent {
@@ -112,10 +114,15 @@ export function updateIntakeFileProgress(
       return current
     }
 
+    const eventTimeMs = Date.now()
+
     return {
       ...current,
       [filename]: {
         ...previous,
+        startedAtMs:
+          previous.startedAtMs ??
+          eventTimeMs,
         percent:
           typeof event.filePercent === 'number'
             ? clampProgress(event.filePercent)
@@ -140,12 +147,18 @@ export function updateIntakeFileProgress(
       ? result.status
       : 'identified'
 
+  const eventTimeMs = Date.now()
+
   return {
     ...current,
     [filename]: {
       ...previous,
       percent: 100,
       status,
+      startedAtMs:
+        previous.startedAtMs ??
+        eventTimeMs,
+      finishedAtMs: eventTimeMs,
       stage:
         result?.examType ||
         event.stage ||
