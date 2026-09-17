@@ -33,6 +33,7 @@ import patientData from '../data/paciente_compilado.json'
 import RoadmapPage from './components/roadmap/RoadmapPage'
 import ExamProtocolChecklist from './components/intake/ExamProtocolChecklist'
 import BenchmarkOcrPage from './components/benchmark/BenchmarkOcrPage'
+import SavedExamsPage from './components/storage/SavedExamsPage'
 import { isIntakePreview, normalizeSavedAnalysis, type IntakeAnalysis, type IntakePreview } from './contracts/patient-analysis'
 import { assessExamContract } from './contracts/exam-contracts'
 
@@ -47,6 +48,7 @@ interface SavedCase {
   patientName: string
   analysisKey?: string
 }
+
 
 interface StoredCase {
   caseId: string
@@ -726,6 +728,7 @@ const sidebarRoutes: Record<string, string> = {
   'Visão geral': 'visao-geral',
   'Nova análise': 'nova-analise',
   Relatórios: 'relatorios',
+  'Exames salvos': 'exames-salvos',
   Configurações: 'configuracoes',
   'Benchmark OCR': 'benchmark-ocr',
   Roadmap: 'roadmap',
@@ -2795,6 +2798,7 @@ function App() {
               { label: 'Visão geral', icon: <LayoutDashboard size={19} /> },
               { label: 'Nova análise', icon: <Plus size={19} /> },
               { label: 'Relatórios', icon: <FileText size={19} /> },
+              { label: 'Exames salvos', icon: <Database size={19} /> },
             ].map((item) => (
               <button
                 key={item.label}
@@ -3217,6 +3221,14 @@ function App() {
             </>
           )}
 
+          {activeSection === 'Exames salvos' && (
+            <SavedExamsPage
+              apiUrl={API_URL}
+              cases={savedCases}
+              examLabels={examLabels}
+              mutationToken={CASE_DELETE_TOKEN}
+            />
+          )}
           {activeSection === 'Relatórios' && (selectedCase === 'real' || storedCase ? reviewContent : reportsSection)}
           </>}
         </section>

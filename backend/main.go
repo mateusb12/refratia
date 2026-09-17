@@ -67,6 +67,8 @@ func main() {
 	http.HandleFunc("/health", healthHandler)
 	http.HandleFunc("/api/cases", casesHandler)
 	http.HandleFunc("/api/cases/", caseHandler)
+	http.HandleFunc("/api/exams", routeSavedExams)
+	http.HandleFunc("/api/exams/upload-url", prepareExamUpload)
 	http.HandleFunc("/api/intakes/analyze", analyzeIntakeHandler)
 	http.HandleFunc("/api/benchmark/extract-fields", benchmarkExtractFieldsHandler)
 	http.HandleFunc("/api/intakes/confirm", confirmIntakeHandler)
