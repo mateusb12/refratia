@@ -75,3 +75,57 @@ func TestReportWithoutReporterIsNoop(t *testing.T) {
 		"ignored",
 	)
 }
+
+func TestFileProgressSurvivesNestedRanges(t *testing.T) {
+	var received Event
+
+	progressContext := WithReporter(
+		context.Background(),
+		func(event Event) {
+			received = event
+		},
+	)
+
+	progressContext = WithRange(
+		progressContext,
+		10,
+		90,
+	)
+
+	fileContext := WithRange(
+		progressContext,
+		25,
+		50,
+	)
+
+	fileContext = TrackFileProgress(
+		fileContext,
+	)
+
+	extractorContext := WithRange(
+		fileContext,
+		20,
+		80,
+	)
+
+	Report(
+		extractorContext,
+		50,
+		"ocr",
+		"Processando arquivo",
+	)
+
+	if received.Percent != 40 {
+		t.Fatalf(
+			"global percent = %d; want 40",
+			received.Percent,
+		)
+	}
+
+	if received.FilePercent != 50 {
+		t.Fatalf(
+			"file percent = %d; want 50",
+			received.FilePercent,
+		)
+	}
+}

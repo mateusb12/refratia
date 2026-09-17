@@ -3,13 +3,14 @@ package progress
 import "context"
 
 type Event struct {
-	Type     string `json:"type"`
-	Percent  int    `json:"percent,omitempty"`
-	Stage    string `json:"stage,omitempty"`
-	Message  string `json:"message,omitempty"`
-	Filename string `json:"filename,omitempty"`
-	Status   int    `json:"status,omitempty"`
-	Payload  any    `json:"payload,omitempty"`
+	Type        string `json:"type"`
+	Percent     int    `json:"percent,omitempty"`
+	FilePercent int    `json:"filePercent,omitempty"`
+	Stage       string `json:"stage,omitempty"`
+	Message     string `json:"message,omitempty"`
+	Filename    string `json:"filename,omitempty"`
+	Status      int    `json:"status,omitempty"`
+	Payload     any    `json:"payload,omitempty"`
 }
 
 type Reporter func(Event)
@@ -17,6 +18,7 @@ type Reporter func(Event)
 type reporterKey struct{}
 type rangeKey struct{}
 type filenameKey struct{}
+type fileProgressRangeKey struct{}
 
 type progressRange struct {
 	Start int
@@ -94,6 +96,16 @@ func WithRange(
 	)
 }
 
+func TrackFileProgress(
+	progressContext context.Context,
+) context.Context {
+	return context.WithValue(
+		progressContext,
+		fileProgressRangeKey{},
+		currentRange(progressContext),
+	)
+}
+
 func WithFilename(
 	ctx context.Context,
 	filename string,
@@ -135,9 +147,31 @@ func Emit(
 
 	scope := currentRange(ctx)
 
-	event.Percent =
+	mappedPercent :=
 		scope.Start +
 			(scope.End-scope.Start)*event.Percent/100
+
+	if fileProgressRange, hasFileProgressRange :=
+		ctx.Value(fileProgressRangeKey{}).(progressRange); hasFileProgressRange &&
+		fileProgressRange.End > fileProgressRange.Start {
+
+		filePercent :=
+			(mappedPercent - fileProgressRange.Start) *
+				100 /
+				(fileProgressRange.End - fileProgressRange.Start)
+
+		if filePercent < 0 {
+			filePercent = 0
+		}
+
+		if filePercent > 100 {
+			filePercent = 100
+		}
+
+		event.FilePercent = filePercent
+	}
+
+	event.Percent = mappedPercent
 
 	if event.Filename == "" {
 		event.Filename = Filename(ctx)

@@ -330,6 +330,8 @@ func extractPatientLocal(
 			(index+1)*100/total,
 		)
 
+		fileCtx = progressutil.TrackFileProgress(fileCtx)
+
 		fileCtx = progressutil.WithFilename(
 			fileCtx,
 			file.Metadata.Filename,

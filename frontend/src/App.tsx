@@ -32,6 +32,13 @@ import {
 import patientData from '../data/paciente_compilado.json'
 import RoadmapPage from './components/roadmap/RoadmapPage'
 import ExamProtocolChecklist from './components/intake/ExamProtocolChecklist'
+import IntakeProcessingProgress from './components/intake/IntakeProcessingProgress'
+import {
+  createInitialIntakeFileProgress,
+  type IntakeFileProgressState,
+  type IntakeStreamEvent,
+  updateIntakeFileProgress,
+} from './components/intake/intakeProgress'
 import BenchmarkOcrPage from './components/benchmark/BenchmarkOcrPage'
 import SavedExamsPage from './components/storage/SavedExamsPage'
 import { isIntakePreview, normalizeSavedAnalysis, type IntakeAnalysis, type IntakePreview } from './contracts/patient-analysis'
@@ -2104,6 +2111,7 @@ function App() {
   const [intakeProgressFilename, setIntakeProgressFilename] = useState('')
   const [intakeLiveAnalysis, setIntakeLiveAnalysis] = useState<IntakeAnalysis | null>(null)
   const [intakeCompletedFiles, setIntakeCompletedFiles] = useState<string[]>([])
+  const [intakeFileProgress, setIntakeFileProgress] = useState<Record<string, IntakeFileProgressState>>({})
   const [intakeElapsed, setIntakeElapsed] = useState(0)
   const [intakeMessage, setIntakeMessage] = useState('')
   const [savedCases, setSavedCases] = useState<SavedCase[]>([])
@@ -2230,6 +2238,9 @@ function App() {
     setIntakeProgressFilename('')
     setIntakeLiveAnalysis(null)
     setIntakeCompletedFiles([])
+    setIntakeFileProgress(
+      createInitialIntakeFileProgress(intakeFiles),
+    )
     setIntakeElapsed(0)
     setIntakeMessage('')
 
@@ -2274,15 +2285,7 @@ function App() {
           const trimmed = line.trim()
           if (!trimmed) return
 
-          let event: {
-            type?: string
-            percent?: number
-            stage?: string
-            message?: string
-            filename?: string
-            status?: number
-            payload?: unknown
-          }
+          let event: IntakeStreamEvent
 
           try {
             event = JSON.parse(trimmed)
@@ -2295,6 +2298,13 @@ function App() {
           if (event.filename) {
             setIntakeProgressFilename(event.filename)
           }
+
+          setIntakeFileProgress((current) =>
+            updateIntakeFileProgress(
+              current,
+              event,
+            ),
+          )
 
           if (event.type === 'progress') {
             if (
@@ -2987,54 +2997,17 @@ function App() {
                     </div>
                     <ExamProtocolChecklist files={intakeFiles} />
 
-                    {intakeBusy && (() => {
-                      const elapsedLabel = `${String(Math.floor(intakeElapsed / 60)).padStart(2, '0')}:${String(intakeElapsed % 60).padStart(2, '0')}`
-
-                      return (
-                        <div
-                          aria-label={`Progresso da análise: ${intakeProgress}%`}
-                          aria-live="polite"
-                          aria-valuemax={100}
-                          aria-valuemin={0}
-                          aria-valuenow={intakeProgress}
-                          className="mt-4 rounded-xl border border-primary-border bg-primary-soft p-4"
-                          role="progressbar"
-                        >
-                          <div className="flex items-center justify-between gap-3 text-xs font-bold">
-                            <span className="text-primary">
-                              {intakeProgressMessage || 'Processando documentos'}
-                            </span>
-                            <span className="text-text-secondary">
-                              {intakeProgress}%
-                            </span>
-                          </div>
-
-                          <div
-                            aria-hidden="true"
-                            className="mt-2 h-2 overflow-hidden rounded-full bg-surface"
-                          >
-                            <div
-                              className="h-full rounded-full bg-primary transition-[width] duration-500"
-                              style={{ width: `${intakeProgress}%` }}
-                            />
-                          </div>
-
-                          <div className="mt-2 flex items-center gap-2 text-xs text-text-secondary">
-                            <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-primary" />
-                            <span className="truncate">
-                              {intakeProgressFilename || intakeProgressStage || 'OCR local'}
-                            </span>
-                            <span className="ml-auto flex-none font-mono text-text-muted">
-                              {elapsedLabel}
-                            </span>
-                          </div>
-
-                          <p className="mb-0 mt-2 text-[11px] text-text-muted">
-                            Progresso informado pelo backend em tempo real. O percentual avança conforme o OCR e a consolidação concluem etapas reais.
-                          </p>
-                        </div>
-                      )
-                    })()}
+                    {intakeBusy && (
+                      <IntakeProcessingProgress
+                        elapsedSeconds={intakeElapsed}
+                        fileProgress={intakeFileProgress}
+                        files={intakeFiles}
+                        overallFilename={intakeProgressFilename}
+                        overallMessage={intakeProgressMessage}
+                        overallProgress={intakeProgress}
+                        overallStage={intakeProgressStage}
+                      />
+                    )}
                     {intakeLiveAnalysis && (
                       <div className="mt-4 rounded-xl border border-success/40 bg-success-soft p-4">
                         <div className="flex flex-wrap items-start justify-between gap-3">
