@@ -197,11 +197,24 @@ export default function SavedExamsPage({
         }),
       })
 
-      const result = await response.json()
+      const responseBody = await response.text()
+
+      let responseData: { error?: string } = {}
+
+      if (responseBody.trim()) {
+        try {
+          responseData = JSON.parse(responseBody)
+        } catch {
+          throw new Error(
+            `DELETE /api/exams retornou HTTP ${response.status} com resposta não-JSON: ${responseBody.slice(0, 300)}`,
+          )
+        }
+      }
 
       if (!response.ok) {
         throw new Error(
-          result.error ?? 'Não foi possível excluir o arquivo.',
+          responseData.error ??
+            `DELETE /api/exams falhou com HTTP ${response.status}${response.statusText ? ` ${response.statusText}` : ''}`,
         )
       }
 
