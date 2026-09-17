@@ -33,6 +33,11 @@ import patientData from '../data/paciente_compilado.json'
 import RoadmapPage from './components/roadmap/RoadmapPage'
 import ExamProtocolChecklist from './components/intake/ExamProtocolChecklist'
 import IntakeProcessingProgress from './components/intake/IntakeProcessingProgress'
+import IntakeCheckpointPreflight from './components/intake/IntakeCheckpointPreflight'
+import {
+  inspectIntakeFileCheckpoints,
+  type IntakeFileCheckpointState,
+} from './components/intake/intakeCheckpoint'
 import {
   createInitialIntakeFileProgress,
   type IntakeFileProgressState,
@@ -2112,6 +2117,13 @@ function App() {
   const [intakeLiveAnalysis, setIntakeLiveAnalysis] = useState<IntakeAnalysis | null>(null)
   const [intakeCompletedFiles, setIntakeCompletedFiles] = useState<string[]>([])
   const [intakeFileProgress, setIntakeFileProgress] = useState<Record<string, IntakeFileProgressState>>({})
+  const [intakeCheckpointStates, setIntakeCheckpointStates] = useState<
+    Record<string, IntakeFileCheckpointState>
+  >({})
+  const [intakeCheckpointBusy, setIntakeCheckpointBusy] = useState(false)
+  const [intakeCheckpointError, setIntakeCheckpointError] = useState('')
+  const [intakeForceReprocess, setIntakeForceReprocess] = useState(false)
+  const intakeCheckpointRequestId = useRef(0)
   const [intakeElapsed, setIntakeElapsed] = useState(0)
   const [intakeMessage, setIntakeMessage] = useState('')
   const [savedCases, setSavedCases] = useState<SavedCase[]>([])
@@ -2171,6 +2183,78 @@ function App() {
       })
       .catch(() => undefined)
   }, [])
+
+  useEffect(() => {
+    const requestId =
+      intakeCheckpointRequestId.current + 1
+
+    intakeCheckpointRequestId.current =
+      requestId
+
+    setIntakeForceReprocess(false)
+    setIntakeCheckpointError('')
+
+    if (!intakeFiles.length) {
+      setIntakeCheckpointStates({})
+      setIntakeCheckpointBusy(false)
+      return
+    }
+
+    if (!API_URL) {
+      setIntakeCheckpointStates({})
+      setIntakeCheckpointBusy(false)
+      return
+    }
+
+    const controller =
+      new AbortController()
+
+    setIntakeCheckpointBusy(true)
+
+    void inspectIntakeFileCheckpoints(
+      API_URL,
+      intakeFiles,
+      controller.signal,
+    )
+      .then((states) => {
+        if (
+          intakeCheckpointRequestId.current !==
+          requestId
+        ) {
+          return
+        }
+
+        setIntakeCheckpointStates(states)
+      })
+      .catch((checkpointError) => {
+        if (
+          controller.signal.aborted ||
+          intakeCheckpointRequestId.current !==
+            requestId
+        ) {
+          return
+        }
+
+        setIntakeCheckpointStates({})
+        setIntakeCheckpointError(
+          checkpointError instanceof Error
+            ? checkpointError.message
+            : 'Não foi possível consultar o histórico dos arquivos.',
+        )
+      })
+      .finally(() => {
+        if (
+          intakeCheckpointRequestId.current ===
+          requestId
+        ) {
+          setIntakeCheckpointBusy(false)
+        }
+      })
+
+    return () => {
+      controller.abort()
+    }
+  }, [intakeFiles])
 
   function loadCase(kind: CaseKind) {
     setSelectedCase(kind)
@@ -2249,7 +2333,7 @@ function App() {
       intakeFiles.forEach((file) => body.append('files', file))
 
       const response = await fetch(
-        `${API_URL}/api/intakes/analyze?stream=1`,
+        `${API_URL}/api/intakes/analyze?stream=1${intakeForceReprocess ? '&force=1' : ''}`,
         {
           method: 'POST',
           headers: {
@@ -2988,14 +3072,33 @@ function App() {
                         )}
 
                         <PrimaryButton
-                          disabled={intakeBusy}
+                          disabled={
+                            intakeBusy ||
+                            intakeCheckpointBusy
+                          }
                           onClick={analyzeIntake}
                         >
-                          {intakeBusy ? 'Analisando…' : 'Analisar arquivos'}
+                          {intakeBusy
+                            ? 'Analisando…'
+                            : intakeCheckpointBusy
+                              ? 'Verificando arquivos…'
+                              : intakeForceReprocess
+                                ? 'Reprocessar arquivos'
+                                : 'Analisar arquivos'}
                         </PrimaryButton>
                       </div>
                     </div>
                     <ExamProtocolChecklist files={intakeFiles} />
+
+                    <IntakeCheckpointPreflight
+                      checking={intakeCheckpointBusy}
+                      disabled={intakeBusy}
+                      error={intakeCheckpointError}
+                      files={intakeFiles}
+                      forceReprocess={intakeForceReprocess}
+                      onForceReprocessChange={setIntakeForceReprocess}
+                      states={intakeCheckpointStates}
+                    />
 
                     {intakeBusy && (
                       <IntakeProcessingProgress
