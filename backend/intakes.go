@@ -109,6 +109,29 @@ func analyzeIntakeHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, status, message)
 	}
 
+	client, storageClientError :=
+		storageClient(ctx)
+
+	if storageClientError != nil {
+		fail(
+			http.StatusInternalServerError,
+			"storage indisponível",
+		)
+		return
+	}
+
+	cleanupExpiredDrafts(
+		ctx,
+		client,
+	)
+
+	ctx = withFileCheckpointStorage(
+		ctx,
+		client,
+		os.Getenv("BUCKET_NAME"),
+		r.URL.Query().Get("force") == "1",
+	)
+
 	progressutil.Report(
 		ctx,
 		8,
@@ -141,17 +164,6 @@ func analyzeIntakeHandler(w http.ResponseWriter, r *http.Request) {
 		time.Now().UTC().Format("20060102T150405Z"),
 		randomToken(),
 	)
-
-	client, storageErr := storageClient(ctx)
-	if storageErr != nil {
-		fail(
-			http.StatusInternalServerError,
-			"storage indisponível",
-		)
-		return
-	}
-
-	cleanupExpiredDrafts(ctx, client)
 
 	patientMatch := map[string]any{
 		"status": "unresolved",

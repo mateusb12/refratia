@@ -52,6 +52,31 @@ func emitLocalFileResult(
 	message string,
 	analysis map[string]any,
 ) {
+	if status == "extracted" &&
+		analysis != nil {
+		checkpointSaveError :=
+			saveCompletedFileCheckpointFromContext(
+				ctx,
+				filename,
+				examType,
+				eye,
+				status,
+				analysis,
+			)
+
+		if checkpointSaveError != nil {
+			rememberFileCheckpointStorageError(
+				ctx,
+				checkpointSaveError,
+			)
+
+			status = "failed"
+			message =
+				"Extração concluída, mas o resultado não pôde ser salvo"
+			analysis = nil
+		}
+	}
+
 	payload := map[string]any{
 		"filename": filename,
 		"examType": examType,
@@ -336,6 +361,39 @@ func extractPatientLocal(
 			fileCtx,
 			file.Metadata.Filename,
 		)
+
+		fileCtx = withCurrentCheckpointFile(
+			fileCtx,
+			file,
+		)
+
+		if checkpointStorageError :=
+			currentFileCheckpointStorageError(
+				fileCtx,
+			); checkpointStorageError != nil {
+			return analysis
+		}
+
+		reused,
+			checkpointPrepareError :=
+			prepareFileForIdempotentProcessing(
+				fileCtx,
+				file,
+				analysis,
+			)
+
+		if checkpointPrepareError != nil {
+			rememberFileCheckpointStorageError(
+				fileCtx,
+				checkpointPrepareError,
+			)
+
+			return analysis
+		}
+
+		if reused {
+			continue
+		}
 
 		examType :=
 			localExamTypeFromFilename(

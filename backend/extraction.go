@@ -123,6 +123,14 @@ func extractPatient(
 		files,
 	)
 
+	if checkpointStorageError :=
+		currentFileCheckpointStorageError(
+			ctx,
+		); checkpointStorageError != nil {
+		return nil,
+			checkpointStorageError
+	}
+
 	progressutil.Report(
 		ctx,
 		83,
