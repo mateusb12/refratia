@@ -243,6 +243,11 @@ function IntakeAnalysisSummary({ analysis }: { analysis: IntakeAnalysis }) {
           <strong className="text-warning">Atenção:</strong> {notes.clinical_use_warning}
         </div>
       )}
+      {typeof notes.fallback_warning === 'string' && (
+        <div className="rounded-xl border border-warning/30 bg-warning-soft p-4 text-sm text-text-secondary">
+          <strong className="text-warning">Análise local preservada:</strong> {notes.fallback_warning}
+        </div>
+      )}
       {Array.isArray(notes.invalid_exams) && notes.invalid_exams.length > 0 && (
         <div className="rounded-xl border border-danger/30 bg-danger-soft p-4 text-sm text-text-secondary">
           <strong className="text-danger">Exames com estrutura incompleta:</strong>

@@ -1187,7 +1187,7 @@ func prepareFileForIdempotentProcessing(
 			emitReusedFileCheckpoint(
 				processingContext,
 				file,
-				reusedAnalysis,
+				analysis,
 			)
 
 			return true,

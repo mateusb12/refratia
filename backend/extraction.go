@@ -16,9 +16,9 @@ import (
 	"strings"
 	"time"
 
-	progressutil "refratia/backend/shared/progress"
+	progressUtil "refratia/backend/shared/progress"
 
-	patientfeature "refratia/backend/features/patient"
+	patientFeature "refratia/backend/features/patient"
 )
 
 const extractionPrompt = `Extraia e consolide TODOS os dados alfanuméricos legíveis dos documentos oftalmológicos enviados em um único JSON. Não faça diagnóstico, não invente valores e use null quando um dado não estiver visível.
@@ -107,11 +107,127 @@ func intakeMetadata(files []uploadedFile) []intakeFile {
 	return result
 }
 
+func localAnalysisHasExamResults(
+	analysis map[string]any,
+) bool {
+	exams, _ :=
+		analysis["exams"].(map[string]any)
+
+	return len(exams) > 0
+}
+
+func markOptionalFallbackUnavailable(
+	analysis map[string]any,
+	gaps []string,
+) {
+	notes, _ :=
+		analysis["extraction_notes"].(map[string]any)
+
+	if notes == nil {
+		notes = map[string]any{}
+		analysis["extraction_notes"] = notes
+	}
+
+	notes["fallback_warning"] =
+		"Fallback complementar indisponível; resultados locais preservados."
+
+	notes["fallback_gaps"] =
+		append(
+			[]string(nil),
+			gaps...,
+		)
+}
+
+func resolveLocalGapsWithFallback(
+	ctx context.Context,
+	analysis map[string]any,
+	files []uploadedFile,
+	gaps []string,
+) ([]preparedFile, error) {
+	fallbackFiles :=
+		localFallbackFiles(
+			analysis,
+			files,
+		)
+
+	prepared,
+		prepareError :=
+		prepareExtractionFiles(
+			ctx,
+			fallbackFiles,
+		)
+
+	if prepareError != nil {
+		return nil,
+			prepareError
+	}
+
+	progressUtil.Report(
+		ctx,
+		90,
+		"fallback",
+		"Executando fallback dos dados ausentes",
+	)
+
+	output,
+		fallbackRequestError :=
+		requestOpenAIPreparedJSON(
+			ctx,
+			prepared,
+			extractionPromptForLocalGaps(
+				analysis,
+				gaps,
+			),
+			40000,
+		)
+
+	if fallbackRequestError != nil {
+		return prepared,
+			fallbackRequestError
+	}
+
+	fallback,
+		decodeError :=
+		decodeFallbackAnalysis(
+			output,
+		)
+
+	if decodeError != nil {
+		return prepared,
+			decodeError
+	}
+
+	resolved :=
+		localResolvedExamKeys(
+			analysis,
+		)
+
+	stripLocallyResolvedExams(
+		fallback,
+		resolved,
+	)
+
+	mergeFallbackAnalysis(
+		analysis,
+		fallback,
+	)
+
+	progressUtil.Report(
+		ctx,
+		95,
+		"fallback",
+		"Lacunas consolidadas",
+	)
+
+	return prepared,
+		nil
+}
+
 func extractPatient(
 	ctx context.Context,
 	files []uploadedFile,
 ) (map[string]any, error) {
-	progressutil.Report(
+	progressUtil.Report(
 		ctx,
 		0,
 		"ocr",
@@ -119,7 +235,7 @@ func extractPatient(
 	)
 
 	analysis := extractPatientLocal(
-		progressutil.WithRange(ctx, 0, 82),
+		progressUtil.WithRange(ctx, 0, 82),
 		files,
 	)
 
@@ -131,7 +247,7 @@ func extractPatient(
 			checkpointStorageError
 	}
 
-	progressutil.Report(
+	progressUtil.Report(
 		ctx,
 		83,
 		"validation",
@@ -146,82 +262,70 @@ func extractPatient(
 	var prepared []preparedFile
 
 	if len(gaps) > 0 {
-		progressutil.Report(
+		progressUtil.Report(
 			ctx,
 			85,
 			"fallback",
 			"Resolvendo lacunas restantes",
 		)
 
-		fallbackFiles := localFallbackFiles(
-			analysis,
-			files,
-		)
+		if os.Getenv("OPENAI_API_KEY") == "" &&
+			localAnalysisHasExamResults(
+				analysis,
+			) {
 
-		var err error
-
-		prepared, err = prepareExtractionFiles(
-			ctx,
-			fallbackFiles,
-		)
-
-		if err != nil {
-			return nil, err
-		}
-
-		progressutil.Report(
-			ctx,
-			90,
-			"fallback",
-			"Executando fallback dos dados ausentes",
-		)
-
-		output, err := requestOpenAIPreparedJSON(
-			ctx,
-			prepared,
-			extractionPromptForLocalGaps(
+			markOptionalFallbackUnavailable(
 				analysis,
 				gaps,
-			),
-			40000,
-		)
+			)
 
-		if err != nil {
-			return nil, err
+			progressUtil.Report(
+				ctx,
+				95,
+				"fallback",
+				"Fallback complementar indisponível; mantendo resultados locais",
+			)
+		} else {
+			var fallbackError error
+
+			prepared,
+				fallbackError =
+				resolveLocalGapsWithFallback(
+					ctx,
+					analysis,
+					files,
+					gaps,
+				)
+
+			if fallbackError != nil {
+				if !localAnalysisHasExamResults(
+					analysis,
+				) {
+					return nil,
+						fallbackError
+				}
+
+				markOptionalFallbackUnavailable(
+					analysis,
+					gaps,
+				)
+
+				progressUtil.Report(
+					ctx,
+					95,
+					"fallback",
+					"Fallback complementar falhou; mantendo resultados locais",
+				)
+			}
 		}
-
-		fallback, err := decodeFallbackAnalysis(output)
-		if err != nil {
-			return nil, err
-		}
-
-		resolved := localResolvedExamKeys(
-			analysis,
-		)
-
-		stripLocallyResolvedExams(
-			fallback,
-			resolved,
-		)
-
-		mergeFallbackAnalysis(
-			analysis,
-			fallback,
-		)
-
-		progressutil.Report(
-			ctx,
-			95,
-			"fallback",
-			"Lacunas consolidadas",
-		)
 	}
 
 	if repairFiles := iolFilesNeedingRepair(
 		analysis,
 		files,
-	); len(repairFiles) > 0 {
-		progressutil.Report(
+	); len(repairFiles) > 0 &&
+		os.Getenv("OPENAI_API_KEY") != "" {
+		progressUtil.Report(
 			ctx,
 			96,
 			"iol",
@@ -265,7 +369,7 @@ func extractPatient(
 		}
 	}
 
-	progressutil.Report(
+	progressUtil.Report(
 		ctx,
 		99,
 		"consolidation",
@@ -277,7 +381,7 @@ func extractPatient(
 		files,
 	)
 
-	progressutil.Report(
+	progressUtil.Report(
 		ctx,
 		100,
 		"consolidation",
@@ -614,7 +718,7 @@ func decodeFallbackAnalysis(
 
 	// Mantemos as mesmas normalizações seguras do decoder completo.
 	normalizeExtractionMetadata(analysis)
-	patientfeature.NormalizeIdentityFields(analysis)
+	patientFeature.NormalizeIdentityFields(analysis)
 	normalizeRetinographyCanonical(analysis)
 
 	// O fallback é deliberadamente PARCIAL.
@@ -642,7 +746,7 @@ func decodeFallbackAnalysis(
 			}
 
 			for key, rawExam := range exams {
-				if !patientfeature.IsOfficialExamKey(key) {
+				if !patientFeature.IsOfficialExamKey(key) {
 					return nil, fmt.Errorf(
 						"fallback retornou tipo de exame não previsto: %s",
 						key,
@@ -782,14 +886,14 @@ func decodeAnalysis(raw string) (map[string]any, error) {
 		)
 	}
 	normalizeExtractionMetadata(analysis)
-	patientfeature.NormalizeIdentityFields(analysis)
+	patientFeature.NormalizeIdentityFields(analysis)
 	normalizeRetinographyCanonical(analysis)
 	dropMalformedOptionalExams(analysis)
 	normalized, err := json.Marshal(analysis)
 	if err != nil {
 		return nil, errors.New("o serviço de extração não retornou um JSON válido")
 	}
-	if err := patientfeature.ValidateJSON(string(normalized)); err != nil {
+	if err := patientFeature.ValidateJSON(string(normalized)); err != nil {
 		return nil, err
 	}
 	return analysis, nil
@@ -829,7 +933,7 @@ func dropMalformedOptionalExams(analysis map[string]any) {
 		return
 	}
 	for key, rawExam := range exams {
-		if !patientfeature.IsOfficialExamKey(key) {
+		if !patientFeature.IsOfficialExamKey(key) {
 			continue
 		}
 

@@ -34,9 +34,9 @@ function statusMetadata(
   switch (status) {
     case 'processed':
       return {
-        label: 'Já processado',
+        label: 'OCR em cache',
         detail:
-          'Resultado salvo. O OCR será pulado e a análise anterior será reutilizada.',
+          'Resultado de OCR disponível em checkpoint. Será reutilizado sem novo OCR; isso não significa que o exame já foi confirmado no prontuário.',
         circle:
           'border-success/40 bg-success-soft text-success',
         badge:
@@ -137,7 +137,7 @@ export default function IntakeCheckpointPreflight({
           <div className="flex flex-wrap gap-1.5">
             {processedCount > 0 && (
               <span className="rounded-full border border-success/30 bg-success-soft px-2.5 py-1 text-[10px] font-bold text-success">
-                {processedCount} pronto(s)
+                {processedCount} em cache
               </span>
             )}
 
