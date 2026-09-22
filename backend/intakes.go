@@ -518,6 +518,10 @@ func confirmIntakeHandler(w http.ResponseWriter, r *http.Request) {
 		finalAnalysis = patientfeature.Merge(existingAnalysis, draft.Analysis)
 	}
 
+	classifySourceFilesFromExams(
+		finalAnalysis,
+	)
+
 	compiled, marshalErr := json.MarshalIndent(finalAnalysis, "", "  ")
 	if marshalErr != nil {
 		cleanupObjects(r.Context(), client, copiedKeys)

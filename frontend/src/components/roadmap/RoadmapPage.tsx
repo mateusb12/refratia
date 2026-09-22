@@ -22,7 +22,7 @@ type RoadmapPhase = {
   title: string
   description: string
   status: string
-  badge: 'Estamos aqui' | 'Depois do aval' | 'Entrega do MVP'
+  badge: 'Estamos aqui' | 'Em andamento' | 'Entrega do MVP'
   gate: string
   items: RoadmapItem[]
 }
@@ -31,20 +31,20 @@ const phases: RoadmapPhase[] = [
   {
     id: 'aprovacao-tiago',
     number: 1,
-    title: 'Aprovar a experiência',
+    title: 'Validar a experiência',
     description:
-      'Validar com o Dr. Tiago toda a experiência do sistema usando dados falsos e sem backend.',
-    status: 'Aguardando aprovação do Dr. Tiago',
+      'Validar com o Dr. Tiago a experiência do sistema enquanto a base real continua evoluindo.',
+    status: 'Backend funcionando; aguardando validação do fluxo',
     badge: 'Estamos aqui',
     gate:
-      'O Dr. Tiago aprova esta experiência como base para a construção do sistema real.',
+      'O Dr. Tiago valida esta experiência integrada e ajuda a priorizar os próximos ajustes do sistema.',
     items: [
       {
         label: 'Estrutura principal da plataforma',
         completed: true,
       },
       {
-        label: 'Envio simulado dos exames',
+        label: 'Fluxo de envio dos exames',
         completed: true,
       },
       {
@@ -76,33 +76,33 @@ const phases: RoadmapPhase[] = [
   {
     id: 'sistema-real',
     number: 2,
-    title: 'Construir o sistema real',
+    title: 'Consolidar o sistema real',
     description:
-      'Manter a experiência aprovada e substituir, aos poucos, as simulações por dados e funcionamento reais.',
-    status: 'Bloqueada até o aval do Dr. Tiago',
-    badge: 'Depois do aval',
+      'Evoluir a integração real do frontend com o backend e transformar a base técnica em um fluxo completo de produção.',
+    status: 'Em desenvolvimento junto com a validação da experiência',
+    badge: 'Em andamento',
     gate:
       'Um caso real percorre todo o fluxo, desde o envio dos exames até a revisão médica.',
     items: [
       {
         label: 'Backend inicial do sistema',
-        completed: false,
+        completed: true,
       },
       {
         label: 'Envio real de exames',
-        completed: false,
+        completed: true,
       },
       {
         label: 'Armazenamento dos arquivos',
-        completed: false,
+        completed: true,
       },
       {
         label: 'Leitura inicial das informações dos exames',
-        completed: false,
+        completed: true,
       },
       {
         label: 'Dados reais no lugar dos dados simulados',
-        completed: false,
+        completed: true,
       },
       {
         label: 'Primeiras regras clínicas automatizadas',
@@ -172,7 +172,7 @@ function PhaseBadge({
       className={clsx(
         'inline-flex items-center rounded-full px-3 py-1.5 text-xs font-bold',
         badge === 'Estamos aqui' && 'bg-warning-soft text-warning',
-        badge === 'Depois do aval' && 'bg-primary-soft text-primary',
+        badge === 'Em andamento' && 'bg-primary-soft text-primary',
         badge === 'Entrega do MVP' && 'bg-success-soft text-success',
       )}
     >
@@ -432,9 +432,9 @@ export default function RoadmapPage() {
             </h2>
 
             <p className="mb-0 mt-4 max-w-[760px] text-sm leading-7 text-text-secondary">
-              Primeiro validamos toda a experiência com dados falsos. Somente
-              depois da aprovação do Dr. Tiago começamos a construir o sistema
-              real.
+              A experiência e o sistema real evoluem em paralelo: o backend já
+              está funcionando, enquanto validamos o fluxo e refinamos o que
+              ainda falta para a primeira versão.
             </p>
           </div>
 
@@ -446,11 +446,11 @@ export default function RoadmapPage() {
             />
 
             <span className="mt-4 block text-xs font-bold tracking-[0.12em] text-warning">
-              REGRA PARA COMEÇAR O BACKEND
+              ESTADO DO BACKEND
             </span>
 
             <p className="mb-0 mt-2 font-display text-xl leading-snug tracking-[-0.03em]">
-              O backend só começa depois da aprovação do Dr. Tiago.
+              O backend já está em funcionamento e continua evoluindo.
             </p>
           </div>
         </div>
@@ -482,16 +482,16 @@ export default function RoadmapPage() {
             </div>
 
             <p className="mb-0 mt-4 max-w-[740px] text-sm leading-7 text-text-secondary">
-              Os dados continuam falsos e não existe backend. Isso é
-              intencional: precisamos ajustar a experiência rapidamente até
-              que o Dr. Tiago esteja satisfeito com o fluxo completo.
+              O backend já atende o fluxo de envio, armazenamento e análise
+              inicial dos exames. A validação com o Dr. Tiago agora orienta os
+              ajustes de experiência e as próximas evoluções do sistema.
             </p>
 
             <div className="mt-5 flex flex-wrap gap-2">
               {[
-                'Dados falsos',
-                'Sem backend',
-                'Fluxo completo simulado',
+                'Backend em funcionamento',
+                'Análise inicial integrada',
+                'Validação do fluxo em andamento',
               ].map((label) => (
                 <span
                   className="rounded-full border border-border bg-surface-muted px-3 py-1.5 text-xs font-semibold text-text-secondary"
@@ -505,16 +505,16 @@ export default function RoadmapPage() {
 
           <div className="rounded-2xl border border-border bg-surface-muted p-5">
             <span className="text-xs font-bold tracking-[0.12em] text-text-muted">
-              DECISÃO NECESSÁRIA
+              PRÓXIMA VALIDAÇÃO
             </span>
 
             <blockquote className="mb-0 mt-3 border-l-2 border-warning pl-4 text-sm leading-7 text-text-secondary">
-              “Mateus, se esses dados não fossem falsos, eu estaria satisfeito
-              com o sistema.”
+              Validar a experiência integrada e priorizar os ajustes para o uso
+              real.
             </blockquote>
 
             <div className="mt-5 rounded-xl bg-warning-soft px-4 py-3 text-sm font-bold text-warning">
-              Aguardando aprovação do Dr. Tiago
+              Aguardando validação do Dr. Tiago
             </div>
 
             <div className="mt-5">
@@ -540,7 +540,7 @@ export default function RoadmapPage() {
           className="mb-0 mt-2 font-display text-2xl tracking-[-0.035em]"
           id="roadmap-phases"
         >
-          Da simulação à primeira versão utilizável
+          Da base integrada à primeira versão utilizável
         </h2>
 
         <p className="mb-0 mt-3 max-w-[760px] text-sm leading-7 text-text-secondary">

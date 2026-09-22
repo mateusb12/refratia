@@ -183,6 +183,10 @@ func listSavedExams(
 			)
 
 			if manifestReadError == nil {
+				classifySourceFilesFromExams(
+					analysis,
+				)
+
 				if patient, ok := analysis["patient"].(map[string]any); ok {
 					if fullName, ok := patient["full_name"].(string); ok &&
 						strings.TrimSpace(fullName) != "" {
