@@ -42,6 +42,7 @@ func main() {
 		checkFileCheckpoints,
 	)
 	http.HandleFunc("/api/intakes/analyze", analyzeIntakeHandler)
+	http.HandleFunc("/api/intakes/inspect", inspectIntakeHandler)
 	http.HandleFunc("/api/benchmark/extract-fields", benchmarkExtractFieldsHandler)
 	http.HandleFunc("/api/intakes/confirm", confirmIntakeHandler)
 	http.HandleFunc("/api/intakes/", intakeHandler)

@@ -34,6 +34,7 @@ import RoadmapPage from './components/roadmap/RoadmapPage'
 import ExamProtocolChecklist from './components/intake/ExamProtocolChecklist'
 import IntakeProcessingProgress from './components/intake/IntakeProcessingProgress'
 import IntakeCheckpointPreflight from './components/intake/IntakeCheckpointPreflight'
+import IntakeFileClassification, { type IntakeClassification } from './components/intake/IntakeFileClassification'
 import {
   inspectIntakeFileCheckpoints,
   type IntakeFileCheckpointState,
@@ -330,6 +331,11 @@ function IntakeDocumentsDebug({ preview, localPreviews }: { preview: IntakePrevi
                   <div className="min-w-0">
                     <strong className="block truncate text-sm" title={file.filename}>{file.filename}</strong>
                     <span className="mt-1 block text-xs text-text-muted">{(file.size / 1024 / 1024).toFixed(2)} MB · {contractAssessment?.contract.label ?? (source?.exam ? String(source.exam) : 'tipo não identificado')}{(contractAssessment?.eye ?? source?.eye) ? ` · ${String(contractAssessment?.eye ?? source?.eye)}` : ''}</span>
+                    {file.canonicalFilename && file.canonicalFilename !== file.filename && (
+                      <span className="mt-1 block truncate text-[11px] text-primary" title={file.canonicalFilename}>
+                        Nome padronizado: {file.canonicalFilename}
+                      </span>
+                    )}
                   </div>
                   <StatusBadge tone={contractAssessment?.missing.length ? 'warning' : 'success'}>
                     {contractAssessment ? `${contractAssessment.extracted.length}/${contractAssessment.contract.fields.length} campos` : fields.length ? 'Extraído' : 'Sem campos'}
@@ -2109,6 +2115,7 @@ function App() {
   const [traceData, setTraceData] = useState<ExtractedDatum | null>(null)
   const [isReviewed, setIsReviewed] = useState(false)
   const [intakeFiles, setIntakeFiles] = useState<File[]>([])
+  const [intakeClassifications, setIntakeClassifications] = useState<Record<string, IntakeClassification>>({})
   const [intakeLocalPreviews, setIntakeLocalPreviews] = useState<Record<string, string>>({})
   const [intakePreview, setIntakePreview] = useState<IntakePreview | null>(null)
   const [intakeBusy, setIntakeBusy] = useState(false)
@@ -2136,6 +2143,9 @@ function App() {
   const [storedCaseLoading, setStoredCaseLoading] = useState(false)
   const [storedCaseError, setStoredCaseError] = useState('')
   const [caseDeleteBusy, setCaseDeleteBusy] = useState(false)
+
+  const intakeClassificationComplete = intakeFiles.length > 0 && Object.values(intakeClassifications)
+    .filter((item) => item.examType && item.eye).length === intakeFiles.length
 
   const isRealCase = selectedCase === 'real'
   const reportData = isRealCase ? patientData : storedCase?.analysis
@@ -2199,7 +2209,7 @@ function App() {
     setIntakeForceReprocess(false)
     setIntakeCheckpointError('')
 
-    if (!intakeFiles.length) {
+    if (!intakeFiles.length || !intakeClassificationComplete) {
       setIntakeCheckpointStates({})
       setIntakeCheckpointBusy(false)
       return
@@ -2259,7 +2269,7 @@ function App() {
     return () => {
       controller.abort()
     }
-  }, [intakeFiles])
+  }, [intakeFiles, intakeClassificationComplete])
 
   function loadCase(kind: CaseKind) {
     setSelectedCase(kind)
@@ -2310,6 +2320,13 @@ function App() {
   async function analyzeIntake() {
     if (!intakeFiles.length) return
 
+    const missingClassification = intakeFiles.length !== Object.values(intakeClassifications)
+      .filter((item) => item.examType && item.eye).length
+    if (missingClassification) {
+      setIntakeMessage('Confirme o tipo e o olho de cada arquivo antes de analisar.')
+      return
+    }
+
     if (!API_URL) {
       setIntakeMessage(
         'VITE_API_URL não está configurada no .env. Exemplo local: VITE_API_URL=http://localhost:3000',
@@ -2336,6 +2353,7 @@ function App() {
     try {
       const body = new FormData()
       intakeFiles.forEach((file) => body.append('files', file))
+      body.append('classifications', JSON.stringify(Object.values(intakeClassifications).filter((item) => item.examType)))
 
       const response = await fetch(
         `${API_URL}/api/intakes/analyze?stream=1${intakeForceReprocess ? '&force=1' : ''}`,
@@ -2575,6 +2593,7 @@ function App() {
   }
 
   function replaceIntakeFiles(files: File[]) {
+    setIntakeClassifications({})
     setIntakeFiles((current) => {
       const merged = [...current]
 
@@ -2631,6 +2650,7 @@ function App() {
           : `Novo paciente criado (${result.caseId}). Arquivos e paciente_compilado.json salvos no Tigris.`,
       )
       setIntakeFiles([])
+      setIntakeClassifications({})
       setIntakeLocalPreviews((current) => {
         Object.values(current).forEach((url) => URL.revokeObjectURL(url))
         return {}
@@ -2657,6 +2677,7 @@ function App() {
     setIntakeBusy(true)
     if (await deleteDraft(intakePreview)) {
       setIntakeFiles([])
+      setIntakeClassifications({})
       setIntakeLocalPreviews((current) => {
         Object.values(current).forEach((url) => URL.revokeObjectURL(url))
         return {}
@@ -3079,7 +3100,8 @@ function App() {
                         <PrimaryButton
                           disabled={
                             intakeBusy ||
-                            intakeCheckpointBusy
+                            intakeCheckpointBusy ||
+                            !intakeClassificationComplete
                           }
                           onClick={analyzeIntake}
                         >
@@ -3095,15 +3117,36 @@ function App() {
                     </div>
                     <ExamProtocolChecklist files={intakeFiles} />
 
-                    <IntakeCheckpointPreflight
-                      checking={intakeCheckpointBusy}
-                      disabled={intakeBusy}
-                      error={intakeCheckpointError}
+                    <IntakeFileClassification
+                      apiUrl={API_URL}
                       files={intakeFiles}
-                      forceReprocess={intakeForceReprocess}
-                      onForceReprocessChange={setIntakeForceReprocess}
-                      states={intakeCheckpointStates}
+                      localPreviews={intakeLocalPreviews}
+                      onChange={setIntakeClassifications}
+                      onRemove={(file) => {
+                        void deleteDraft(intakePreview)
+                        setIntakeFiles((files) => files.filter((currentFile) => currentFile !== file))
+                        setIntakePreview(null)
+                      }}
+                      value={intakeClassifications}
                     />
+
+                    {!intakeClassificationComplete && (
+                      <p className="mb-0 mt-3 text-xs text-warning">
+                        Confirme o tipo e o olho de todos os arquivos para liberar a verificação de processamento.
+                      </p>
+                    )}
+
+                    {intakeClassificationComplete && (
+                      <IntakeCheckpointPreflight
+                        checking={intakeCheckpointBusy}
+                        disabled={intakeBusy}
+                        error={intakeCheckpointError}
+                        files={intakeFiles}
+                        forceReprocess={intakeForceReprocess}
+                        onForceReprocessChange={setIntakeForceReprocess}
+                        states={intakeCheckpointStates}
+                      />
+                    )}
 
                     {intakeBusy && (
                       <IntakeProcessingProgress
@@ -3170,32 +3213,6 @@ function App() {
                       </div>
                     )}
 
-                    <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                      {intakeFiles.map((file) => (
-                        <div
-                          className="relative flex min-w-0 items-center gap-3 rounded-xl border border-border bg-surface-muted p-3 pr-10 shadow-sm"
-                          key={`${file.name}-${file.size}-${file.lastModified}`}
-                        >
-                          <img alt="" className="h-11 w-11 flex-none object-contain" src={fileIcon(file.name)} />
-                          <div className="min-w-0">
-                            <p className="mb-1 truncate text-sm font-semibold text-text-primary" title={file.name}>{file.name}</p>
-                            <span className="text-xs text-text-muted">{(file.size / 1024 / 1024).toFixed(2)} MB</span>
-                          </div>
-                          <button
-                            aria-label={`Cancelar upload de ${file.name}`}
-                            className="absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-full text-text-muted hover:bg-danger-soft hover:text-danger"
-                            onClick={() => {
-                              void deleteDraft(intakePreview)
-                              setIntakeFiles((files) => files.filter((currentFile) => currentFile !== file))
-                              setIntakePreview(null)
-                            }}
-                            type="button"
-                          >
-                            <X size={15} />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
                   </div>
                 )}
                 {intakePreview && (

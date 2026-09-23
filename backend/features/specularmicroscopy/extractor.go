@@ -104,88 +104,149 @@ func parseCellDensityDetailed(
 		}
 	}
 
-	labelFound := false
+	markerFound := false
 
-	// "Cell Density" é o marcador semântico.
+	// Há dois caminhos aceitos para reconhecer a densidade:
 	//
-	// OCR real do equipamento demonstrou:
+	// 1. label textual preservado:
 	//
-	//   Cell Density (C0) 2403
+	//      Cell Density (CD) cells/mm² 2403
 	//
-	// e também:
+	//    ou:
 	//
-	//   Cell Density (CO)
-	//   cells/mm? 2184
+	//      Cell Density (CO)
+	//      cells/mm? 2184
 	//
-	// Portanto não exigimos que "CD" ou "mm"
-	// estejam na MESMA linha do label.
+	// 2. fallback semântico para OCR real do NIDEK:
+	//
+	//      cece cell Dersiy (0) icells/m?| 3366 |
+	//
+	//    "Density" foi corrompido, mas permaneceram:
+	//
+	//      cell + cells/m + valor plausível
+	//
+	// O segundo caminho NÃO aceita apenas "Number of Cells",
+	// porque contagem absoluta não possui a unidade cells/mm².
 	for index, line := range lines {
-		if !strings.Contains(
-			line,
-			"cell density",
-		) {
-			continue
-		}
-
-		labelFound = true
-
-		end := index + 2
-
-		if end >= len(lines) {
-			end = len(lines) - 1
-		}
-
-		contextLines :=
-			lines[index : end+1]
-
-		contextText :=
-			strings.Join(
-				contextLines,
-				" ",
+		hasExactLabel :=
+			strings.Contains(
+				line,
+				"cell density",
 			)
 
-		match := regexp.MustCompile(
-			`(?i)cell\s+density.*?([1-9][0-9]{2,4})`,
-		).FindStringSubmatch(
-			contextText,
-		)
+		hasDensityUnitEvidence :=
+			strings.Contains(
+				line,
+				"cell",
+			) &&
+				strings.Contains(
+					line,
+					"cells/m",
+				)
 
-		if len(match) != 2 {
+		if !hasExactLabel &&
+			!hasDensityUnitEvidence {
 			continue
 		}
 
-		value, err :=
-			strconv.ParseFloat(
-				match[1],
-				64,
-			)
+		markerFound = true
 
-		if err != nil {
-			continue
+		// Caminho original: permite que o valor esteja
+		// na mesma linha ou em até duas linhas seguintes.
+		if hasExactLabel {
+			end := index + 2
+
+			if end >= len(lines) {
+				end = len(lines) - 1
+			}
+
+			contextLines :=
+				lines[index : end+1]
+
+			contextText :=
+				strings.Join(
+					contextLines,
+					" ",
+				)
+
+			match :=
+				regexp.MustCompile(
+					`(?i)cell\s+density.*?([1-9][0-9]{2,4})`,
+				).
+					FindStringSubmatch(
+						contextText,
+					)
+
+			if len(match) == 2 {
+				value, err :=
+					strconv.ParseFloat(
+						match[1],
+						64,
+					)
+
+				if err == nil &&
+					value >= 500 &&
+					value <= 10000 {
+					return value,
+						contextText,
+						"",
+						true
+				}
+			}
 		}
 
-		// Faixa apenas como barreira contra lixo OCR.
-		// Não é interpretação clínica.
-		if value < 500 || value > 10000 {
-			continue
-		}
+		// Fallback para OCR em que a palavra "Density"
+		// foi destruída mas a unidade específica da
+		// densidade endotelial permaneceu reconhecível.
+		//
+		// Usamos SOMENTE a linha atual para não capturar
+		// números de Average Area, SD etc. das linhas abaixo.
+		if hasDensityUnitEvidence {
+			matches :=
+				regexp.MustCompile(
+					`[1-9][0-9]{2,4}`,
+				).
+					FindAllString(
+						line,
+						-1,
+					)
 
-		return value,
-			contextText,
-			"",
-			true
+			for _, match := range matches {
+				value, err :=
+					strconv.ParseFloat(
+						match,
+						64,
+					)
+
+				if err != nil {
+					continue
+				}
+
+				// Barreira contra lixo OCR.
+				// Não representa interpretação clínica.
+				if value < 500 ||
+					value > 10000 {
+					continue
+				}
+
+				return value,
+					line,
+					"",
+					true
+			}
+		}
 	}
 
-	if !labelFound {
+	if !markerFound {
 		return 0,
 			"",
-			"Cell Density label not found",
+			"Cell Density semantic marker not found",
 			false
 	}
 
 	return 0,
 		"",
-		"Cell Density label found but numeric value not found nearby",
+		"Cell Density marker found but numeric value not found nearby",
 		false
 }
 
@@ -194,6 +255,116 @@ func normalizeOCRText(value string) string {
 	value = strings.ReplaceAll(value, "²", "2")
 	value = strings.Join(strings.Fields(value), " ")
 	return value
+}
+
+type panelOCRResult struct {
+	Processed []byte
+	TSV       string
+	Text      string
+}
+
+// ocrMicroscopyPanel concentra o único caminho de OCR usado tanto
+// pela detecção quanto pela extração clínica.
+func ocrMicroscopyPanel(
+	ctx context.Context,
+	img image.Image,
+	panel panelRect,
+) (panelOCRResult, error) {
+	pngData, err := preprocessPanel(img, panel)
+	if err != nil {
+		return panelOCRResult{}, err
+	}
+
+	tsv, err :=
+		ocr.RunTesseractTSVWithPSM(
+			ctx,
+			pngData,
+			6,
+		)
+	if err != nil {
+		return panelOCRResult{}, err
+	}
+
+	words, _, err :=
+		ocr.ParseTSVWords(tsv)
+	if err != nil {
+		return panelOCRResult{}, err
+	}
+
+	rows := ocr.GroupRows(words, 12)
+
+	textRows :=
+		make([]string, 0, len(rows))
+
+	for _, row := range rows {
+		textRows =
+			append(
+				textRows,
+				ocr.RowText(row),
+			)
+	}
+
+	return panelOCRResult{
+		Processed: pngData,
+		TSV:       tsv,
+		Text:      strings.Join(textRows, "\n"),
+	}, nil
+}
+
+func looksLikeSpecularMicroscopyText(
+	text string,
+) bool {
+	_, _, _, ok :=
+		parseCellDensityDetailed(text)
+
+	return ok
+}
+
+// Detect responde somente se o arquivo parece uma microscopia
+// especular compatível com o layout atualmente suportado.
+//
+// Não retorna valores clínicos e não inventa lateralidade.
+//
+// A evidência usada é a mesma do extrator:
+// "Cell Density" + valor numericamente plausível.
+//
+// O primeiro painel positivo encerra a detecção, evitando OCR
+// desnecessário do segundo painel.
+func Detect(
+	ctx context.Context,
+	data []byte,
+) (bool, error) {
+	img, err :=
+		jpeg.Decode(
+			bytes.NewReader(data),
+		)
+
+	if err != nil {
+		// O extrator atual suporta JPEG.
+		// Outro formato simplesmente não é reconhecido pelo detector.
+		return false, nil
+	}
+
+	for _, panel := range microscopyPanels(img.Bounds()) {
+		result, err :=
+			ocrMicroscopyPanel(
+				ctx,
+				img,
+				panel,
+			)
+
+		if err != nil {
+			return false, err
+		}
+
+		if looksLikeSpecularMicroscopyText(
+			result.Text,
+		) {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
 
 func Extract(ctx context.Context, data []byte) (Result, error) {
@@ -207,27 +378,32 @@ func Extract(ctx context.Context, data []byte) (Result, error) {
 	panels := make([]OCRPanel, 0, 2)
 	for index, panel := range microscopyPanels(img.Bounds()) {
 		progressutil.Report(ctx, 10+index*25, "microscopy_preprocess", fmt.Sprintf("Preparando painel %d/2", index+1))
-		pngData, err := preprocessPanel(img, panel)
+		progressutil.Report(
+			ctx,
+			20+index*25,
+			"microscopy_ocr",
+			fmt.Sprintf(
+				"Executando OCR do painel %d/2",
+				index+1,
+			),
+		)
+
+		panelOCR, err :=
+			ocrMicroscopyPanel(
+				ctx,
+				img,
+				panel,
+			)
 		if err != nil {
-			return Result{}, err
+			return Result{},
+				fmt.Errorf(
+					"microscopia especular: OCR do painel %d: %w",
+					index+1,
+					err,
+				)
 		}
 
-		progressutil.Report(ctx, 20+index*25, "microscopy_ocr", fmt.Sprintf("Executando OCR do painel %d/2", index+1))
-		tsv, err := ocr.RunTesseractTSVWithPSM(ctx, pngData, 6)
-		if err != nil {
-			return Result{}, fmt.Errorf("microscopia especular: OCR do painel %d: %w", index+1, err)
-		}
-
-		words, _, err := ocr.ParseTSVWords(tsv)
-		if err != nil {
-			return Result{}, fmt.Errorf("microscopia especular: TSV do painel %d: %w", index+1, err)
-		}
-		rows := ocr.GroupRows(words, 12)
-		textRows := make([]string, 0, len(rows))
-		for _, row := range rows {
-			textRows = append(textRows, ocr.RowText(row))
-		}
-		panelText := strings.Join(textRows, "\n")
+		panelText := panelOCR.Text
 		// Template NIDEK AO validado nas fixtures reais:
 		// painel superior = R (OD)
 		// painel inferior = L (OS)
@@ -263,8 +439,8 @@ func Extract(ctx context.Context, data []byte) (Result, error) {
 			index,
 			img.Bounds(),
 			panel,
-			pngData,
-			tsv,
+			panelOCR.Processed,
+			panelOCR.TSV,
 			panelText,
 			laterality,
 		)

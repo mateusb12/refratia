@@ -1,6 +1,7 @@
 package main
 
 import (
+	intakefeature "refratia/backend/features/intake"
 	"strings"
 	"testing"
 )
@@ -81,7 +82,7 @@ func TestPentacamPartialProducesFieldLevelGaps(t *testing.T) {
 		analysis,
 		[]uploadedFile{
 			{
-				Metadata: intakeFile{
+				Metadata: intakefeature.FileMetadata{
 					Filename:    "pentacam-od.pdf",
 					ContentType: "application/pdf",
 				},
@@ -108,6 +109,7 @@ func TestFallbackPromptExistsForPartialExam(t *testing.T) {
 		map[string]any{
 			"exams": map[string]any{},
 		},
+		nil,
 		[]string{
 			"pentacam.OD.cataract_preop.total_corneal_z40_6mm_um",
 		},

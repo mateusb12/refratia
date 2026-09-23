@@ -396,14 +396,16 @@ func extractPatientLocal(
 		}
 
 		examType :=
-			localExamTypeFromFilename(
-				file.Metadata.Filename,
-			)
+			file.Metadata.ExamType
+		if examType == "" {
+			examType = localExamTypeFromFilename(file.Metadata.Filename)
+		}
 
 		examEye :=
-			localExamEyeFromFilename(
-				file.Metadata.Filename,
-			)
+			file.Metadata.Eye
+		if examEye == "" {
+			examEye = localExamEyeFromFilename(file.Metadata.Filename)
+		}
 
 		progressutil.Report(
 			fileCtx,
@@ -486,8 +488,40 @@ func extractPatientLocal(
 			progressutil.Report(fileCtx, 8, "microscopy_preprocess", "Extraindo microscopia especular")
 			ok, err := tryExtractSpecularMicroscopyLocal(progressutil.WithRange(fileCtx, 8, 96), file, analysis)
 			if ok {
-				emitLocalPartial(fileCtx, file.Metadata.Filename, "Microscopia especular concluída", analysis)
-				emitLocalFileResult(fileCtx, file.Metadata.Filename, examType, examEye, "extracted", "Microscopia especular extraída", analysis)
+				status := "extracted"
+				message :=
+					"Microscopia especular extraída"
+				partialMessage :=
+					"Microscopia especular concluída"
+
+				if specularMicroscopyFileNeedsFallback(
+					analysis,
+					file,
+				) {
+					status = "partial"
+					message =
+						"Microscopia especular parcialmente extraída"
+					partialMessage =
+						"Microscopia especular parcial"
+				}
+
+				emitLocalPartial(
+					fileCtx,
+					file.Metadata.Filename,
+					partialMessage,
+					analysis,
+				)
+
+				emitLocalFileResult(
+					fileCtx,
+					file.Metadata.Filename,
+					examType,
+					examEye,
+					status,
+					message,
+					analysis,
+				)
+
 				continue
 			}
 			progressutil.Report(fileCtx, 96, "microscopy_parse", "Microscopia especular não pôde ser extraída localmente")
@@ -858,6 +892,209 @@ func localIdentitySources(analysis map[string]any) map[string]bool {
 	return result
 }
 
+func specularMicroscopyFileExpectedEyes(
+	file uploadedFile,
+) []string {
+	examType := file.Metadata.ExamType
+
+	if examType == "" {
+		examType =
+			localExamTypeFromFilename(
+				file.Metadata.Filename,
+			)
+	}
+
+	if examType != "MICROSCOPIA_ESPECULAR" {
+		return nil
+	}
+
+	eye := strings.ToUpper(
+		strings.TrimSpace(
+			file.Metadata.Eye,
+		),
+	)
+
+	if eye == "" {
+		eye =
+			localExamEyeFromFilename(
+				file.Metadata.Filename,
+			)
+	}
+
+	switch eye {
+	case "OD":
+		return []string{"OD"}
+
+	case "OS":
+		return []string{"OS"}
+
+	case "AO":
+		return []string{"OD", "OS"}
+
+	default:
+		// Compatibilidade conservadora com arquivos antigos:
+		// se sabemos que é microscopia mas não sabemos a
+		// lateralidade, não declaramos metade do exame como
+		// completa silenciosamente.
+		return []string{"OD", "OS"}
+	}
+}
+
+func specularMicroscopyEyeComplete(
+	analysis map[string]any,
+	eye string,
+) bool {
+	exams, _ :=
+		analysis["exams"].(map[string]any)
+
+	exam, _ :=
+		exams["specular_microscopy"].(map[string]any)
+
+	eyes, _ :=
+		exam["eyes"].(map[string]any)
+
+	payload, _ :=
+		eyes[eye].(map[string]any)
+
+	value, ok :=
+		payload["cell_density_cells_per_mm2"].(float64)
+
+	return ok && value > 0
+}
+
+func specularMicroscopyLocalGaps(
+	analysis map[string]any,
+	files []uploadedFile,
+) []string {
+	expected := map[string]bool{}
+
+	for _, file := range files {
+		for _, eye := range specularMicroscopyFileExpectedEyes(file) {
+			expected[eye] = true
+		}
+	}
+
+	result := []string{}
+
+	for _, eye := range []string{"OD", "OS"} {
+		if !expected[eye] {
+			continue
+		}
+
+		if specularMicroscopyEyeComplete(
+			analysis,
+			eye,
+		) {
+			continue
+		}
+
+		result =
+			append(
+				result,
+				fmt.Sprintf(
+					"specular_microscopy.eyes.%s.cell_density_cells_per_mm2",
+					eye,
+				),
+			)
+	}
+
+	return result
+}
+
+func specularMicroscopyFileNeedsFallback(
+	analysis map[string]any,
+	file uploadedFile,
+) bool {
+	expected :=
+		specularMicroscopyFileExpectedEyes(
+			file,
+		)
+
+	if len(expected) == 0 {
+		return false
+	}
+
+	for _, eye := range expected {
+		if !specularMicroscopyEyeComplete(
+			analysis,
+			eye,
+		) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func specularMicroscopyLocalCompleteForFiles(
+	analysis map[string]any,
+	files []uploadedFile,
+) bool {
+	hasSpecular := false
+
+	for _, file := range files {
+		expected :=
+			specularMicroscopyFileExpectedEyes(
+				file,
+			)
+
+		if len(expected) == 0 {
+			continue
+		}
+
+		hasSpecular = true
+
+		for _, eye := range expected {
+			if !specularMicroscopyEyeComplete(
+				analysis,
+				eye,
+			) {
+				return false
+			}
+		}
+	}
+
+	return hasSpecular
+}
+
+func localResolvedExamKeysForFiles(
+	analysis map[string]any,
+	files []uploadedFile,
+) map[string]bool {
+	resolved :=
+		localResolvedExamKeys(
+			analysis,
+		)
+
+	hasSpecular := false
+
+	for _, file := range files {
+		if len(
+			specularMicroscopyFileExpectedEyes(file),
+		) > 0 {
+			hasSpecular = true
+			break
+		}
+	}
+
+	if hasSpecular {
+		delete(
+			resolved,
+			"specular_microscopy",
+		)
+
+		if specularMicroscopyLocalCompleteForFiles(
+			analysis,
+			files,
+		) {
+			resolved["specular_microscopy"] =
+				true
+		}
+	}
+
+	return resolved
+}
+
 func localFallbackFiles(analysis map[string]any, files []uploadedFile) []uploadedFile {
 	claimed := localClaimedFiles(analysis)
 	identitySources := localIdentitySources(analysis)
@@ -865,11 +1102,23 @@ func localFallbackFiles(analysis map[string]any, files []uploadedFile) []uploade
 
 	result := make([]uploadedFile, 0, len(files))
 	for _, file := range files {
+		if specularMicroscopyFileNeedsFallback(
+			analysis,
+			file,
+		) {
+			result = append(
+				result,
+				file,
+			)
+			continue
+		}
+
 		if identityComplete &&
 			claimed[file.Metadata.Filename] &&
 			identitySources[file.Metadata.Filename] {
 			continue
 		}
+
 		result = append(result, file)
 	}
 
@@ -892,6 +1141,13 @@ func collectLocalGaps(analysis map[string]any, files []uploadedFile) []string {
 	}
 
 	for _, gap := range pentacamLocalGaps(analysis) {
+		add(gap)
+	}
+
+	for _, gap := range specularMicroscopyLocalGaps(
+		analysis,
+		files,
+	) {
 		add(gap)
 	}
 
@@ -930,9 +1186,14 @@ func mergeFallbackAnalysis(local, fallback map[string]any) {
 
 func extractionPromptForLocalGaps(
 	analysis map[string]any,
+	files []uploadedFile,
 	gaps []string,
 ) string {
-	resolved := localResolvedExamKeys(analysis)
+	resolved :=
+		localResolvedExamKeysForFiles(
+			analysis,
+			files,
+		)
 	keys := make([]string, 0, len(resolved))
 
 	for key := range resolved {

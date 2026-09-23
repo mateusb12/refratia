@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	intakefeature "refratia/backend/features/intake"
 	"strings"
 	"time"
 
@@ -59,7 +60,7 @@ Retorne somente este objeto JSON, usando null apenas quando o campo não estiver
 No documento EyeSuite, leia AL como comprimento axial, K1/K2/K como ceratometria, -AST como astigmatismo, ACD, LT, WTW e Target Refraction. Preserve sinais negativos, casas decimais e eixos. A refração alvo pode estar impressa uma vez para cada olho ou uma vez para o exame; nesse caso replique o mesmo valor nos dois olhos.`
 
 type uploadedFile struct {
-	Metadata intakeFile
+	Metadata intakefeature.FileMetadata
 	Data     []byte
 }
 
@@ -92,15 +93,15 @@ func readIntakeFiles(headers []*multipart.FileHeader) ([]uploadedFile, error) {
 		}
 		digest := sha256.Sum256(data)
 		files = append(files, uploadedFile{
-			Metadata: intakeFile{Filename: header.Filename, ContentType: header.Header.Get("Content-Type"), Size: header.Size, SHA256: hex.EncodeToString(digest[:])},
+			Metadata: intakefeature.FileMetadata{Filename: header.Filename, OriginalFilename: header.Filename, ContentType: header.Header.Get("Content-Type"), Size: header.Size, SHA256: hex.EncodeToString(digest[:])},
 			Data:     data,
 		})
 	}
 	return files, nil
 }
 
-func intakeMetadata(files []uploadedFile) []intakeFile {
-	result := make([]intakeFile, len(files))
+func intakeMetadata(files []uploadedFile) []intakefeature.FileMetadata {
+	result := make([]intakefeature.FileMetadata, len(files))
 	for index, file := range files {
 		result[index] = file.Metadata
 	}
@@ -176,6 +177,7 @@ func resolveLocalGapsWithFallback(
 			prepared,
 			extractionPromptForLocalGaps(
 				analysis,
+				files,
 				gaps,
 			),
 			40000,
@@ -198,8 +200,9 @@ func resolveLocalGapsWithFallback(
 	}
 
 	resolved :=
-		localResolvedExamKeys(
+		localResolvedExamKeysForFiles(
 			analysis,
+			files,
 		)
 
 	stripLocallyResolvedExams(
@@ -1006,7 +1009,7 @@ func findSource(sources []any, filename string) map[string]any {
 	return map[string]any{}
 }
 
-func validateStoredAnalysis(analysis map[string]any, files []intakeFile) error {
+func validateStoredAnalysis(analysis map[string]any, files []intakefeature.FileMetadata) error {
 	sources, ok := analysis["source_files"].([]any)
 	if !ok || len(sources) != len(files) {
 		return errors.New("os arquivos não correspondem ao JSON analisado")
@@ -1020,7 +1023,7 @@ func validateStoredAnalysis(analysis map[string]any, files []intakeFile) error {
 	return nil
 }
 
-func setStoredPaths(analysis map[string]any, files []intakeFile) {
+func setStoredPaths(analysis map[string]any, files []intakefeature.FileMetadata) {
 	sources, _ := analysis["source_files"].([]any)
 	for index, file := range files {
 		if index >= len(sources) {

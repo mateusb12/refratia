@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	intakefeature "refratia/backend/features/intake"
+	"testing"
+)
 
 func TestProcessedCheckpointKeyUsesVersionAndSHA256(
 	testingContext *testing.T,
@@ -114,7 +117,7 @@ func TestBuildAnalysisForPentacamCheckpointKeepsOnlyCurrentEye(
 
 	file :=
 		uploadedFile{
-			Metadata: intakeFile{
+			Metadata: intakefeature.FileMetadata{
 				Filename:    filename,
 				ContentType: "application/pdf",
 				Size:        1234,

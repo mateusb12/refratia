@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	intakefeature "refratia/backend/features/intake"
 	"sort"
 	"strings"
 
@@ -256,5 +257,5 @@ func deleteCaseConfirmationReceipts(ctx context.Context, client *s3.Client, buck
 }
 
 func validCaseID(id string) bool {
-	return strings.HasPrefix(id, "case-") && validIntakeID("intake-"+strings.TrimPrefix(id, "case-"))
+	return strings.HasPrefix(id, "case-") && intakefeature.ValidID("intake-"+strings.TrimPrefix(id, "case-"))
 }

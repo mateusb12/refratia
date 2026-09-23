@@ -4,25 +4,26 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	intakefeature "refratia/backend/features/intake"
 	"testing"
 )
 
 func TestPreparedPromptLabelIncludesPDFPage(t *testing.T) {
-	label := preparedPromptLabel(preparedFile{File: uploadedFile{Metadata: intakeFile{Filename: "exame.pdf"}}, Page: 8})
+	label := preparedPromptLabel(preparedFile{File: uploadedFile{Metadata: intakefeature.FileMetadata{Filename: "exame.pdf"}}, Page: 8})
 	if label != "Arquivo: exame.pdf — página 8" {
 		t.Fatalf("unexpected page label: %q", label)
 	}
 }
 
 func TestPrepareExtractionFilesRejectsInvalidPDF(t *testing.T) {
-	_, err := prepareExtractionFiles(context.Background(), []uploadedFile{{Metadata: intakeFile{Filename: "exame.pdf", ContentType: "application/pdf"}, Data: []byte("not a pdf")}})
+	_, err := prepareExtractionFiles(context.Background(), []uploadedFile{{Metadata: intakefeature.FileMetadata{Filename: "exame.pdf", ContentType: "application/pdf"}, Data: []byte("not a pdf")}})
 	if err == nil {
 		t.Fatal("expected invalid PDF to fail during preprocessing")
 	}
 }
 
 func TestStoredAnalysisRejectsDifferentFile(t *testing.T) {
-	files := []intakeFile{{Filename: "exame.pdf", SHA256: "hash-correto", Key: "drafts/intake/exame.pdf"}}
+	files := []intakefeature.FileMetadata{{Filename: "exame.pdf", SHA256: "hash-correto", Key: "drafts/intake/exame.pdf"}}
 	valid := map[string]any{"source_files": []any{map[string]any{"path": "exame.pdf", "sha256": "hash-correto"}}}
 	if err := validateStoredAnalysis(valid, files); err != nil {
 		t.Fatalf("expected matching analysis: %v", err)
@@ -31,12 +32,6 @@ func TestStoredAnalysisRejectsDifferentFile(t *testing.T) {
 	tampered := map[string]any{"source_files": []any{map[string]any{"path": "exame.pdf", "sha256": "outro-hash"}}}
 	if err := validateStoredAnalysis(tampered, files); err == nil {
 		t.Fatal("expected mismatched file to be rejected")
-	}
-}
-
-func TestValidIntakeID(t *testing.T) {
-	if !validIntakeID("intake-20260815T155045Z-da4bf173") || validIntakeID("../../case") {
-		t.Fatal("expected only generated intake IDs to be accepted")
 	}
 }
 
@@ -85,9 +80,9 @@ func TestPentacamRepairFillsOnlyMissingMetrics(t *testing.T) {
 		},
 	}}
 	files := []uploadedFile{
-		{Metadata: intakeFile{Filename: "od.pdf"}},
-		{Metadata: intakeFile{Filename: "os.pdf"}},
-		{Metadata: intakeFile{Filename: "biometria.pdf"}},
+		{Metadata: intakefeature.FileMetadata{Filename: "od.pdf"}},
+		{Metadata: intakefeature.FileMetadata{Filename: "os.pdf"}},
+		{Metadata: intakefeature.FileMetadata{Filename: "biometria.pdf"}},
 	}
 
 	selected := pentacamFilesNeedingRepair(analysis, files)

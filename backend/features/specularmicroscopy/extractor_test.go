@@ -83,3 +83,85 @@ func TestParseCellDensityDoesNotConfuseNumberOfCells(
 		)
 	}
 }
+
+func TestLooksLikeSpecularMicroscopyTextAcceptsCellDensity(
+	t *testing.T,
+) {
+	if !looksLikeSpecularMicroscopyText(
+		"Cell Density (CD) cells/mm² 3312",
+	) {
+		t.Fatal(
+			"Cell Density com valor plausível deveria reconhecer microscopia",
+		)
+	}
+}
+
+func TestLooksLikeSpecularMicroscopyTextRejectsNumberOfCells(
+	t *testing.T,
+) {
+	if looksLikeSpecularMicroscopyText(
+		"Number of Cells (NUM) cells 3312",
+	) {
+		t.Fatal(
+			"Number of Cells isolado não pode reconhecer microscopia",
+		)
+	}
+}
+
+func TestLooksLikeSpecularMicroscopyTextRejectsCellDensityWithoutValue(
+	t *testing.T,
+) {
+	if looksLikeSpecularMicroscopyText(
+		"Cell Density (CD) cells/mm²",
+	) {
+		t.Fatal(
+			"Cell Density sem valor não deve reconhecer microscopia",
+		)
+	}
+}
+
+func TestParseCellDensityAcceptsRealNIDEKDistortion(
+	t *testing.T,
+) {
+	value, contextText, ok :=
+		parseCellDensity(
+			"cece cell Dersiy (0) icells/m?| 3366 |",
+		)
+
+	if !ok || value != 3366 {
+		t.Fatalf(
+			"esperava densidade 3366 do OCR real; value=%v context=%q ok=%v",
+			value,
+			contextText,
+			ok,
+		)
+	}
+}
+
+func TestParseCellDensitySemanticFallbackStillRejectsNumberOfCells(
+	t *testing.T,
+) {
+	if value, _, ok :=
+		parseCellDensity(
+			"Number of Cells (NUM) cells 3312",
+		); ok {
+		t.Fatalf(
+			"Number of Cells não pode virar densidade: %v",
+			value,
+		)
+	}
+}
+
+func TestParseCellDensitySemanticFallbackRejectsUnrelatedCellNumber(
+	t *testing.T,
+) {
+	if value, _, ok :=
+		parseCellDensity(
+			"Hexagonal Cells (HEX) % 65",
+		); ok {
+		t.Fatalf(
+			"Hexagonal Cells não pode virar densidade: %v",
+			value,
+		)
+	}
+}

@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	intakefeature "refratia/backend/features/intake"
+	"testing"
+)
 
 func syntheticCompleteIOL(v float64, source string) map[string]any {
 	eye := func(x float64) map[string]any {
@@ -86,7 +89,7 @@ func TestCompleteLocalExtractionHasZeroGaps(t *testing.T) {
 	}
 
 	files := []uploadedFile{
-		{Metadata: intakeFile{Filename: "bio.pdf"}},
+		{Metadata: intakefeature.FileMetadata{Filename: "bio.pdf"}},
 	}
 
 	if gaps := collectLocalGaps(analysis, files); len(gaps) != 0 {
@@ -274,6 +277,241 @@ func TestRetinographyLocalRejectsIdentityDivergence(
 	if retinographyLocalComplete(analysis) {
 		t.Fatal(
 			"divergência de identidade entre OD e OS não pode ser considerada completa",
+		)
+	}
+}
+
+func TestSpecularMicroscopyAOPartialProducesODGap(
+	t *testing.T,
+) {
+	analysis := map[string]any{
+		"exams": map[string]any{
+			"specular_microscopy": map[string]any{
+				"eyes": map[string]any{
+					"OS": map[string]any{
+						"cell_density_cells_per_mm2": 3366.0,
+					},
+				},
+			},
+		},
+	}
+
+	files := []uploadedFile{
+		{
+			Metadata: intakefeature.FileMetadata{
+				Filename: "micro.jpg",
+				ExamType: "MICROSCOPIA_ESPECULAR",
+				Eye:      "AO",
+			},
+		},
+	}
+
+	gaps :=
+		specularMicroscopyLocalGaps(
+			analysis,
+			files,
+		)
+
+	expected :=
+		"specular_microscopy.eyes.OD.cell_density_cells_per_mm2"
+
+	if len(gaps) != 1 ||
+		gaps[0] != expected {
+		t.Fatalf(
+			"esperava somente gap OD; recebeu %#v",
+			gaps,
+		)
+	}
+
+	if localResolvedExamKeysForFiles(
+		analysis,
+		files,
+	)["specular_microscopy"] {
+		t.Fatal(
+			"AO com somente OS não pode estar resolvido",
+		)
+	}
+}
+
+func TestSpecularMicroscopyAOCompleteHasNoGaps(
+	t *testing.T,
+) {
+	analysis := map[string]any{
+		"exams": map[string]any{
+			"specular_microscopy": map[string]any{
+				"eyes": map[string]any{
+					"OD": map[string]any{
+						"cell_density_cells_per_mm2": 3312.0,
+					},
+					"OS": map[string]any{
+						"cell_density_cells_per_mm2": 3366.0,
+					},
+				},
+			},
+		},
+	}
+
+	files := []uploadedFile{
+		{
+			Metadata: intakefeature.FileMetadata{
+				Filename: "micro.jpg",
+				ExamType: "MICROSCOPIA_ESPECULAR",
+				Eye:      "AO",
+			},
+		},
+	}
+
+	if gaps :=
+		specularMicroscopyLocalGaps(
+			analysis,
+			files,
+		); len(gaps) != 0 {
+		t.Fatalf(
+			"AO completo não deveria ter gaps: %#v",
+			gaps,
+		)
+	}
+
+	if !localResolvedExamKeysForFiles(
+		analysis,
+		files,
+	)["specular_microscopy"] {
+		t.Fatal(
+			"AO com OD+OS deveria estar resolvido",
+		)
+	}
+}
+
+func TestSpecularMicroscopyODOnlyCanBeComplete(
+	t *testing.T,
+) {
+	analysis := map[string]any{
+		"exams": map[string]any{
+			"specular_microscopy": map[string]any{
+				"eyes": map[string]any{
+					"OD": map[string]any{
+						"cell_density_cells_per_mm2": 3312.0,
+					},
+				},
+			},
+		},
+	}
+
+	files := []uploadedFile{
+		{
+			Metadata: intakefeature.FileMetadata{
+				Filename: "micro-od.jpg",
+				ExamType: "MICROSCOPIA_ESPECULAR",
+				Eye:      "OD",
+			},
+		},
+	}
+
+	if gaps :=
+		specularMicroscopyLocalGaps(
+			analysis,
+			files,
+		); len(gaps) != 0 {
+		t.Fatalf(
+			"OD solicitado e presente deveria estar completo: %#v",
+			gaps,
+		)
+	}
+
+	if !localResolvedExamKeysForFiles(
+		analysis,
+		files,
+	)["specular_microscopy"] {
+		t.Fatal(
+			"OD-only solicitado deveria estar resolvido",
+		)
+	}
+}
+
+func TestSpecularMicroscopyOSOnlyCanBeComplete(
+	t *testing.T,
+) {
+	analysis := map[string]any{
+		"exams": map[string]any{
+			"specular_microscopy": map[string]any{
+				"eyes": map[string]any{
+					"OS": map[string]any{
+						"cell_density_cells_per_mm2": 3366.0,
+					},
+				},
+			},
+		},
+	}
+
+	files := []uploadedFile{
+		{
+			Metadata: intakefeature.FileMetadata{
+				Filename: "micro-os.jpg",
+				ExamType: "MICROSCOPIA_ESPECULAR",
+				Eye:      "OS",
+			},
+		},
+	}
+
+	if !localResolvedExamKeysForFiles(
+		analysis,
+		files,
+	)["specular_microscopy"] {
+		t.Fatal(
+			"OS-only solicitado deveria estar resolvido",
+		)
+	}
+}
+
+func TestSpecularMicroscopyPartialFileStaysInFallback(
+	t *testing.T,
+) {
+	filename := "micro.jpg"
+
+	analysis := map[string]any{
+		"patient": map[string]any{
+			"full_name":  "Paciente Teste",
+			"birth_date": "2000-01-01",
+		},
+		"verificacao_identidade": []any{
+			map[string]any{
+				"source": filename,
+			},
+		},
+		"exams": map[string]any{
+			"specular_microscopy": map[string]any{
+				"source": []any{
+					filename,
+				},
+				"eyes": map[string]any{
+					"OS": map[string]any{
+						"cell_density_cells_per_mm2": 3366.0,
+					},
+				},
+			},
+		},
+	}
+
+	files := []uploadedFile{
+		{
+			Metadata: intakefeature.FileMetadata{
+				Filename: filename,
+				ExamType: "MICROSCOPIA_ESPECULAR",
+				Eye:      "AO",
+			},
+		},
+	}
+
+	fallback :=
+		localFallbackFiles(
+			analysis,
+			files,
+		)
+
+	if len(fallback) != 1 {
+		t.Fatalf(
+			"arquivo AO parcial precisa permanecer no fallback; recebeu %d",
+			len(fallback),
 		)
 	}
 }

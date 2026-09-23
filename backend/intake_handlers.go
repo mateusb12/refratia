@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -18,6 +17,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 
+	intakefeature "refratia/backend/features/intake"
 	patientfeature "refratia/backend/features/patient"
 	progressutil "refratia/backend/shared/progress"
 )
@@ -27,24 +27,48 @@ const (
 	maxIntakeSize = 50 << 20
 )
 
-type intakeFile struct {
-	Filename    string `json:"filename"`
-	ContentType string `json:"contentType"`
-	Size        int64  `json:"size"`
-	SHA256      string `json:"sha256"`
-	Key         string `json:"key,omitempty"`
-	SignedURL   string `json:"signed_url,omitempty"`
-}
-
 type storedIntake struct {
-	CreatedAt time.Time      `json:"createdAt"`
-	Files     []intakeFile   `json:"files"`
-	Analysis  map[string]any `json:"analysis"`
+	CreatedAt time.Time                    `json:"createdAt"`
+	Files     []intakefeature.FileMetadata `json:"files"`
+	Analysis  map[string]any               `json:"analysis"`
 }
 
 type intakeError struct {
 	status  int
 	message string
+}
+
+func inspectIntakeHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	headers, err := intakeHeaders(w, r)
+	if err != nil {
+		writeError(w, err.status, err.message)
+		return
+	}
+	defer r.MultipartForm.RemoveAll()
+
+	files, readErr := readIntakeFiles(headers)
+	if readErr != nil {
+		writeError(w, http.StatusBadRequest, "não foi possível ler um dos arquivos")
+		return
+	}
+
+	result := make([]intakefeature.FileInspection, 0, len(files))
+	for _, file := range files {
+		result = append(result, intakefeature.InspectFile(r.Context(), intakefeature.File{
+			Filename:    file.Metadata.Filename,
+			SHA256:      file.Metadata.SHA256,
+			ContentType: file.Metadata.ContentType,
+			Size:        file.Metadata.Size,
+			Data:        file.Data,
+		}))
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{"files": result})
 }
 
 func analyzeIntakeHandler(w http.ResponseWriter, r *http.Request) {
@@ -69,6 +93,27 @@ func analyzeIntakeHandler(w http.ResponseWriter, r *http.Request) {
 			"não foi possível ler um dos arquivos",
 		)
 		return
+	}
+
+	classifications, classificationErr := intakefeature.ParseClassifications(
+		r.MultipartForm.Value["classifications"],
+	)
+	if classificationErr != nil {
+		writeError(
+			w,
+			http.StatusBadRequest,
+			"classificação de arquivos inválida",
+		)
+		return
+	}
+
+	for index := range files {
+		classification, ok := classifications[files[index].Metadata.SHA256]
+		if !ok {
+			continue
+		}
+		files[index].Metadata.ExamType = classification.ExamType
+		files[index].Metadata.Eye = classification.Eye
 	}
 
 	ctx := r.Context()
@@ -224,7 +269,7 @@ func analyzeIntakeHandler(w http.ResponseWriter, r *http.Request) {
 		"Preparando rascunho",
 	)
 
-	storedFiles := make([]intakeFile, 0, len(files))
+	storedFiles := make([]intakefeature.FileMetadata, 0, len(files))
 	keys := make([]string, 0, len(files)+1)
 
 	for index, uploaded := range files {
@@ -245,11 +290,21 @@ func analyzeIntakeHandler(w http.ResponseWriter, r *http.Request) {
 			),
 		)
 
-		key := fmt.Sprintf(
-			"drafts/%s/%s",
-			intakeID,
-			safeName(uploaded.Metadata.Filename),
-		)
+		metadata := uploaded.Metadata
+		storageName := safeName(metadata.Filename)
+		if metadata.ExamType != "" {
+			patientName := ""
+			if patient, ok := analysis["patient"].(map[string]any); ok {
+				patientName, _ = patient["full_name"].(string)
+			}
+			extension := strings.TrimPrefix(filepath.Ext(metadata.Filename), ".")
+			if extension == "" {
+				extension = "bin"
+			}
+			metadata.CanonicalFilename = intakefeature.CanonicalExamFilename(patientName, metadata.ExamType, metadata.Eye, extension)
+			storageName = metadata.CanonicalFilename
+		}
+		key := fmt.Sprintf("drafts/%s/%s", intakeID, storageName)
 
 		_, putErr := client.PutObject(
 			ctx,
@@ -277,7 +332,6 @@ func analyzeIntakeHandler(w http.ResponseWriter, r *http.Request) {
 
 		keys = append(keys, key)
 
-		metadata := uploaded.Metadata
 		metadata.Key = key
 
 		storedFiles = append(
@@ -408,7 +462,7 @@ func confirmIntakeHandler(w http.ResponseWriter, r *http.Request) {
 	var request struct {
 		IntakeID string `json:"intakeId"`
 	}
-	if json.NewDecoder(r.Body).Decode(&request) != nil || !validIntakeID(request.IntakeID) {
+	if json.NewDecoder(r.Body).Decode(&request) != nil || !intakefeature.ValidID(request.IntakeID) {
 		writeError(w, http.StatusBadRequest, "rascunho inválido")
 		return
 	}
@@ -487,7 +541,7 @@ func confirmIntakeHandler(w http.ResponseWriter, r *http.Request) {
 		action = "updated"
 	}
 
-	result := make([]intakeFile, 0, len(draft.Files))
+	result := make([]intakefeature.FileMetadata, 0, len(draft.Files))
 	copiedKeys := make([]string, 0, len(draft.Files))
 
 	for _, file := range draft.Files {
@@ -586,7 +640,7 @@ func intakeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	intakeID := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/intakes/"), "/")
-	if !validIntakeID(intakeID) {
+	if !intakefeature.ValidID(intakeID) {
 		writeError(w, http.StatusBadRequest, "rascunho inválido")
 		return
 	}
@@ -627,16 +681,6 @@ func writeConfirmation(w http.ResponseWriter, caseID, analysisKey, action string
 		"analysisKey": analysisKey,
 		"action":      action,
 	})
-}
-
-func validIntakeID(id string) bool {
-	parts := strings.Split(strings.TrimPrefix(id, "intake-"), "-")
-	if !strings.HasPrefix(id, "intake-") || len(parts) != 2 || len(parts[1]) != 8 {
-		return false
-	}
-	_, timeErr := time.Parse("20060102T150405Z", parts[0])
-	_, tokenErr := hex.DecodeString(parts[1])
-	return timeErr == nil && tokenErr == nil
 }
 
 func intakeHeaders(w http.ResponseWriter, r *http.Request) ([]*multipart.FileHeader, *intakeError) {

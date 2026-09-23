@@ -62,7 +62,7 @@ export interface PatientChangePreview {
 
 export interface IntakePreview {
   intakeId: string
-  files: Array<{ filename: string; contentType: string; size: number; sha256: string; signed_url?: string }>
+  files: Array<{ filename: string; originalFilename?: string; canonicalFilename?: string; contentType: string; size: number; sha256: string; signed_url?: string }>
   analysis: IntakeAnalysis
   patientMatch: PatientMatch
   changePreview: PatientChangePreview | null
