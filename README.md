@@ -28,7 +28,25 @@ docker compose up --build
 - API: http://localhost:3000/health
 - MinIO: http://localhost:9001 (`minioadmin` / `minioadmin`)
 
-Os arquivos confirmados são armazenados no bucket local `refratia`.
+Por padrão, os arquivos confirmados são armazenados no bucket local `refratia`.
+
+Para rodar o backend local contra o Tigris de produção, configure no `.env` os
+mesmos valores de storage usados pelo backend publicado:
+
+```env
+BUCKET_NAME=<bucket-de-producao>
+AWS_REGION=<regiao-do-tigris>
+AWS_ACCESS_KEY_ID=<chave-do-tigris>
+AWS_SECRET_ACCESS_KEY=<segredo-do-tigris>
+AWS_ENDPOINT_URL_S3=<endpoint-s3-do-tigris>
+AWS_PUBLIC_ENDPOINT_URL_S3=<endpoint-s3-publico-do-tigris>
+CASE_DELETE_TOKEN=<token-aceito-pelo-backend-local>
+```
+
+O `compose.yaml` usa essas variáveis quando presentes e continua usando o
+MinIO local como fallback quando elas não estão definidas. Com as credenciais
+de produção configuradas, o backend local lista, envia e exclui objetos no
+bucket de produção.
 
 Após a análise, o backend guarda um rascunho em `drafts/{intakeId}`. A confirmação
 envia somente o `intakeId`; o backend promove os documentos e grava

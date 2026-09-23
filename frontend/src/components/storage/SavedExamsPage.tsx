@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import {
   Database,
+  Download,
   FileSearch,
   Plus,
   Trash2,
@@ -479,6 +480,15 @@ export default function SavedExamsPage({
                             Abrir
                           </a>
                         )}
+
+                        <a
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-primary-border bg-primary-soft px-3 py-2 text-xs font-bold text-primary"
+                          download
+                          href={`${apiUrl}/api/exams/download?caseId=${encodeURIComponent(item.caseId)}&path=${encodeURIComponent(item.path)}`}
+                        >
+                          <Download size={14} />
+                          Baixar
+                        </a>
 
                         <button
                           className="inline-flex items-center gap-1.5 rounded-lg border border-danger/30 bg-danger-soft px-3 py-2 text-xs font-bold text-danger hover:border-danger"

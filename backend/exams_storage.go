@@ -88,6 +88,59 @@ func routeSavedExams(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func downloadSavedExam(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	caseID := r.URL.Query().Get("caseId")
+	path := r.URL.Query().Get("path")
+	casePrefix := fmt.Sprintf("cases/%s/", caseID)
+
+	if !validCaseID(caseID) ||
+		!strings.HasPrefix(path, casePrefix) ||
+		path == casePrefix+"paciente_compilado.json" {
+		writeError(w, http.StatusBadRequest, "arquivo inválido")
+		return
+	}
+
+	client, storageClientError := storageClient(r.Context())
+	if storageClientError != nil {
+		writeError(w, http.StatusInternalServerError, "storage indisponível")
+		return
+	}
+
+	object, downloadError := client.GetObject(
+		r.Context(),
+		&s3.GetObjectInput{
+			Bucket: aws.String(os.Getenv("BUCKET_NAME")),
+			Key:    aws.String(path),
+		},
+	)
+	if downloadError != nil {
+		writeError(w, http.StatusNotFound, "arquivo não encontrado")
+		return
+	}
+	defer object.Body.Close()
+
+	contentType := aws.ToString(object.ContentType)
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+
+	filename := strings.NewReplacer("\"", "", "\r", "", "\n", "").Replace(filepath.Base(path))
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", filename))
+	if object.ContentLength != nil {
+		w.Header().Set("Content-Length", fmt.Sprintf("%d", *object.ContentLength))
+	}
+
+	if _, copyError := io.Copy(w, object.Body); copyError != nil {
+		return
+	}
+}
+
 func listSavedExams(
 	w http.ResponseWriter,
 	r *http.Request,
