@@ -5,6 +5,7 @@ import {
   Activity,
   AlertTriangle,
   ArrowLeft,
+  BookOpen,
   Calculator,
   Check,
   CircleCheck,
@@ -47,6 +48,7 @@ import {
 } from './components/intake/intakeProgress'
 import BenchmarkOcrPage from './components/benchmark/BenchmarkOcrPage'
 import SavedExamsPage from './components/storage/SavedExamsPage'
+import ProtocolPage from './components/protocol/ProtocolPage'
 import { isIntakePreview, normalizeSavedAnalysis, type IntakeAnalysis, type IntakePreview } from './contracts/patient-analysis'
 import { assessExamContract } from './contracts/exam-contracts'
 
@@ -752,6 +754,7 @@ const sidebarRoutes: Record<string, string> = {
   'Nova análise': 'nova-analise',
   Relatórios: 'relatorios',
   'Exames salvos': 'exames-salvos',
+  Protocolo: 'protocolo',
   Configurações: 'configuracoes',
   'Benchmark OCR': 'benchmark-ocr',
   Roadmap: 'roadmap',
@@ -2919,6 +2922,7 @@ function App() {
               { label: 'Nova análise', icon: <Plus size={19} /> },
               { label: 'Relatórios', icon: <FileText size={19} /> },
               { label: 'Exames salvos', icon: <Database size={19} /> },
+              { label: 'Protocolo', icon: <BookOpen size={19} /> },
             ].map((item) => (
               <button
                 key={item.label}
@@ -2984,7 +2988,7 @@ function App() {
       <main className="min-w-0">
         {!isDemoNavigationHidden && <header className="sticky top-0 z-50 flex min-h-[90px] items-center justify-between gap-6 border-b border-border bg-surface px-[clamp(16px,4vw,56px)] py-5 shadow-sm">
           <div>
-            <Eyebrow>PROTOCOLO DEMONSTRATIVO</Eyebrow>
+            <Eyebrow>{activeSection === 'Protocolo' ? 'DOCUMENTO CLÍNICO' : 'PROTOCOLO DEMONSTRATIVO'}</Eyebrow>
             <h1 className="mb-0 mt-1 font-display text-2xl tracking-[-0.035em]">{activeSection}</h1>
           </div>
           <div className="flex items-center gap-3">
@@ -3327,6 +3331,7 @@ function App() {
               mutationToken={CASE_DELETE_TOKEN}
             />
           )}
+          {activeSection === 'Protocolo' && <ProtocolPage />}
           {activeSection === 'Relatórios' && (selectedCase === 'real' || storedCase ? reviewContent : reportsSection)}
           </>}
         </section>
