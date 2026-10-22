@@ -1,15 +1,13 @@
 services:
   frontend:
-    image: node:22-alpine
-    working_dir: /app
-    command: sh -c "npm ci && npm run dev -- --host 0.0.0.0"
-    environment:
-      VITE_API_URL: http://localhost:3000
-    volumes:
-      - .:/app
-      - frontend_node_modules:/app/node_modules
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:3000}
+        VITE_SHOW_DEMO_CASES: ${VITE_SHOW_DEMO_CASES:-true}
     ports:
-      - "5173:5173"
+      - "5173:80"
     depends_on:
       backend:
         condition: service_healthy
@@ -71,5 +69,4 @@ services:
     command: -c "mc alias set local http://minio:9000 minioadmin minioadmin && mc mb --ignore-existing local/refratia"
 
 volumes:
-  frontend_node_modules:
   minio_data:
