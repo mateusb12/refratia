@@ -6,8 +6,8 @@ services:
       args:
         VITE_API_URL: ${VITE_API_URL:-https://api.refratia.matbessa.com.br}
         VITE_SHOW_DEMO_CASES: ${VITE_SHOW_DEMO_CASES:-true}
-    ports:
-      - "80:80"
+    expose:
+      - "80"
     depends_on:
       backend:
         condition: service_healthy
