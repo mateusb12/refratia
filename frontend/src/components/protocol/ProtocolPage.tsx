@@ -145,6 +145,25 @@ export default function ProtocolPage() {
         </ul>
       </ProtocolSection>
 
+      <ProtocolSection eyebrow="REGRAS DE PARADA" title="Quando o protocolo bloqueia ou fica pendente">
+        <div className="mx-auto grid w-full max-w-[940px] gap-4 sm:grid-cols-2">
+          {[
+            ['Bloqueia o caso', 'Os documentos não podem ser confirmados como pertencentes ao mesmo paciente.', 'danger'],
+            ['Fica pendente', 'Falta um exame necessário ou ele está fora da janela de 4 meses em relação ao Pentacam.', 'warning'],
+            ['Apenas registra', 'Uma dúvida em um número clínico, ou um dado informativo como coma, PNS, Z40, OCT e retinografia, gera observação e não interrompe o fluxo.', 'neutral'],
+            ['Fora do escopo', 'Pacientes com menos de 18 anos não entram na cascata automática do protocolo.', 'neutral'],
+          ].map(([title, description, tone]) => (
+            <div className="rounded-xl border border-border bg-surface-muted p-4" key={title}>
+              <strong className={[
+                'block text-sm',
+                tone === 'danger' ? 'text-danger' : tone === 'warning' ? 'text-warning' : 'text-primary',
+              ].join(' ')}>{title}</strong>
+              <p className="mb-0 mt-2 text-sm leading-relaxed">{description}</p>
+            </div>
+          ))}
+        </div>
+      </ProtocolSection>
+
       <ProtocolSection eyebrow="MUDANÇAS DESTA REVISÃO" title="O que mudou no protocolo">
         <ul className="mt-0 space-y-3 pl-0">
           <Rule>O coma deixou de ter limite de aprovação ou reprovação. Agora é apenas registrado, na zona de 4 mm, sem bloquear a conduta.</Rule>
