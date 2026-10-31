@@ -2,17 +2,12 @@ services:
   frontend:
     build:
       context: .
-      dockerfile: frontend/Dockerfile.dev
+      dockerfile: frontend/Dockerfile
       args:
-        VITE_API_URL: ${VITE_API_URL:-http://localhost:3000}
+        VITE_API_URL: ${VITE_API_URL:-https://api.refratia.matbessa.com.br}
         VITE_SHOW_DEMO_CASES: ${VITE_SHOW_DEMO_CASES:-true}
-    working_dir: /app
-    volumes:
-      - .:/app
-      - frontend_node_modules:/app/node_modules
-    command: npm run dev -- --host 0.0.0.0 --port 5173 --base /
     ports:
-      - "5173:5173"
+      - "80:80"
     depends_on:
       backend:
         condition: service_healthy
@@ -74,5 +69,4 @@ services:
     command: -c "mc alias set local http://minio:9000 minioadmin minioadmin && mc mb --ignore-existing local/refratia"
 
 volumes:
-  frontend_node_modules:
   minio_data:
