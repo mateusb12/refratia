@@ -430,8 +430,8 @@ interface ExtractedDatum {
 
 const steps = [
   { title: 'Enviar exames', description: 'Carregar o caso' },
-  { title: 'Conferir documentos', description: 'Identidade e arquivos' },
-  { title: 'Conferir dados', description: 'Valores e origem' },
+  { title: 'Conferir documentos', description: 'Exames recebidos' },
+  { title: 'Conferir dados', description: 'Tipo e olho dos arquivos' },
   { title: 'Ver recomendação', description: 'Critérios utilizados' },
   { title: 'Revisar relatório', description: 'Decisão médica' },
 ]
@@ -843,36 +843,56 @@ function MetricCard({ label, value, detail, tone }: Metric) {
   )
 }
 
-function ProcessSteps({ current, reviewed }: { current: number; reviewed: boolean }) {
+function ProcessSteps({
+  current,
+  reviewed,
+  maxStep = steps.length,
+  onStepChange,
+}: {
+  current: number
+  reviewed: boolean
+  maxStep?: number
+  onStepChange?: (step: number) => void
+}) {
   return (
     <ol className="mt-6 grid list-none grid-cols-5 gap-2 p-0 max-[1100px]:grid-cols-2 max-[580px]:grid-cols-1" aria-label="Etapas da análise">
       {steps.map((step, index) => {
         const number = index + 1
         const completed = current > number || (number === steps.length && reviewed)
         const active = current === number && !completed
+        const available = number <= maxStep
         return (
           <li
             key={step.title}
             aria-current={active ? 'step' : undefined}
-            className={clsx(
-              'flex min-w-0 items-center gap-2.5 rounded-[10px] border p-[11px]',
-              active && 'border-primary-border bg-primary-soft',
-              completed && 'border-border bg-surface-muted',
-              !active && !completed && 'border-border bg-surface opacity-60',
-            )}
+            className="min-w-0"
           >
-            <span className={clsx(
-              'grid h-7 w-7 flex-none place-items-center rounded-full border text-xs font-bold',
-              active && 'border-primary bg-primary text-white',
-              completed && 'border-success bg-success text-white',
-              !active && !completed && 'border-border-strong bg-surface text-text-secondary',
-            )}>
-              {completed ? <Check size={14} strokeWidth={3} /> : number}
-            </span>
-            <span className="min-w-0">
-              <strong className="block truncate text-xs">{step.title}</strong>
-              <small className="mt-0.5 block truncate text-xs text-text-muted">{step.description}</small>
-            </span>
+            <button
+              className={clsx(
+                'flex w-full min-w-0 items-center gap-2.5 rounded-[10px] border p-[11px] text-left',
+                active && 'border-primary-border bg-primary-soft',
+                completed && 'border-border bg-surface-muted',
+                !active && !completed && 'border-border bg-surface opacity-60',
+                available && onStepChange && 'cursor-pointer hover:border-primary',
+                !available && 'cursor-not-allowed',
+              )}
+              disabled={!available || !onStepChange}
+              onClick={() => onStepChange?.(number)}
+              type="button"
+            >
+              <span className={clsx(
+                'grid h-7 w-7 flex-none place-items-center rounded-full border text-xs font-bold',
+                active && 'border-primary bg-primary text-white',
+                completed && 'border-success bg-success text-white',
+                !active && !completed && 'border-border-strong bg-surface text-text-secondary',
+              )}>
+                {completed ? <Check size={14} strokeWidth={3} /> : number}
+              </span>
+              <span className="min-w-0">
+                <strong className="block truncate text-xs">{step.title}</strong>
+                <small className="mt-0.5 block truncate text-xs text-text-muted">{step.description}</small>
+              </span>
+            </button>
           </li>
         )
       })}
@@ -2114,6 +2134,7 @@ function App() {
   const [activeSection, setActiveSection] = useState(() => getSectionFromPath(window.location.pathname))
   const [selectedCase, setSelectedCase] = useState<CaseKind | null>(reportId === '1' ? 'real' : null)
   const [processingStep, setProcessingStep] = useState(reportId === '1' ? steps.length : 0)
+  const [intakeWorkflowStep, setIntakeWorkflowStep] = useState(1)
   const [expandedDocument, setExpandedDocument] = useState<string | null>(null)
   const [traceData, setTraceData] = useState<ExtractedDatum | null>(null)
   const [isReviewed, setIsReviewed] = useState(false)
@@ -2152,7 +2173,23 @@ function App() {
 
   const isRealCase = selectedCase === 'real'
   const reportData = isRealCase ? patientData : storedCase?.analysis
-  const reportGenerated = processingStep === steps.length || Boolean(reportData)
+  const workflowStep = reportData || isRealCase
+    ? (isReviewed ? steps.length : 4)
+    : selectedCase === 'demo'
+      ? processingStep
+      : intakePreview
+        ? 3
+        : intakeFiles.length > 0
+          ? intakeWorkflowStep
+          : 1
+  const workflowStatus = reportData || isRealCase
+    ? (isReviewed ? 'Relatório revisado' : 'Veja a recomendação')
+    : intakePreview
+      ? 'Confira os dados extraídos'
+      : intakeFiles.length > 0
+        ? intakeWorkflowStep >= 3 ? 'Confira os dados' : 'Confira os documentos'
+        : 'Envie os exames'
+  const reportGenerated = workflowStep === steps.length || Boolean(reportData)
   const activeExtractedData = reportData ? getReportExtractedData(reportData) : extractedData
   const activeMetrics = reportData ? getReportMetrics(reportData, activeExtractedData) : metrics
   const activeDocuments = reportData ? getReportDocuments(reportData) : documents
@@ -2596,6 +2633,7 @@ function App() {
   }
 
   function replaceIntakeFiles(files: File[]) {
+    if (files.length > 0) setIntakeWorkflowStep(2)
     setIntakeClassifications({})
     setIntakeFiles((current) => {
       const merged = [...current]
@@ -2647,11 +2685,6 @@ function App() {
         analysisKey: result.analysisKey,
       }
       setSavedCases((cases) => [newCase, ...cases.filter((item) => item.caseId !== newCase.caseId)])
-      setIntakeMessage(
-        result.action === 'updated'
-          ? `Paciente atualizado (${result.caseId}). Os novos exames foram incorporados ao caso existente.`
-          : `Novo paciente criado (${result.caseId}). Arquivos e paciente_compilado.json salvos no Tigris.`,
-      )
       setIntakeFiles([])
       setIntakeClassifications({})
       setIntakeLocalPreviews((current) => {
@@ -3054,12 +3087,35 @@ function App() {
                 </button>
               )}
               <section className="mt-5 rounded-2xl border border-primary-border bg-primary-soft/30 p-6 shadow-sm max-[580px]:p-4">
-                <Eyebrow>IMPORTAR EXAMES</Eyebrow>
-                <h2 className="mb-0 mt-1 font-display text-xl">Envie os arquivos do paciente</h2>
+                <Eyebrow>{workflowStep >= 3 ? 'CONFERIR DADOS' : 'IMPORTAR EXAMES'}</Eyebrow>
+                <h2 className="mb-0 mt-1 font-display text-xl">
+                  {workflowStep >= 3 ? 'Confirme os dados dos arquivos' : 'Envie os arquivos do paciente'}
+                </h2>
                 <p className="mb-0 mt-1.5 text-sm leading-relaxed text-text-secondary">
-                  Após a análise, o sistema identifica o paciente e mostra exatamente o que será criado, adicionado ou alterado antes da confirmação.
+                  {workflowStep >= 3
+                    ? 'Revise o tipo e o olho de cada arquivo antes de iniciar a análise.'
+                    : 'Após a análise, o sistema identifica o paciente e mostra exatamente o que será criado, adicionado ou alterado antes da confirmação.'}
                 </p>
-                <label
+                <div className="mt-5 rounded-xl border border-border bg-surface/60 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <Eyebrow>ETAPA ATUAL</Eyebrow>
+                      <p className="mb-0 mt-1 text-sm font-semibold text-text-primary">{workflowStatus}</p>
+                    </div>
+                    <StatusBadge tone={workflowStep === 2 ? 'warning' : workflowStep >= 4 ? 'success' : 'neutral'}>
+                      Etapa {Math.min(workflowStep, steps.length)} de {steps.length}
+                    </StatusBadge>
+                  </div>
+                  <ProcessSteps
+                    current={workflowStep}
+                    maxStep={reportData || isRealCase ? steps.length : intakeFiles.length > 0 || intakePreview ? 3 : 1}
+                    onStepChange={(step) => {
+                      if (!reportData && !isRealCase) setIntakeWorkflowStep(step)
+                    }}
+                    reviewed={isReviewed}
+                  />
+                </div>
+                {workflowStep < 3 && <label
                   className="mt-5 flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-primary/40 bg-surface p-8 text-center hover:border-primary max-[580px]:p-6"
                   onDragOver={(event) => event.preventDefault()}
                   onDrop={(event) => {
@@ -3085,7 +3141,7 @@ function App() {
                     }}
                     type="file"
                   />
-                </label>
+                </label>}
                 {intakeFiles.length > 0 && (
                   <div className="mt-4 rounded-xl border border-border bg-surface p-4">
                     <div className="flex flex-wrap items-center justify-between gap-3">
@@ -3103,13 +3159,23 @@ function App() {
 
                         <PrimaryButton
                           disabled={
-                            intakeBusy ||
-                            intakeCheckpointBusy ||
-                            !intakeClassificationComplete
+                            workflowStep >= 3 && (
+                              intakeBusy ||
+                              intakeCheckpointBusy ||
+                              !intakeClassificationComplete
+                            )
                           }
-                          onClick={analyzeIntake}
+                          onClick={() => {
+                            if (workflowStep < 3) {
+                              setIntakeWorkflowStep(3)
+                              return
+                            }
+                            void analyzeIntake()
+                          }}
                         >
-                          {intakeBusy
+                          {workflowStep < 3
+                            ? 'Próxima etapa'
+                            : intakeBusy
                             ? 'Analisando…'
                             : intakeCheckpointBusy
                               ? 'Verificando arquivos…'
@@ -3119,8 +3185,9 @@ function App() {
                         </PrimaryButton>
                       </div>
                     </div>
-                    <ExamProtocolChecklist files={intakeFiles} />
+                    {workflowStep < 3 && <ExamProtocolChecklist files={intakeFiles} />}
 
+                    {workflowStep >= 3 && <>
                     <IntakeFileClassification
                       apiUrl={API_URL}
                       files={intakeFiles}
@@ -3216,6 +3283,7 @@ function App() {
                         </div>
                       </div>
                     )}
+                    </>}
 
                   </div>
                 )}
@@ -3298,7 +3366,6 @@ function App() {
                     {reportGenerated ? 'Pronto para revisar' : 'Aguardando caso'}
                   </StatusBadge>
                 </div>
-                <ProcessSteps current={processingStep} reviewed={isReviewed} />
                 <div className="mt-5 grid gap-4">
                   {showDemoCases && (
                     <button

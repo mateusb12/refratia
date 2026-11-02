@@ -7,11 +7,16 @@ type Eye = 'OD' | 'OS' | 'AO'
 interface ParsedExamFile {
   type: string
   eye: Eye
+  file: File
 }
 
 interface ExamDefinition {
   key: string
   label: string
+}
+
+interface RequiredExamSlot extends ExamDefinition {
+  eye: Eye
 }
 
 const requiredExams: ExamDefinition[] = [
@@ -29,6 +34,10 @@ const requiredExams: ExamDefinition[] = [
   },
 ]
 
+const requiredExamSlots: RequiredExamSlot[] = requiredExams.flatMap((exam) => (
+  (['OD', 'OS'] as const).map((eye) => ({ ...exam, eye }))
+))
+
 const optionalExams: ExamDefinition[] = [
   {
     key: 'RETINA',
@@ -38,7 +47,7 @@ const optionalExams: ExamDefinition[] = [
 
 function parseFilename(
   name: string,
-): ParsedExamFile | null {
+): Omit<ParsedExamFile, 'file'> | null {
   const stem = name.replace(/\.[^.]+$/, '')
   const parts = stem.split('__')
 
@@ -59,6 +68,20 @@ function parseFilename(
     type,
     eye,
   }
+}
+
+function fileDetails(file: File) {
+  const extension = file.name.split('.').pop()?.toUpperCase() ?? 'ARQUIVO'
+  const size = file.size >= 1024 * 1024
+    ? `${(file.size / (1024 * 1024)).toFixed(1)} MB`
+    : `${Math.round(file.size / 1024)} KB`
+  return `${extension} · ${size}`
+}
+
+function fileIcon(file: File) {
+  const extension = file.name.split('.').pop()?.toLowerCase()
+  const icon = extension === 'pdf' ? 'pdf.png' : extension === 'png' ? 'png.png' : 'jpeg.png'
+  return `${import.meta.env.BASE_URL}${icon}`
 }
 
 function getExamStatus(
@@ -107,6 +130,63 @@ function getExamStatus(
   }
 }
 
+function getSlotFiles(
+  parsed: ParsedExamFile[],
+  slot: RequiredExamSlot,
+) {
+  return parsed.filter(
+    (file) => file.type === slot.key && (file.eye === slot.eye || file.eye === 'AO'),
+  )
+}
+
+function RequiredExamSlotRow({
+  slot,
+  parsed,
+}: {
+  slot: RequiredExamSlot
+  parsed: ParsedExamFile[]
+}) {
+  const matchingFiles = getSlotFiles(parsed, slot)
+  const received = matchingFiles.length > 0
+
+  return (
+    <div className="flex min-w-0 items-center gap-3 rounded-xl border border-border bg-surface px-3 py-2.5">
+      {received ? (
+        <img
+          alt=""
+          className="h-9 w-9 flex-none object-contain"
+          src={fileIcon(matchingFiles[0].file)}
+        />
+      ) : (
+        <span className="grid h-7 w-7 flex-none place-items-center rounded-full bg-surface-muted text-sm font-bold text-text-muted">
+          ○
+        </span>
+      )}
+
+      <div className="min-w-0">
+        <strong className="block truncate text-sm text-text-primary">
+          {slot.label} · {slot.eye}
+        </strong>
+        <span className={[
+          'mt-0.5 block text-xs',
+          received ? 'text-success' : 'text-text-muted',
+        ].join(' ')}>
+          {received ? 'Arquivo recebido' : 'Falta arquivo'}
+        </span>
+        {matchingFiles.map(({ file }) => (
+          <span
+            className="mt-0.5 block max-w-full truncate text-[11px] text-text-muted"
+            key={`${file.name}-${file.lastModified}`}
+            title={`${file.name} · ${fileDetails(file)}`}
+          >
+            {file.name} · {fileDetails(file)}
+          </span>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function ExamRow({
   exam,
   parsed,
@@ -120,9 +200,10 @@ function ExamRow({
     parsed,
     exam.key,
   )
+  const matchingFiles = parsed.filter((file) => file.type === exam.key)
 
   return (
-    <div className="flex items-center gap-3 rounded-xl border border-border bg-surface px-3 py-3">
+    <div className="flex min-w-0 items-center gap-3 rounded-xl border border-border bg-surface px-3 py-2.5">
       <span
         className={[
           'grid h-7 w-7 flex-none place-items-center rounded-full text-sm font-bold',
@@ -163,6 +244,15 @@ function ExamRow({
         >
           {status.detail}
         </span>
+        {matchingFiles.map(({ file }) => (
+          <span
+            className="mt-0.5 block max-w-full truncate text-[11px] text-text-muted"
+            key={`${file.name}-${file.lastModified}`}
+            title={`${file.name} · ${fileDetails(file)}`}
+          >
+            {file.name} · {fileDetails(file)}
+          </span>
+        ))}
       </div>
     </div>
   )
@@ -172,17 +262,19 @@ export default function ExamProtocolChecklist({
   files,
 }: ExamProtocolChecklistProps) {
   const parsed = files
-    .map((file) => parseFilename(file.name))
+    .map((file) => {
+      const parsedFile = parseFilename(file.name)
+      return parsedFile ? { ...parsedFile, file } : null
+    })
     .filter(
       (file): file is ParsedExamFile =>
         file !== null,
     )
 
-  const requiredStatuses =
-    requiredExams.map((exam) => ({
-      exam,
-      ...getExamStatus(parsed, exam.key),
-    }))
+  const requiredStatuses = requiredExamSlots.map((slot) => ({
+    slot,
+    received: getSlotFiles(parsed, slot).length > 0,
+  }))
 
   const received =
     requiredStatuses.filter(
@@ -190,19 +282,22 @@ export default function ExamProtocolChecklist({
     ).length
 
   const missing =
-    requiredExams.length - received
+    requiredExamSlots.length - received
 
   return (
     <div className="mt-4 rounded-xl border border-border bg-surface-muted p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
+          <span className="block text-[10px] font-bold uppercase tracking-[0.12em] text-primary">
+            Etapa 2 · Conferir documentos
+          </span>
           <span className="text-xs font-bold uppercase tracking-[0.12em] text-primary">
             Exames obrigatórios
           </span>
 
           <div className="mt-1 flex items-baseline gap-2">
             <strong className="font-display text-xl text-text-primary">
-              {received}/{requiredExams.length}
+              {received}/{requiredExamSlots.length}
             </strong>
 
             <span className="text-xs text-text-muted">
@@ -228,7 +323,7 @@ export default function ExamProtocolChecklist({
           style={{
             width: `${Math.round(
               (received /
-                requiredExams.length) *
+                requiredExamSlots.length) *
                 100,
             )}%`,
           }}
@@ -236,11 +331,11 @@ export default function ExamProtocolChecklist({
       </div>
 
       <div className="mt-4 grid gap-2 sm:grid-cols-2">
-        {requiredExams.map((exam) => (
-          <ExamRow
-            exam={exam}
-            key={exam.key}
+        {requiredExamSlots.map((slot) => (
+          <RequiredExamSlotRow
+            key={`${slot.key}-${slot.eye}`}
             parsed={parsed}
+            slot={slot}
           />
         ))}
       </div>
@@ -265,8 +360,7 @@ export default function ExamProtocolChecklist({
       </div>
 
       <p className="mb-0 mt-4 text-[11px] leading-5 text-text-muted">
-        Pentacam, EyeSuite e microscopia especular compõem o conjunto obrigatório.
-        A retinografia pode acompanhar o caso como exame opcional e não altera a contagem principal.
+        Cada exame obrigatório é conferido separadamente por olho. A retinografia pode acompanhar o caso como exame opcional e não altera a contagem principal.
       </p>
     </div>
   )

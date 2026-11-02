@@ -182,7 +182,10 @@ export default function IntakeFileClassification({
       <div className="flex items-start gap-3 border-b border-border px-4 py-3.5">
         <FileSearch className="mt-0.5 flex-none text-primary" size={17} />
         <div>
-          <strong className="text-sm">Confirme o tipo de cada arquivo</strong>
+          <span className="block text-[10px] font-bold uppercase tracking-[0.12em] text-primary">
+            Etapa 3 · Conferir dados
+          </span>
+          <strong className="text-sm">Confirme o tipo e o olho de cada arquivo</strong>
           <p className="mb-0 mt-1 text-xs leading-relaxed text-text-secondary">A sugestão usa metadados técnicos e, quando o arquivo já segue a nomenclatura padronizada, usa o nome como sinal. Você pode corrigir qualquer classificação.</p>
         </div>
         {loading && <LoaderCircle className="ml-auto animate-spin text-primary" size={16} />}
