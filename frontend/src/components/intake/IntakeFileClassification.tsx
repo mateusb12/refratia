@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { FileSearch, LoaderCircle, TriangleAlert, X } from 'lucide-react'
+import { Eye, FileSearch, LoaderCircle, TriangleAlert, X } from 'lucide-react'
 
 export type IntakeExamType =
   | 'pentacam_corneal_tomography'
@@ -68,6 +68,7 @@ export default function IntakeFileClassification({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [draggedSha, setDraggedSha] = useState<string | null>(null)
+  const [collapsedPreviewFiles, setCollapsedPreviewFiles] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     if (!files.length || !apiUrl) return
@@ -129,6 +130,7 @@ export default function IntakeFileClassification({
     const suggestion = item.candidates.find((candidate) => candidate.score > 0)
     const selectedFile = files.find((file) => file.name === item.filename)
     const recognized = Boolean(item.recognizedExamType && item.recognizedEye)
+    const previewOpen = !collapsedPreviewFiles.has(item.filename)
     return (
       <div
         className="relative grid w-fit max-w-full cursor-grab grid-cols-[auto_minmax(0,1fr)] gap-3 border border-transparent px-3 py-3 transition-[background,border-color,box-shadow,transform] duration-150 hover:-translate-y-px hover:border-primary hover:bg-primary-soft/20 hover:shadow-sm active:cursor-grabbing sm:grid-cols-[auto_minmax(0,auto)_220px] sm:items-center"
@@ -147,6 +149,20 @@ export default function IntakeFileClassification({
           <span className="block truncate text-xs text-text-muted" title={`${metadataLine(item)}${suggestion ? ` · sugestão: ${labels[suggestion.examType]}` : ''}`}>
             {metadataLine(item)}{suggestion ? ` · sugestão: ${labels[suggestion.examType]}` : ''}
           </span>
+          {selectedFile && (
+            <button
+              className="mt-1 inline-flex items-center gap-1 border-0 bg-transparent p-0 text-[11px] font-semibold text-primary hover:text-primary-hover"
+              onClick={() => setCollapsedPreviewFiles((current) => {
+                const next = new Set(current)
+                if (previewOpen) next.add(item.filename)
+                else next.delete(item.filename)
+                return next
+              })}
+              type="button"
+            >
+              <Eye size={13} /> {previewOpen ? 'Ocultar prévia' : 'Ver prévia'}
+            </button>
+          )}
         </div>
         <div className="col-span-2 grid min-w-0 grid-cols-1 gap-2 sm:contents">
           <select
@@ -173,6 +189,27 @@ export default function IntakeFileClassification({
         >
           <X size={15} />
         </button>
+        {previewOpen && selectedFile && (
+          <div className="col-span-full mt-2 overflow-hidden rounded-lg border border-border bg-surface">
+            {selectedFile.type === 'application/pdf' ? (
+              <iframe
+                className="h-[360px] w-full border-0"
+                src={localPreviews[item.filename]}
+                title={`Prévia de ${item.filename}`}
+              />
+            ) : selectedFile.type.startsWith('image/') ? (
+              <img
+                alt={`Prévia de ${item.filename}`}
+                className="max-h-[360px] w-full object-contain"
+                src={localPreviews[item.filename]}
+              />
+            ) : (
+              <p className="m-0 p-4 text-xs text-text-secondary">
+                A prévia deste formato não está disponível no navegador.
+              </p>
+            )}
+          </div>
+        )}
       </div>
     )
   }

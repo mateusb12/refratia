@@ -432,7 +432,7 @@ const steps = [
   { title: 'Enviar exames', description: 'Carregar o caso' },
   { title: 'Conferir documentos', description: 'Exames recebidos' },
   { title: 'Conferir dados', description: 'Tipo e olho dos arquivos' },
-  { title: 'Ver recomendação', description: 'Critérios utilizados' },
+  { title: 'Analisar arquivos', description: 'Processamento e OCR' },
   { title: 'Revisar relatório', description: 'Decisão médica' },
 ]
 
@@ -2174,20 +2174,22 @@ function App() {
   const isRealCase = selectedCase === 'real'
   const reportData = isRealCase ? patientData : storedCase?.analysis
   const workflowStep = reportData || isRealCase
-    ? (isReviewed ? steps.length : 4)
+    ? steps.length
     : selectedCase === 'demo'
       ? processingStep
       : intakePreview
-        ? 3
+        ? 4
         : intakeFiles.length > 0
           ? intakeWorkflowStep
           : 1
   const workflowStatus = reportData || isRealCase
-    ? (isReviewed ? 'Relatório revisado' : 'Veja a recomendação')
+    ? (isReviewed ? 'Relatório revisado' : 'Revise o relatório')
     : intakePreview
-      ? 'Confira os dados extraídos'
+      ? 'Análise concluída'
       : intakeFiles.length > 0
-        ? intakeWorkflowStep >= 3 ? 'Confira os dados' : 'Confira os documentos'
+        ? intakeWorkflowStep >= 4
+          ? 'Analisando arquivos'
+          : intakeWorkflowStep >= 3 ? 'Confira os dados' : 'Confira os documentos'
         : 'Envie os exames'
   const reportGenerated = workflowStep === steps.length || Boolean(reportData)
   const activeExtractedData = reportData ? getReportExtractedData(reportData) : extractedData
@@ -2378,6 +2380,7 @@ function App() {
     intakeAbortController.current = controller
 
     setIntakeBusy(true)
+    setIntakeWorkflowStep(4)
     setIntakeProgress(1)
     setIntakeProgressStage('upload')
     setIntakeProgressMessage('Enviando documentos')
@@ -3108,7 +3111,13 @@ function App() {
                   </div>
                   <ProcessSteps
                     current={workflowStep}
-                    maxStep={reportData || isRealCase ? steps.length : intakeFiles.length > 0 || intakePreview ? 3 : 1}
+                    maxStep={reportData || isRealCase
+                      ? steps.length
+                      : intakeWorkflowStep >= 4 || intakeBusy || intakePreview
+                        ? 4
+                        : intakeFiles.length > 0
+                          ? 3
+                          : 1}
                     onStepChange={(step) => {
                       if (!reportData && !isRealCase) setIntakeWorkflowStep(step)
                     }}
@@ -3145,7 +3154,9 @@ function App() {
                 {intakeFiles.length > 0 && (
                   <div className="mt-4 rounded-xl border border-border bg-surface p-4">
                     <div className="flex flex-wrap items-center justify-between gap-3">
-                      <strong className="text-sm">{intakeFiles.length} arquivo(s) selecionado(s)</strong>
+                      <strong className="text-sm">
+                        {intakeFiles.length} arquivo(s) {workflowStep >= 4 ? 'em análise' : 'selecionado(s)'}
+                      </strong>
                       <div className="flex items-center gap-2">
                         {intakeBusy && (
                           <button
@@ -3157,7 +3168,7 @@ function App() {
                           </button>
                         )}
 
-                        <PrimaryButton
+                        {workflowStep < 4 && <PrimaryButton
                           disabled={
                             workflowStep >= 3 && (
                               intakeBusy ||
@@ -3182,12 +3193,12 @@ function App() {
                               : intakeForceReprocess
                                 ? 'Reprocessar arquivos'
                                 : 'Analisar arquivos'}
-                        </PrimaryButton>
+                        </PrimaryButton>}
                       </div>
                     </div>
                     {workflowStep < 3 && <ExamProtocolChecklist files={intakeFiles} />}
 
-                    {workflowStep >= 3 && <>
+                    {workflowStep === 3 && <>
                     <IntakeFileClassification
                       apiUrl={API_URL}
                       files={intakeFiles}
@@ -3218,8 +3229,9 @@ function App() {
                         states={intakeCheckpointStates}
                       />
                     )}
+                    </>}
 
-                    {intakeBusy && (
+                    {workflowStep >= 4 && intakeBusy && (
                       <IntakeProcessingProgress
                         elapsedSeconds={intakeElapsed}
                         fileProgress={intakeFileProgress}
@@ -3230,7 +3242,7 @@ function App() {
                         overallStage={intakeProgressStage}
                       />
                     )}
-                    {intakeLiveAnalysis && (
+                    {workflowStep >= 4 && intakeLiveAnalysis && (
                       <div className="mt-4 rounded-xl border border-success/40 bg-success-soft p-4">
                         <div className="flex flex-wrap items-start justify-between gap-3">
                           <div>
@@ -3283,8 +3295,6 @@ function App() {
                         </div>
                       </div>
                     )}
-                    </>}
-
                   </div>
                 )}
                 {intakePreview && (
