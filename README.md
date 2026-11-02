@@ -30,6 +30,15 @@ docker compose up --build
 
 Por padrão, os arquivos confirmados são armazenados no bucket local `refratia`.
 
+O backend usa a interface `fileStorage` e pode alternar entre adapters S3-compatíveis:
+
+```env
+FILE_STORAGE_DRIVER=minio
+```
+
+Para usar Garage, defina `FILE_STORAGE_DRIVER=garage` e configure o endpoint
+correspondente em `GARAGE_S3_API_URL` (ou nas variáveis `FILE_STORAGE_*`).
+
 Para rodar o backend local contra o Tigris de produção, configure no `.env` os
 mesmos valores de storage usados pelo backend publicado:
 

@@ -32,7 +32,7 @@ func readExamMetadata(
 
 func loadExamManifest(
 	requestContext context.Context,
-	client *s3.Client,
+	client fileRepository,
 	bucket string,
 	caseID string,
 ) (map[string]any, []byte, error) {

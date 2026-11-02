@@ -709,7 +709,7 @@ func intakeHeaders(w http.ResponseWriter, r *http.Request) ([]*multipart.FileHea
 	return headers, nil
 }
 
-func cleanupExpiredDrafts(ctx context.Context, client *s3.Client) {
+func cleanupExpiredDrafts(ctx context.Context, client fileRepository) {
 	// ponytail: one-page cleanup; use a bucket lifecycle rule if drafts can exceed 1000 objects.
 	listed, err := client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{Bucket: aws.String(os.Getenv("BUCKET_NAME")), Prefix: aws.String("drafts/")})
 	if err != nil {

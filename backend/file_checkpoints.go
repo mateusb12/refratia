@@ -25,7 +25,7 @@ import (
 const fileCheckpointVersion = "v1"
 
 type fileCheckpointProcessingRun struct {
-	StorageClient *s3.Client
+	StorageClient fileRepository
 	BucketName    string
 	Force         bool
 	StorageError  error
@@ -63,7 +63,7 @@ type fileCheckpointLookupResult struct {
 
 func withFileCheckpointStorage(
 	processingContext context.Context,
-	storageClientInstance *s3.Client,
+	storageClientInstance fileRepository,
 	bucketName string,
 	forceReprocess bool,
 ) context.Context {
@@ -207,7 +207,7 @@ func storageObjectDoesNotExist(
 
 func uploadedFileCheckpointExists(
 	processingContext context.Context,
-	storageClientInstance *s3.Client,
+	storageClientInstance fileRepository,
 	bucketName string,
 	sha256Value string,
 ) (bool, error) {
@@ -239,7 +239,7 @@ func uploadedFileCheckpointExists(
 
 func saveUploadedFileBeforeProcessing(
 	processingContext context.Context,
-	storageClientInstance *s3.Client,
+	storageClientInstance fileRepository,
 	bucketName string,
 	file uploadedFile,
 ) error {
@@ -295,7 +295,7 @@ func saveUploadedFileBeforeProcessing(
 
 func loadProcessedFileCheckpoint(
 	processingContext context.Context,
-	storageClientInstance *s3.Client,
+	storageClientInstance fileRepository,
 	bucketName string,
 	sha256Value string,
 ) (
@@ -384,7 +384,7 @@ func loadProcessedFileCheckpoint(
 
 func saveProcessedFileCheckpoint(
 	processingContext context.Context,
-	storageClientInstance *s3.Client,
+	storageClientInstance fileRepository,
 	bucketName string,
 	checkpoint processedFileCheckpoint,
 ) error {

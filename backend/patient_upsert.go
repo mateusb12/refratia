@@ -27,7 +27,7 @@ type patientCaseCandidate struct {
 
 func findExistingPatientCase(
 	ctx context.Context,
-	client *s3.Client,
+	client fileRepository,
 	bucket string,
 	incoming map[string]any,
 ) (string, map[string]any, bool, error) {
@@ -95,7 +95,7 @@ func findExistingPatientCase(
 
 func loadStoredCaseAnalysis(
 	ctx context.Context,
-	client *s3.Client,
+	client fileRepository,
 	bucket string,
 	caseID string,
 ) (map[string]any, error) {
@@ -124,7 +124,7 @@ func confirmationKey(intakeID string) string {
 
 func loadConfirmationReceipt(
 	ctx context.Context,
-	client *s3.Client,
+	client fileRepository,
 	bucket string,
 	intakeID string,
 ) (confirmationReceipt, bool) {
@@ -151,7 +151,7 @@ func loadConfirmationReceipt(
 
 func storeConfirmationReceipt(
 	ctx context.Context,
-	client *s3.Client,
+	client fileRepository,
 	bucket string,
 	intakeID string,
 	receipt confirmationReceipt,

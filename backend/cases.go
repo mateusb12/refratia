@@ -203,7 +203,7 @@ func deleteCaseHandler(w http.ResponseWriter, r *http.Request, caseID string) {
 	})
 }
 
-func deleteCaseConfirmationReceipts(ctx context.Context, client *s3.Client, bucket, caseID string) (int, error) {
+func deleteCaseConfirmationReceipts(ctx context.Context, client fileRepository, bucket, caseID string) (int, error) {
 	deleted := 0
 	var continuation *string
 
