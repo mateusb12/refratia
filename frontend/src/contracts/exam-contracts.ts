@@ -161,9 +161,17 @@ export function resolveExamKeyFromSource(
     ?.replace(/\.[^.]+$/, '')
     .toUpperCase()
 
-  const prefix = stem?.split('__')[0]
+  const canonicalPrefix = stem?.split('__')[0]
+  const spacedPrefix = stem?.match(
+    /^(AUTO|BIOMETRIA|PENTACAM|RETINA|OCT|EYESUITE|MICROSCOPIA(?:_ESPECULAR)?)(?:\s+|$)/,
+  )?.[1]
+  const prefix = spacedPrefix ?? canonicalPrefix
 
   switch (prefix) {
+    case 'AUTO':
+      return 'refractometry'
+
+    case 'BIOMETRIA':
     case 'EYESUITE':
       return 'iol_calculation'
 
@@ -174,7 +182,11 @@ export function resolveExamKeyFromSource(
       return 'fundus_retinography'
 
     case 'MICROSCOPIA_ESPECULAR':
+    case 'MICROSCOPIA':
       return 'specular_microscopy'
+
+    case 'OCT':
+      return 'oct_retina'
 
     default:
       return undefined
@@ -200,11 +212,12 @@ export function assessExamContract(analysis: IntakeAnalysis, source: Record<stri
 
   const filenameEye = sourceFilename
     .toUpperCase()
-    .match(/__(OD|OS|AO)__/)
+    .match(/(?:__|\s|^)(OD|OE|OS|AO)(?=__|\s|\.|$)/)
     ?.[1]
+    ?.replace('OE', 'OS')
 
   const metadataEye = typeof source.eye === 'string'
-    ? source.eye.trim().toUpperCase()
+    ? source.eye.trim().toUpperCase().replace('OE', 'OS')
     : undefined
 
   const requestedEye = filenameEye ?? metadataEye

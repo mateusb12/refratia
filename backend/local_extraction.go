@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"refratia/backend/features/eyesuite"
+	intakefeature "refratia/backend/features/intake"
 	"refratia/backend/features/retinography"
 	"refratia/backend/features/specularmicroscopy"
 
@@ -18,6 +19,11 @@ import (
 func localExamTypeFromFilename(
 	filename string,
 ) string {
+	if examType, _, ok := intakefeature.CanonicalClassificationFromFilename(filename); ok {
+		label, _ := intakefeature.ExamTypeFromContract(examType)
+		return label
+	}
+
 	parts := strings.Split(filename, "__")
 
 	if len(parts) < 2 {
@@ -32,6 +38,10 @@ func localExamTypeFromFilename(
 func localExamEyeFromFilename(
 	filename string,
 ) string {
+	if _, eye, ok := intakefeature.CanonicalClassificationFromFilename(filename); ok {
+		return eye
+	}
+
 	parts := strings.Split(filename, "__")
 
 	if len(parts) < 2 {

@@ -10,6 +10,7 @@ export interface IntakeFileCheckpointState {
   examType?: string
   eye?: string
   processedAt?: string
+  extractedFields?: string[]
 }
 
 interface CheckpointApiFile {
@@ -19,6 +20,7 @@ interface CheckpointApiFile {
   examType?: unknown
   eye?: unknown
   processedAt?: unknown
+  extractedFields?: unknown
 }
 
 interface CheckpointApiResponse {
@@ -221,6 +223,13 @@ export async function inspectIntakeFileCheckpoints(
           typeof result.processedAt ===
           'string'
             ? result.processedAt
+            : undefined,
+        extractedFields:
+          Array.isArray(result.extractedFields)
+            ? result.extractedFields.filter(
+                (field): field is string =>
+                  typeof field === 'string',
+              )
             : undefined,
       }
     },

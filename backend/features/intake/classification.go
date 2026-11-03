@@ -8,6 +8,7 @@ import (
 	"image"
 	_ "image/jpeg"
 	_ "image/png"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -127,61 +128,60 @@ var canonicalTimestampPattern = regexp.MustCompile(`^\d{8}_\d{4,6}$`)
 func CanonicalClassificationFromFilename(
 	filename string,
 ) (string, string, bool) {
+	filename = filepath.Base(strings.TrimSpace(filename))
 	parts := strings.Split(filename, "__")
 
-	if len(parts) < 4 ||
-		!canonicalTimestampPattern.MatchString(
-			strings.TrimSuffix(
-				parts[len(parts)-1],
-				fileExtension(filename),
-			),
-		) {
+	if len(parts) >= 4 && canonicalTimestampPattern.MatchString(
+		strings.TrimSuffix(parts[len(parts)-1], fileExtension(filename)),
+	) && strings.TrimSpace(strings.Join(parts[2:len(parts)-1], "__")) != "" {
+		if examType, ok := examTypeFromFilenameLabel(parts[0]); ok {
+			if eye, ok := normalizeFilenameEye(parts[1]); ok {
+				return examType, eye, true
+			}
+		}
+	}
+
+	spaced := regexp.MustCompile(`(?i)^([[:alpha:]_]+)[[:space:]]+(OD|OE|OS|AO)(?:[[:space:]]|$)`).FindStringSubmatch(
+		strings.TrimSuffix(filename, fileExtension(filename)),
+	)
+	if len(spaced) != 3 {
 		return "", "", false
 	}
 
-	eye :=
-		strings.ToUpper(
-			strings.TrimSpace(parts[1]),
-		)
-
-	if !validEye(eye) {
+	examType, ok := examTypeFromFilenameLabel(spaced[1])
+	if !ok {
 		return "", "", false
 	}
+	eye, ok := normalizeFilenameEye(spaced[2])
+	return examType, eye, ok
+}
 
-	var examType string
-
-	switch strings.ToUpper(
-		strings.TrimSpace(parts[0]),
-	) {
+func examTypeFromFilenameLabel(label string) (string, bool) {
+	switch strings.ToUpper(strings.TrimSpace(label)) {
 	case "PENTACAM":
-		examType = "pentacam_corneal_tomography"
-
-	case "EYESUITE":
-		examType = "iol_calculation"
-
-	case "MICROSCOPIA_ESPECULAR":
-		examType = "specular_microscopy"
-
+		return "pentacam_corneal_tomography", true
+	case "EYESUITE", "BIOMETRIA", "AUTO":
+		if strings.EqualFold(strings.TrimSpace(label), "AUTO") {
+			return "refractometry", true
+		}
+		return "iol_calculation", true
+	case "MICROSCOPIA_ESPECULAR", "MICROSCOPIA":
+		return "specular_microscopy", true
 	case "RETINA":
-		examType = "fundus_retinography"
-
+		return "fundus_retinography", true
 	case "OCT":
-		examType = "oct_retina"
-
+		return "oct_retina", true
 	default:
-		return "", "", false
+		return "", false
 	}
+}
 
-	if strings.TrimSpace(
-		strings.Join(
-			parts[2:len(parts)-1],
-			"__",
-		),
-	) == "" {
-		return "", "", false
+func normalizeFilenameEye(value string) (string, bool) {
+	eye := strings.ToUpper(strings.TrimSpace(value))
+	if eye == "OE" {
+		eye = "OS"
 	}
-
-	return examType, eye, true
+	return eye, validEye(eye)
 }
 
 func ParseClassifications(
@@ -271,6 +271,9 @@ func ExamTypeFromContract(
 
 	case "iol_calculation":
 		return "EYESUITE", true
+
+	case "refractometry":
+		return "AUTO", true
 
 	case "specular_microscopy":
 		return "MICROSCOPIA_ESPECULAR", true

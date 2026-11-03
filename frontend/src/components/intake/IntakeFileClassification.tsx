@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
 import { Eye, FileSearch, LoaderCircle, TriangleAlert, X } from 'lucide-react'
+import { classifyFilename } from './filenameClassification'
 
 export type IntakeExamType =
   | 'pentacam_corneal_tomography'
   | 'iol_calculation'
+  | 'refractometry'
   | 'specular_microscopy'
   | 'fundus_retinography'
   | 'oct_retina'
@@ -30,6 +32,7 @@ interface Inspection {
 const labels: Record<IntakeExamType, string> = {
   pentacam_corneal_tomography: 'Pentacam',
   iol_calculation: 'Biometria / EyeSuite',
+  refractometry: 'Auto-refrator / refratometria',
   specular_microscopy: 'Microscopia especular',
   fundus_retinography: 'Retinografia',
   oct_retina: 'OCT de retina',
@@ -100,10 +103,11 @@ export default function IntakeFileClassification({
             return
           }
           const suggestion = item.candidates.find((candidate) => candidate.score > 0)
+          const filenameClassification = classifyFilename(item.filename)
           next[item.sha256] = {
             sha256: item.sha256,
-            examType: item.recognizedExamType || suggestion?.examType || '',
-            eye: item.recognizedEye || '',
+            examType: item.recognizedExamType || filenameClassification?.examType || suggestion?.examType || '',
+            eye: item.recognizedEye || filenameClassification?.eye || '',
           }
         })
         onChange(next)
@@ -125,15 +129,19 @@ export default function IntakeFileClassification({
     { key: 'AO', label: 'Ambos os olhos', code: 'AO', detail: 'Exames que se aplicam aos dois olhos' },
   ] as const
 
-  const renderFile = (item: Inspection) => {
+  const renderFile = (item: Inspection, fillContainer = false) => {
     const classification = value[item.sha256] ?? { sha256: item.sha256, examType: '', eye: '' }
     const suggestion = item.candidates.find((candidate) => candidate.score > 0)
+    const filenameClassification = classifyFilename(item.filename)
     const selectedFile = files.find((file) => file.name === item.filename)
-    const recognized = Boolean(item.recognizedExamType && item.recognizedEye)
+    const recognized = Boolean((item.recognizedExamType && item.recognizedEye) || filenameClassification)
     const previewOpen = !collapsedPreviewFiles.has(item.filename)
     return (
       <div
-        className="relative grid w-fit max-w-full cursor-grab grid-cols-[auto_minmax(0,1fr)] gap-3 border border-transparent px-3 py-3 transition-[background,border-color,box-shadow,transform] duration-150 hover:-translate-y-px hover:border-primary hover:bg-primary-soft/20 hover:shadow-sm active:cursor-grabbing sm:grid-cols-[auto_minmax(0,auto)_220px] sm:items-center"
+        className={[
+          'relative grid max-w-full cursor-grab grid-cols-[auto_minmax(0,1fr)] gap-3 border border-transparent px-3 py-3 transition-[background,border-color,box-shadow,transform] duration-150 hover:-translate-y-px hover:border-primary hover:bg-primary-soft/20 hover:shadow-sm active:cursor-grabbing sm:grid-cols-[auto_minmax(0,auto)_220px] sm:items-center',
+          fillContainer ? 'w-full' : 'w-fit',
+        ].join(' ')}
         draggable
         key={item.sha256}
         onDragEnd={() => setDraggedSha(null)}
@@ -234,9 +242,13 @@ export default function IntakeFileClassification({
             const eye = value[item.sha256]?.eye ?? ''
             return eye === group.code || (eye === '' && group.code === 'OD')
           })
+          const fullWidth = group.code === 'AO' && groupItems.length >= 2
           return (
             <section
-              className="min-h-[220px] overflow-hidden rounded-xl border border-border bg-surface/40 transition-colors"
+              className={[
+                'min-h-[220px] overflow-hidden rounded-xl border border-border bg-surface/40 transition-colors',
+                fullWidth ? 'lg:col-span-2' : '',
+              ].join(' ')}
               key={group.key}
               onDragOver={(event) => event.preventDefault()}
               onDrop={(event) => {
@@ -254,8 +266,8 @@ export default function IntakeFileClassification({
                 </div>
                 <span className="rounded-full border border-border bg-surface px-2 py-1 text-[10px] font-bold text-text-secondary">{groupItems.length}</span>
               </div>
-              <div className="min-h-[165px] divide-y divide-border">
-                {groupItems.length ? groupItems.map((item) => renderFile(item)) : (
+              <div className={fullWidth ? 'grid gap-3 p-3 sm:grid-cols-2' : 'min-h-[165px] divide-y divide-border'}>
+                {groupItems.length ? groupItems.map((item) => renderFile(item, fullWidth)) : (
                   <div className="grid min-h-[165px] place-items-center p-6 text-center text-xs text-text-muted">
                     Arraste um exame para cá
                   </div>

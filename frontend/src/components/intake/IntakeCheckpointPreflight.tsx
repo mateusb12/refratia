@@ -22,7 +22,9 @@ interface IntakeCheckpointPreflightProps {
   checking: boolean
   error: string
   forceReprocess: boolean
+  processFiles: Record<string, boolean>
   disabled?: boolean
+  onProcessFilesChange: (key: string, value: boolean) => void
   onForceReprocessChange: (
     value: boolean,
   ) => void
@@ -34,9 +36,9 @@ function statusMetadata(
   switch (status) {
     case 'processed':
       return {
-        label: 'OCR em cache',
+        label: 'Já processado · dados encontrados',
         detail:
-          'Resultado de OCR disponível em checkpoint. Será reutilizado sem novo OCR; isso não significa que o exame já foi confirmado no prontuário.',
+          'Dados extraídos anteriormente. Este arquivo será reutilizado sem novo OCR; isso não significa que o exame já foi confirmado no prontuário.',
         circle:
           'border-success/40 bg-success-soft text-success',
         badge:
@@ -46,9 +48,9 @@ function statusMetadata(
 
     case 'saved':
       return {
-        label: 'Salvo · incompleto',
+        label: 'Processar novamente',
         detail:
-          'O arquivo original foi preservado, mas o processamento anterior não terminou. Será processado novamente.',
+          'O arquivo original foi preservado, mas não há um resultado completo anterior. Será processado novamente.',
         circle:
           'border-warning/40 bg-warning-soft text-warning',
         badge:
@@ -76,8 +78,10 @@ export default function IntakeCheckpointPreflight({
   checking,
   error,
   forceReprocess,
+  processFiles,
   disabled = false,
   onForceReprocessChange,
+  onProcessFilesChange,
 }: IntakeCheckpointPreflightProps) {
   const values =
     Object.values(states)
@@ -137,13 +141,13 @@ export default function IntakeCheckpointPreflight({
           <div className="flex flex-wrap gap-1.5">
             {processedCount > 0 && (
               <span className="rounded-full border border-success/30 bg-success-soft px-2.5 py-1 text-[10px] font-bold text-success">
-                {processedCount} em cache
+                {processedCount} já processado(s)
               </span>
             )}
 
             {savedCount > 0 && (
               <span className="rounded-full border border-warning/30 bg-warning-soft px-2.5 py-1 text-[10px] font-bold text-warning">
-                {savedCount} interrompido(s)
+                {savedCount} para processar
               </span>
             )}
 
@@ -234,6 +238,14 @@ export default function IntakeCheckpointPreflight({
               state.status,
             )
 
+          const checkpointKey =
+            intakeFileCheckpointKey(file)
+
+          const processChecked =
+            forceReprocess ||
+            (processFiles[checkpointKey] ??
+              state.status !== 'processed')
+
           const StatusIcon =
             metadata.Icon
 
@@ -242,6 +254,10 @@ export default function IntakeCheckpointPreflight({
               'processed' &&
             forceReprocess
               ? 'Reprocessamento forçado nesta execução. O resultado salvo não será reutilizado.'
+              : state.status === 'processed' &&
+                state.extractedFields &&
+                state.extractedFields.length > 0
+                ? `Campos extraídos (${state.extractedFields.length}): ${state.extractedFields.join(', ')}`
               : metadata.detail
 
           return (
@@ -287,18 +303,45 @@ export default function IntakeCheckpointPreflight({
                     </span>
                   </div>
 
-                  <span
+                  <button
+                    aria-checked={processChecked}
+                    aria-label={
+                      processChecked
+                        ? `Processar ${file.name}`
+                        : `Não processar ${file.name}`
+                    }
                     className={[
-                      'flex-none rounded-full border px-2.5 py-1 text-[10px] font-bold',
-                      metadata.badge,
+                      'relative ml-4 h-6 w-11 flex-none rounded-full border p-0.5 transition-colors',
+                      processChecked
+                        ? 'border-primary/70 bg-primary'
+                        : 'border-border bg-surface',
+                      disabled ||
+                      forceReprocess
+                        ? 'cursor-not-allowed opacity-50'
+                        : 'cursor-pointer',
                     ].join(' ')}
+                    disabled={
+                      disabled ||
+                      forceReprocess
+                    }
+                    onClick={() =>
+                      onProcessFilesChange(
+                        checkpointKey,
+                        !processChecked,
+                      )
+                    }
+                    role="switch"
+                    type="button"
                   >
-                    {state.status ===
-                      'processed' &&
-                    forceReprocess
-                      ? 'Reprocessar'
-                      : metadata.label}
-                  </span>
+                    <span
+                      className={[
+                        'block h-4 w-4 rounded-full bg-white shadow-sm transition-transform',
+                        processChecked
+                          ? 'translate-x-5'
+                          : 'translate-x-0',
+                      ].join(' ')}
+                    />
+                  </button>
                 </div>
 
                 <p className="mb-0 mt-1.5 text-[11px] leading-relaxed text-text-secondary">

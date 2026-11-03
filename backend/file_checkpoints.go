@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -28,7 +29,10 @@ type fileCheckpointProcessingRun struct {
 	StorageClient fileRepository
 	BucketName    string
 	Force         bool
-	StorageError  error
+	// Quando informado, os SHA-256 presentes aqui serão processados novamente.
+	// Nil preserva o comportamento padrão de reutilizar checkpoints válidos.
+	ProcessFiles map[string]bool
+	StorageError error
 }
 
 type fileCheckpointProcessingRunKey struct{}
@@ -53,12 +57,50 @@ type fileCheckpointLookupRequest struct {
 }
 
 type fileCheckpointLookupResult struct {
-	Filename    string `json:"filename"`
-	SHA256      string `json:"sha256"`
-	Status      string `json:"status"`
-	ExamType    string `json:"examType,omitempty"`
-	Eye         string `json:"eye,omitempty"`
-	ProcessedAt string `json:"processedAt,omitempty"`
+	Filename        string   `json:"filename"`
+	SHA256          string   `json:"sha256"`
+	Status          string   `json:"status"`
+	ExamType        string   `json:"examType,omitempty"`
+	Eye             string   `json:"eye,omitempty"`
+	ProcessedAt     string   `json:"processedAt,omitempty"`
+	ExtractedFields []string `json:"extractedFields,omitempty"`
+}
+
+func checkpointExtractedFields(
+	analysis map[string]any,
+	examType string,
+) []string {
+	exams, _ := analysis["exams"].(map[string]any)
+	exam, _ := exams[checkpointExamKey(examType)].(map[string]any)
+	if exam == nil {
+		return nil
+	}
+
+	fields := make([]string, 0)
+	var walk func(map[string]any, []string)
+	walk = func(values map[string]any, path []string) {
+		for key, value := range values {
+			if key == "source" || value == nil {
+				continue
+			}
+
+			childPath := append(append([]string{}, path...), key)
+			switch child := value.(type) {
+			case map[string]any:
+				walk(child, childPath)
+			case string:
+				if strings.TrimSpace(child) != "" {
+					fields = append(fields, strings.Join(childPath, "."))
+				}
+			case float64, float32, int, int64, json.Number, bool:
+				fields = append(fields, strings.Join(childPath, "."))
+			}
+		}
+	}
+
+	walk(exam, nil)
+	sort.Strings(fields)
+	return fields
 }
 
 func withFileCheckpointStorage(
@@ -66,6 +108,7 @@ func withFileCheckpointStorage(
 	storageClientInstance fileRepository,
 	bucketName string,
 	forceReprocess bool,
+	processFiles map[string]bool,
 ) context.Context {
 	return context.WithValue(
 		processingContext,
@@ -74,6 +117,7 @@ func withFileCheckpointStorage(
 			StorageClient: storageClientInstance,
 			BucketName:    bucketName,
 			Force:         forceReprocess,
+			ProcessFiles:  processFiles,
 		},
 	)
 }
@@ -1127,7 +1171,12 @@ func prepareFileForIdempotentProcessing(
 			nil
 	}
 
-	if !checkpointRun.Force {
+	shouldReuse := !checkpointRun.Force
+	if shouldReuse && checkpointRun.ProcessFiles != nil {
+		shouldReuse = !checkpointRun.ProcessFiles[file.Metadata.SHA256]
+	}
+
+	if shouldReuse {
 		checkpoint,
 			found,
 			loadError :=
@@ -1192,6 +1241,12 @@ func prepareFileForIdempotentProcessing(
 
 			return true,
 				nil
+		}
+
+		// Com uma seleção explícita, o toggle desligado também permite
+		// deixar de fora um arquivo sem checkpoint anterior.
+		if checkpointRun.ProcessFiles != nil {
+			return true, nil
 		}
 	}
 
@@ -1405,14 +1460,22 @@ func checkFileCheckpoints(
 		}
 
 		if processed {
-			result.Status =
-				"processed"
-
 			result.ProcessedAt =
 				checkpoint.ProcessedAt.
 					Format(
 						time.RFC3339,
 					)
+			result.ExtractedFields = checkpointExtractedFields(
+				checkpoint.Analysis,
+				result.ExamType,
+			)
+
+			if len(result.ExtractedFields) > 0 {
+				result.Status = "processed"
+			} else {
+				// Um checkpoint sem campos não é um resultado concluído.
+				result.Status = "saved"
+			}
 
 			results = append(
 				results,

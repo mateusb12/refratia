@@ -37,6 +37,7 @@ import IntakeProcessingProgress from './components/intake/IntakeProcessingProgre
 import IntakeCheckpointPreflight from './components/intake/IntakeCheckpointPreflight'
 import IntakeFileClassification, { type IntakeClassification } from './components/intake/IntakeFileClassification'
 import {
+  intakeFileCheckpointKey,
   inspectIntakeFileCheckpoints,
   type IntakeFileCheckpointState,
 } from './components/intake/intakeCheckpoint'
@@ -846,11 +847,13 @@ function MetricCard({ label, value, detail, tone }: Metric) {
 function ProcessSteps({
   current,
   reviewed,
+  reachedStep = current,
   maxStep = steps.length,
   onStepChange,
 }: {
   current: number
   reviewed: boolean
+  reachedStep?: number
   maxStep?: number
   onStepChange?: (step: number) => void
 }) {
@@ -858,7 +861,7 @@ function ProcessSteps({
     <ol className="mt-6 grid list-none grid-cols-5 gap-2 p-0 max-[1100px]:grid-cols-2 max-[580px]:grid-cols-1" aria-label="Etapas da análise">
       {steps.map((step, index) => {
         const number = index + 1
-        const completed = current > number || (number === steps.length && reviewed)
+        const completed = (number !== current && number <= reachedStep) || (number === steps.length && reviewed)
         const active = current === number && !completed
         const available = number <= maxStep
         return (
@@ -2135,6 +2138,7 @@ function App() {
   const [selectedCase, setSelectedCase] = useState<CaseKind | null>(reportId === '1' ? 'real' : null)
   const [processingStep, setProcessingStep] = useState(reportId === '1' ? steps.length : 0)
   const [intakeWorkflowStep, setIntakeWorkflowStep] = useState(1)
+  const [intakeReachedStep, setIntakeReachedStep] = useState(1)
   const [expandedDocument, setExpandedDocument] = useState<string | null>(null)
   const [traceData, setTraceData] = useState<ExtractedDatum | null>(null)
   const [isReviewed, setIsReviewed] = useState(false)
@@ -2158,6 +2162,7 @@ function App() {
   >({})
   const [intakeCheckpointBusy, setIntakeCheckpointBusy] = useState(false)
   const [intakeCheckpointError, setIntakeCheckpointError] = useState('')
+  const [intakeProcessFiles, setIntakeProcessFiles] = useState<Record<string, boolean>>({})
   const [intakeForceReprocess, setIntakeForceReprocess] = useState(false)
   const intakeCheckpointRequestId = useRef(0)
   const [intakeElapsed, setIntakeElapsed] = useState(0)
@@ -2195,6 +2200,11 @@ function App() {
   const activeExtractedData = reportData ? getReportExtractedData(reportData) : extractedData
   const activeMetrics = reportData ? getReportMetrics(reportData, activeExtractedData) : metrics
   const activeDocuments = reportData ? getReportDocuments(reportData) : documents
+
+  function goToIntakeStep(step: number) {
+    setIntakeWorkflowStep(step)
+    setIntakeReachedStep((current) => Math.max(current, step))
+  }
 
   useEffect(() => {
     if (!intakeBusy) return
@@ -2249,6 +2259,7 @@ function App() {
       requestId
 
     setIntakeForceReprocess(false)
+    setIntakeProcessFiles({})
     setIntakeCheckpointError('')
 
     if (!intakeFiles.length || !intakeClassificationComplete) {
@@ -2282,6 +2293,14 @@ function App() {
         }
 
         setIntakeCheckpointStates(states)
+        setIntakeProcessFiles(
+          Object.fromEntries(
+            Object.entries(states).map(([key, state]) => [
+              key,
+              state.status !== 'processed',
+            ]),
+          ),
+        )
       })
       .catch((checkpointError) => {
         if (
@@ -2380,7 +2399,7 @@ function App() {
     intakeAbortController.current = controller
 
     setIntakeBusy(true)
-    setIntakeWorkflowStep(4)
+    goToIntakeStep(4)
     setIntakeProgress(1)
     setIntakeProgressStage('upload')
     setIntakeProgressMessage('Enviando documentos')
@@ -2396,7 +2415,15 @@ function App() {
     try {
       const body = new FormData()
       intakeFiles.forEach((file) => body.append('files', file))
-      body.append('classifications', JSON.stringify(Object.values(intakeClassifications).filter((item) => item.examType)))
+      const classifications = Object.values(intakeClassifications)
+        .filter((item) => item.examType && item.eye)
+      body.append('classifications', JSON.stringify(classifications))
+
+      const processFileSHA256 = intakeFiles
+        .filter((file) => intakeProcessFiles[intakeFileCheckpointKey(file)])
+        .map((file) => intakeCheckpointStates[intakeFileCheckpointKey(file)]?.sha256)
+        .filter((sha256): sha256 is string => Boolean(sha256))
+      body.append('processFiles', JSON.stringify(processFileSHA256))
 
       const response = await fetch(
         `${API_URL}/api/intakes/analyze?stream=1${intakeForceReprocess ? '&force=1' : ''}`,
@@ -2636,7 +2663,7 @@ function App() {
   }
 
   function replaceIntakeFiles(files: File[]) {
-    if (files.length > 0) setIntakeWorkflowStep(2)
+    if (files.length > 0) goToIntakeStep(2)
     setIntakeClassifications({})
     setIntakeFiles((current) => {
       const merged = [...current]
@@ -2690,6 +2717,7 @@ function App() {
       setSavedCases((cases) => [newCase, ...cases.filter((item) => item.caseId !== newCase.caseId)])
       setIntakeFiles([])
       setIntakeClassifications({})
+      setIntakeReachedStep(1)
       setIntakeLocalPreviews((current) => {
         Object.values(current).forEach((url) => URL.revokeObjectURL(url))
         return {}
@@ -2717,6 +2745,7 @@ function App() {
     if (await deleteDraft(intakePreview)) {
       setIntakeFiles([])
       setIntakeClassifications({})
+      setIntakeReachedStep(1)
       setIntakeLocalPreviews((current) => {
         Object.values(current).forEach((url) => URL.revokeObjectURL(url))
         return {}
@@ -3118,8 +3147,13 @@ function App() {
                         : intakeFiles.length > 0
                           ? 3
                           : 1}
+                    reachedStep={reportData || isRealCase
+                      ? steps.length
+                      : selectedCase === 'demo'
+                        ? workflowStep
+                        : intakeReachedStep}
                     onStepChange={(step) => {
-                      if (!reportData && !isRealCase) setIntakeWorkflowStep(step)
+                      if (!reportData && !isRealCase) goToIntakeStep(step)
                     }}
                     reviewed={isReviewed}
                   />
@@ -3178,7 +3212,7 @@ function App() {
                           }
                           onClick={() => {
                             if (workflowStep < 3) {
-                              setIntakeWorkflowStep(3)
+                              goToIntakeStep(3)
                               return
                             }
                             void analyzeIntake()
@@ -3225,7 +3259,14 @@ function App() {
                         error={intakeCheckpointError}
                         files={intakeFiles}
                         forceReprocess={intakeForceReprocess}
+                        onProcessFilesChange={(key, value) => {
+                          setIntakeProcessFiles((current) => ({
+                            ...current,
+                            [key]: value,
+                          }))
+                        }}
                         onForceReprocessChange={setIntakeForceReprocess}
+                        processFiles={intakeProcessFiles}
                         states={intakeCheckpointStates}
                       />
                     )}
@@ -3377,6 +3418,29 @@ function App() {
                   </StatusBadge>
                 </div>
                 <div className="mt-5 grid gap-4">
+                  {savedCases.map((item) => (
+                    <button
+                      aria-pressed={storedCase?.caseId === item.caseId}
+                      className={clsx(
+                        'grid grid-cols-[auto_minmax(0,1fr)_auto] items-center rounded-xl border bg-surface-muted p-[18px] text-left hover:border-primary hover:bg-primary-soft/80',
+                        storedCase?.caseId === item.caseId ? 'border-primary ring-2 ring-primary/15' : 'border-border-strong',
+                      )}
+                      key={item.caseId}
+                      onClick={() => void openSavedCase(item.caseId)}
+                      type="button"
+                    >
+                      <span className="grid h-[45px] w-[45px] place-items-center rounded-xl bg-success-soft text-success">
+                        <Database size={22} />
+                      </span>
+                      <span className="mx-3.5 min-w-0">
+                        <strong className="block truncate text-sm">{item.patientName}</strong>
+                        <small className="mt-1 block text-xs leading-relaxed text-text-muted">
+                          Caso salvo · {formatCaseSavedTime(item.caseId) ?? item.caseId}
+                        </small>
+                      </span>
+                      <StatusBadge tone="success">Abrir relatório</StatusBadge>
+                    </button>
+                  ))}
                   {showDemoCases && (
                     <button
                       aria-pressed={selectedCase === 'demo'}

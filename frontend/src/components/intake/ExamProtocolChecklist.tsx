@@ -1,3 +1,5 @@
+import { classifyFilename } from './filenameClassification'
+
 interface ExamProtocolChecklistProps {
   files: File[]
 }
@@ -48,26 +50,19 @@ const optionalExams: ExamDefinition[] = [
 function parseFilename(
   name: string,
 ): Omit<ParsedExamFile, 'file'> | null {
-  const stem = name.replace(/\.[^.]+$/, '')
-  const parts = stem.split('__')
+  const classification = classifyFilename(name)
+  if (!classification) return null
 
-  if (parts.length < 2) return null
-
-  const type = parts[0].trim().toUpperCase()
-  const eye = parts[1].trim().toUpperCase()
-
-  if (
-    eye !== 'OD' &&
-    eye !== 'OS' &&
-    eye !== 'AO'
-  ) {
-    return null
+  const typeByExam: Record<string, string> = {
+    pentacam_corneal_tomography: 'PENTACAM',
+    iol_calculation: 'EYESUITE',
+    refractometry: 'AUTO',
+    specular_microscopy: 'MICROSCOPIA_ESPECULAR',
+    fundus_retinography: 'RETINA',
+    oct_retina: 'OCT',
   }
 
-  return {
-    type,
-    eye,
-  }
+  return { type: typeByExam[classification.examType], eye: classification.eye }
 }
 
 function fileDetails(file: File) {

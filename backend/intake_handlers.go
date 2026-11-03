@@ -107,13 +107,36 @@ func analyzeIntakeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var processFiles map[string]bool
+	if rawProcess := r.MultipartForm.Value["processFiles"]; len(rawProcess) > 0 {
+		var sha256Values []string
+		if err := json.Unmarshal([]byte(rawProcess[0]), &sha256Values); err != nil {
+			writeError(w, http.StatusBadRequest, "seleção de processamento inválida")
+			return
+		}
+
+		processFiles = make(map[string]bool, len(sha256Values))
+		for _, sha256Value := range sha256Values {
+			processFiles[sha256Value] = true
+		}
+	}
+
 	for index := range files {
 		classification, ok := classifications[files[index].Metadata.SHA256]
-		if !ok {
+		if ok {
+			files[index].Metadata.ExamType = classification.ExamType
+			files[index].Metadata.Eye = classification.Eye
 			continue
 		}
-		files[index].Metadata.ExamType = classification.ExamType
-		files[index].Metadata.Eye = classification.Eye
+
+		// O filename é um fallback seguro para o novo padrão de nomenclatura.
+		// Uma classificação manual enviada pelo frontend sempre tem prioridade.
+		if examType, eye, filenameOK := intakefeature.CanonicalClassificationFromFilename(
+			files[index].Metadata.Filename,
+		); filenameOK {
+			files[index].Metadata.ExamType = examType
+			files[index].Metadata.Eye = eye
+		}
 	}
 
 	ctx := r.Context()
@@ -175,6 +198,7 @@ func analyzeIntakeHandler(w http.ResponseWriter, r *http.Request) {
 		client,
 		os.Getenv("BUCKET_NAME"),
 		r.URL.Query().Get("force") == "1",
+		processFiles,
 	)
 
 	progressutil.Report(
@@ -196,6 +220,11 @@ func analyzeIntakeHandler(w http.ResponseWriter, r *http.Request) {
 		)
 		return
 	}
+
+	// O preview também precisa saber qual exame/lateralidade cada arquivo
+	// alimentou. Antes isso só era feito na confirmação, fazendo a tela de
+	// debug exibir "sem campos" mesmo quando os valores estavam em analysis.exams.
+	classifySourceFilesFromExams(analysis)
 
 	progressutil.Report(
 		ctx,

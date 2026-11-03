@@ -34,6 +34,23 @@ func TestParseClassificationsNormalizesContractKeys(
 	}
 }
 
+func TestParseClassificationsAcceptsRefractometry(
+	t *testing.T,
+) {
+	classifications, err := ParseClassifications([]string{
+		`[{"sha256":"auto-file","examType":"refractometry","eye":"AO"}]`,
+	})
+
+	if err != nil {
+		t.Fatalf("unexpected refractometry classification error: %v", err)
+	}
+
+	classification := classifications["auto-file"]
+	if classification.ExamType != "AUTO" || classification.Eye != "AO" {
+		t.Fatalf("refractometry classification was not normalized: %+v", classification)
+	}
+}
+
 func TestParseClassificationsRejectsUnknownExamType(
 	t *testing.T,
 ) {
@@ -120,6 +137,25 @@ func TestCanonicalClassificationFromFilename(
 		t.Fatal(
 			"non-canonical filename was recognized",
 		)
+	}
+}
+
+func TestClassificationFromNewFilenameFormat(t *testing.T) {
+	tests := []struct {
+		name, examType, eye string
+	}{
+		{"PENTACAM OD MARIA GORETE.pdf", "pentacam_corneal_tomography", "OD"},
+		{"PENTACAM OE MARIA GORETE.pdf", "pentacam_corneal_tomography", "OS"},
+		{"BIOMETRIA AO MARIA GORETE.pdf", "iol_calculation", "AO"},
+		{"AUTO AO MARIA GORETE.pdf", "refractometry", "AO"},
+		{"MICROSCOPIA AO MARIA GORETE.jpeg", "specular_microscopy", "AO"},
+	}
+
+	for _, test := range tests {
+		examType, eye, ok := CanonicalClassificationFromFilename(test.name)
+		if !ok || examType != test.examType || eye != test.eye {
+			t.Fatalf("%q classified as %q/%q/%v", test.name, examType, eye, ok)
+		}
 	}
 }
 
