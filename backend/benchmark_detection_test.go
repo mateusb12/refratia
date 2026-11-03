@@ -28,6 +28,33 @@ func TestBenchmarkPentacamKeepsSixteenFields(t *testing.T) {
 	}
 }
 
+func TestBenchmarkFilenameUsesCanonicalClassification(t *testing.T) {
+	got, err := parseBenchmarkFilename("AUTO AO MARIA GORETE.pdf")
+	if err != nil {
+		t.Fatalf("expected new filename format to classify: %v", err)
+	}
+	if got.ExamType != "AUTO" || got.Eye != "AO" {
+		t.Fatalf("unexpected benchmark classification: %+v", got)
+	}
+}
+
+func TestBenchmarkRefractometryAOReportsEachEyeField(t *testing.T) {
+	fields, extracted := benchmarkRefractometryResult(map[string]any{
+		"eyes": map[string]any{
+			"OD": map[string]any{
+				"sphere_d": 1.0,
+				"axis_deg": 90.0,
+			},
+			"OS": map[string]any{
+				"cylinder_d": -0.5,
+			},
+		},
+	}, "AO")
+	if len(fields) != 6 || extracted != 3 {
+		t.Fatalf("expected 3/6 refractometry fields, got %d/%d", extracted, len(fields))
+	}
+}
+
 func TestBenchmarkMicroscopyFilenameDoesNotCountAsExtraction(t *testing.T) {
 	fields, extracted := benchmarkSpecularMicroscopyResult(map[string]any{}, "AO")
 

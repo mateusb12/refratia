@@ -53,13 +53,33 @@ function filenameMetadata(name: string) {
   const stem = name.replace(/\.[^.]+$/, '')
   const parts = stem.split('__')
 
-  if (parts.length < 3) {
-    return null
+  if (parts.length >= 3) {
+    return {
+      type: parts[0].toUpperCase(),
+      eye: parts[1].toUpperCase(),
+    }
+  }
+
+  const spaced = stem.toUpperCase().match(
+    /^(AUTO|BIOMETRIA|PENTACAM|RETINA|OCT|EYESUITE|MICROSCOPIA(?:\s+ESPECULAR)?)[\s_-]+(OD|OE|OS|AO)(?:\s|$)/,
+  )
+
+  if (!spaced) return null
+
+  const typeMap: Record<string, string> = {
+    AUTO: 'AUTO',
+    BIOMETRIA: 'EYESUITE',
+    PENTACAM: 'PENTACAM',
+    RETINA: 'RETINA',
+    OCT: 'OCT',
+    EYESUITE: 'EYESUITE',
+    MICROSCOPIA: 'MICROSCOPIA_ESPECULAR',
+    'MICROSCOPIA ESPECULAR': 'MICROSCOPIA_ESPECULAR',
   }
 
   return {
-    type: parts[0].toUpperCase(),
-    eye: parts[1].toUpperCase(),
+    type: typeMap[spaced[1]] ?? spaced[1],
+    eye: spaced[2] === 'OE' ? 'OS' : spaced[2],
   }
 }
 
