@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -23,6 +24,18 @@ type benchmarkField struct {
 	Label string `json:"label"`
 	Unit  string `json:"unit,omitempty"`
 	Found bool   `json:"found"`
+	Value string `json:"value,omitempty"`
+}
+
+func benchmarkValueText(value any) string {
+	switch typed := value.(type) {
+	case float64:
+		return strconv.FormatFloat(typed, 'f', -1, 64)
+	case float32:
+		return strconv.FormatFloat(float64(typed), 'f', -1, 32)
+	default:
+		return fmt.Sprint(value)
+	}
 }
 
 type benchmarkFieldsEvent struct {
@@ -129,7 +142,7 @@ func benchmarkRefractometryResult(
 		eyePayload, _ := exam["eyes"].(map[string]any)
 		currentEye, _ := eyePayload[eye].(map[string]any)
 		for _, spec := range refractometryBenchmarkFields {
-			_, found := benchmarkPathValue(currentEye, spec.path)
+			value, found := benchmarkPathValue(currentEye, spec.path)
 			if found {
 				extracted++
 			}
@@ -137,6 +150,12 @@ func benchmarkRefractometryResult(
 				Key:   spec.key + "_" + strings.ToLower(eye),
 				Label: spec.label + " · " + eye,
 				Found: found,
+				Value: func() string {
+					if !found {
+						return ""
+					}
+					return benchmarkValueText(value)
+				}(),
 			})
 		}
 	}
@@ -313,7 +332,7 @@ func benchmarkPentacamResult(
 	extracted := 0
 
 	for _, spec := range pentacamBenchmarkFields {
-		_, found := benchmarkPathValue(
+		value, found := benchmarkPathValue(
 			exam,
 			spec.Path,
 		)
@@ -328,6 +347,12 @@ func benchmarkPentacamResult(
 				Key:   spec.Key,
 				Label: spec.Label,
 				Found: found,
+				Value: func() string {
+					if !found {
+						return ""
+					}
+					return benchmarkValueText(value)
+				}(),
 			},
 		)
 	}
@@ -346,12 +371,18 @@ func benchmarkSpecularMicroscopyResult(exam map[string]any, expectedEye string) 
 	for _, eye := range eyes {
 		spec := specularMicroscopyBenchmarkFields[0]
 		path := append([]string{"eyes", eye}, spec.Path...)
-		_, found := benchmarkPathValue(exam, path)
+		value, found := benchmarkPathValue(exam, path)
 		fields = append(fields, benchmarkField{
 			Key:   spec.Key + "_" + strings.ToLower(eye),
 			Label: spec.Label + " · " + eye,
 			Unit:  spec.Unit,
 			Found: found,
+			Value: func() string {
+				if !found {
+					return ""
+				}
+				return benchmarkValueText(value)
+			}(),
 		})
 		if found {
 			extracted++
@@ -415,6 +446,7 @@ func benchmarkFlattenExtracted(
 				Key:   prefix,
 				Label: prefix,
 				Found: true,
+				Value: benchmarkValueText(value),
 			},
 		)
 	}

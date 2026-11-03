@@ -3,6 +3,7 @@ import {
   Check,
   FileSearch,
   LoaderCircle,
+  Trash2,
   UploadCloud,
   X,
 } from 'lucide-react'
@@ -14,6 +15,7 @@ interface BenchmarkField {
   label: string
   unit?: string
   found: boolean
+  value?: string
 }
 
 interface BenchmarkEvent {
@@ -128,6 +130,13 @@ export default function BenchmarkOcrPage() {
     setFile(selected)
     setExamType(meta.type)
     setEye(meta.eye)
+    resetRun()
+  }
+
+  function clearBenchmarkFile() {
+    setFile(null)
+    setExamType('')
+    setEye('')
     resetRun()
   }
 
@@ -400,21 +409,17 @@ export default function BenchmarkOcrPage() {
                 </div>
               </div>
 
-              <div className="flex gap-2">
-                <label className="cursor-pointer rounded-xl border border-border px-3 py-2 text-xs font-semibold text-text-secondary hover:border-border-strong">
-                  Trocar arquivo
-
-                  <input
-                    className="hidden"
-                    disabled={busy}
-                    onChange={(event) => {
-                      selectBenchmarkFile(
-                        event.target.files?.[0] ?? null,
-                      )
-                    }}
-                    type="file"
-                  />
-                </label>
+              <div className="flex items-center gap-2">
+                <button
+                  aria-label="Limpar arquivo selecionado"
+                  className="grid h-9 w-9 place-items-center rounded-xl border border-danger/30 text-danger transition hover:border-danger hover:bg-danger-soft disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={busy}
+                  onClick={clearBenchmarkFile}
+                  title="Limpar arquivo"
+                  type="button"
+                >
+                  <Trash2 size={16} />
+                </button>
 
                 <button
                   className="rounded-xl border-0 bg-primary px-4 py-2 text-xs font-bold text-white disabled:opacity-50"
@@ -548,6 +553,11 @@ export default function BenchmarkOcrPage() {
 
                         <span className="min-w-0 text-sm font-medium text-text-primary">
                           <span className="block">{field.label}</span>
+                          {field.found && field.value && (
+                            <strong className="mt-1 block text-sm text-primary">
+                              {field.value}
+                            </strong>
+                          )}
                           {field.unit && <span className="mt-1 block text-xs text-text-muted">{field.unit}</span>}
                           {!field.found && <span className="mt-1 block text-xs text-danger">Não extraído</span>}
                         </span>
