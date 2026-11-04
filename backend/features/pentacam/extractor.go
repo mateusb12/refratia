@@ -27,7 +27,7 @@ func ExtractPDF(ctx context.Context, data []byte) (map[string]any, error) {
 		"Preparando páginas do Pentacam",
 	)
 
-	renderPages := []int{4, 6, 7, 8, 9}
+	renderPages := []int{4, 8, 9, 10, 11, 12}
 
 	for index, page := range renderPages {
 		progressutil.Report(
@@ -106,8 +106,8 @@ func ExtractPDF(ctx context.Context, data []byte) (map[string]any, error) {
 		"Lendo paquimetria",
 	)
 
-	// Página 6 — paquimetria.
-	_ = read(6, referenceCrop{X: 740, Y: 1880, W: 400, H: 150}, []pentacamFocusedField{
+	// Página 8 — paquimetria.
+	_ = read(8, referenceCrop{X: 740, Y: 1880, W: 400, H: 150}, []pentacamFocusedField{
 		{"thinnest_um", `\bthinnest\W+pachy\b`, false},
 	})
 
@@ -118,10 +118,10 @@ func ExtractPDF(ctx context.Context, data []byte) (map[string]any, error) {
 		"Lendo índices topométricos",
 	)
 
-	// Página 6 — índices topométricos.
+	// Página 9 — índices topométricos.
 	indexVariants, _ := focusedOCRVariants(
 		ctx,
-		pages[6],
+		pages[9],
 		referenceCrop{X: 730, Y: 2160, W: 450, H: 330},
 	)
 
@@ -129,6 +129,7 @@ func ExtractPDF(ctx context.Context, data []byte) (map[string]any, error) {
 		{"isv", `\b(?:isv|15v)\b`, false},
 		{"iva", `\biva\b`, true},
 		{"iha", `\biha\b`, true},
+		{"ihd", `\bihd\b`, true},
 		{"ki", `\bk[i1l]\b`, true},
 		{"cki", `\bcki\b`, true},
 	}
@@ -153,8 +154,8 @@ func ExtractPDF(ctx context.Context, data []byte) (map[string]any, error) {
 		"Lendo BAD-D",
 	)
 
-	// Página 7 — BAD-D.
-	_ = read(7, referenceCrop{X: 1600, Y: 2110, W: 330, H: 130}, []pentacamFocusedField{
+	// Página 11 — BAD-D.
+	_ = read(11, referenceCrop{X: 1600, Y: 2110, W: 330, H: 130}, []pentacamFocusedField{
 		{"bad_d", `\bbad\W*d`, true},
 	})
 
@@ -165,8 +166,8 @@ func ExtractPDF(ctx context.Context, data []byte) (map[string]any, error) {
 		"Lendo Z40 6 mm",
 	)
 
-	// Página 7 — Z40 6 mm.
-	_ = read(7, referenceCrop{X: 1970, Y: 2050, W: 460, H: 150}, []pentacamFocusedField{
+	// Página 10 — Z40 6 mm.
+	_ = read(10, referenceCrop{X: 1970, Y: 2050, W: 460, H: 150}, []pentacamFocusedField{
 		{"z40_6mm_um", `\bz40\b`, true},
 	})
 
@@ -177,8 +178,8 @@ func ExtractPDF(ctx context.Context, data []byte) (map[string]any, error) {
 		"Lendo profundidade da câmara anterior",
 	)
 
-	// Página 7 — profundidade da câmara anterior INTERNA.
-	_ = read(7, referenceCrop{X: 1990, Y: 2370, W: 440, H: 180}, []pentacamFocusedField{
+	// Página 10 — profundidade da câmara anterior INTERNA.
+	_ = read(10, referenceCrop{X: 1990, Y: 2370, W: 440, H: 180}, []pentacamFocusedField{
 		{
 			"acd_internal_mm",
 			`(?:prof|pot)\w*\W*cam\w*\W*ant\w*\W*\(?int`,
@@ -193,8 +194,8 @@ func ExtractPDF(ctx context.Context, data []byte) (map[string]any, error) {
 		"Lendo ARTmax",
 	)
 
-	// Página 8 — ARTmax.
-	_ = read(8, referenceCrop{X: 1490, Y: 1420, W: 300, H: 150}, []pentacamFocusedField{
+	// Página 11 — ARTmax.
+	_ = read(11, referenceCrop{X: 1490, Y: 1420, W: 300, H: 150}, []pentacamFocusedField{
 		{"art_max", `\bartmax\b`, false},
 	})
 
@@ -205,8 +206,8 @@ func ExtractPDF(ctx context.Context, data []byte) (map[string]any, error) {
 		"Lendo Z31 coma 5 mm",
 	)
 
-	// Página 9 — Z31 da coluna 5 mm.
-	_ = read(9, referenceCrop{X: 970, Y: 1490, W: 290, H: 180}, []pentacamFocusedField{
+	// Página 12 — Z31 da coluna 5 mm.
+	_ = read(12, referenceCrop{X: 970, Y: 1490, W: 290, H: 180}, []pentacamFocusedField{
 		{"z31_5mm_um", `\bz31\W*\(?coma\w*\)?`, true},
 	})
 
@@ -313,6 +314,7 @@ func ExtractPDF(ctx context.Context, data []byte) (map[string]any, error) {
 			"isv": values["isv"],
 			"iva": values["iva"],
 			"iha": values["iha"],
+			"ihd": values["ihd"],
 			"ki":  values["ki"],
 			"cki": values["cki"],
 			"tkc": values["tkc"],

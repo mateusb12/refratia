@@ -1,12 +1,14 @@
 import { useState } from 'react'
 import {
   Check,
+  ChevronDown,
   FileSearch,
   LoaderCircle,
   Trash2,
   UploadCloud,
   X,
 } from 'lucide-react'
+import { examContracts } from '../../contracts/exam-contracts'
 
 const API_URL = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '')
 
@@ -103,6 +105,7 @@ export default function BenchmarkOcrPage() {
   const [supported, setSupported] = useState<boolean | undefined>()
 
   const [error, setError] = useState('')
+  const [showExamDetails, setShowExamDetails] = useState(false)
 
   function resetRun() {
     setProgress(0)
@@ -590,6 +593,72 @@ export default function BenchmarkOcrPage() {
           </>
         )}
       </section>
+      <footer className="rounded-2xl border border-border bg-surface p-6 shadow-sm">
+        <button
+          aria-controls="benchmark-exam-details"
+          aria-expanded={showExamDetails}
+          className="flex w-full items-center justify-between gap-4 text-left"
+          onClick={() => setShowExamDetails((current) => !current)}
+          type="button"
+        >
+          <span>
+            <span className="block text-xs font-bold tracking-[0.13em] text-primary">
+              REFERÊNCIA DO BENCHMARK
+            </span>
+
+            <span className="mt-1 block font-display text-lg text-text-primary">
+              Exames e campos procurados
+            </span>
+
+            <span className="mt-1 block text-sm font-normal text-text-secondary">
+              Consulte quais informações são avaliadas em cada tipo de exame.
+            </span>
+          </span>
+
+          <ChevronDown
+            aria-hidden="true"
+            className={`flex-none text-primary transition-transform ${showExamDetails ? 'rotate-180' : ''}`}
+            size={20}
+          />
+        </button>
+
+        {showExamDetails && (
+          <div
+            className="mt-6 border-t border-border pt-5"
+            id="benchmark-exam-details"
+          >
+            <p className="mb-4 text-sm text-text-secondary">
+              O resultado mede apenas os campos listados abaixo. Um campo é
+              considerado extraído quando o parser encontra um valor válido
+              para ele no documento.
+            </p>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              {Object.values(examContracts).map((contract) => (
+                <article
+                  className="rounded-xl border border-border bg-surface-muted p-4"
+                  key={contract.key}
+                >
+                  <h3 className="m-0 text-sm font-bold text-text-primary">
+                    {contract.label}
+                  </h3>
+
+                  <ul className="mt-3 flex flex-wrap gap-2 p-0">
+                    {contract.fields.map((field) => (
+                      <li
+                        className="list-none rounded-lg border border-border bg-surface px-2.5 py-1.5 text-xs text-text-secondary"
+                        key={field.key}
+                      >
+                        {field.label}
+                      </li>
+                    ))}
+                  </ul>
+                </article>
+              ))}
+            </div>
+          </div>
+        )}
+      </footer>
     </div>
   )
 }

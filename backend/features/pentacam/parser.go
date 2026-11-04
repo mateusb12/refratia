@@ -73,6 +73,7 @@ func parsePentacamPageTexts(pages map[int]string) (map[string]any, error) {
 	requireNumber("isv", p6, `\bisv\b`)
 	requireDecimal("iva", p6, `\biva\b`)
 	requireDecimal("iha", p6, `\biha\b`)
+	requireDecimal("ihd", p6, `\bihd\b`)
 	requireDecimal("ki", p6, `\bki\b`)
 	requireDecimal("cki", p6, `\bcki\b`)
 
@@ -125,6 +126,7 @@ func parsePentacamPageTexts(pages map[int]string) (map[string]any, error) {
 			"isv": values["isv"],
 			"iva": values["iva"],
 			"iha": values["iha"],
+			"ihd": values["ihd"],
 			"ki":  values["ki"],
 			"cki": values["cki"],
 			"tkc": tkc,
@@ -216,6 +218,7 @@ func pentacamContractComplete(eye map[string]any) error {
 		{"topometric_indices_8mm", "isv"},
 		{"topometric_indices_8mm", "iva"},
 		{"topometric_indices_8mm", "iha"},
+		{"topometric_indices_8mm", "ihd"},
 		{"topometric_indices_8mm", "ki"},
 		{"topometric_indices_8mm", "cki"},
 		{"corneal_rings", "zernike", "5mm", "z31_coma"},

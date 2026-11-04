@@ -94,13 +94,13 @@ func TestPentacamRepairFillsOnlyMissingMetrics(t *testing.T) {
 		"OD": map[string]any{
 			"general":                map[string]any{"k_max_anterior_diopters": 99.0},
 			"belin_ambrosio":         map[string]any{"d": 0.65, "art_max": 416.0},
-			"topometric_indices_8mm": map[string]any{"isv": 10.0, "iva": 0.09, "iha": 4.2, "ki": 1.01, "cki": 1.0},
+			"topometric_indices_8mm": map[string]any{"isv": 10.0, "iva": 0.09, "iha": 4.2, "ihd": 0.018, "ki": 1.01, "cki": 1.0},
 			"corneal_rings":          map[string]any{"zernike": map[string]any{"5mm": map[string]any{"z31_coma": 0.097}}},
 			"cataract_preop":         map[string]any{"total_corneal_z40_6mm_um": 0.287},
 		},
 		"OS": map[string]any{
 			"belin_ambrosio":         map[string]any{"d": 2.27, "art_max": 366.0},
-			"topometric_indices_8mm": map[string]any{"isv": 20.0, "iva": 0.18, "iha": 12.8, "ki": 1.01, "cki": 0.98},
+			"topometric_indices_8mm": map[string]any{"isv": 20.0, "iva": 0.18, "iha": 12.8, "ihd": 0.025, "ki": 1.01, "cki": 0.98},
 			"corneal_rings":          map[string]any{"zernike": map[string]any{"5mm": map[string]any{"z31_coma": 0.299}}},
 			"cataract_preop":         map[string]any{"total_corneal_z40_6mm_um": 0.602},
 		},

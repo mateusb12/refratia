@@ -172,7 +172,7 @@ func readPentacamACDAdaptive(
 		ctx,
 		pdf,
 		pentacamAdaptiveSpec{
-			Page:           7,
+			Page:           10,
 			RequireDecimal: true,
 			MinValue:       1,
 			MaxValue:       10,

@@ -220,6 +220,11 @@ var pentacamBenchmarkFields = []pentacamBenchmarkSpec{
 		Path:  []string{"topometric_indices_8mm", "iha"},
 	},
 	{
+		Key:   "ihd",
+		Label: "IHD",
+		Path:  []string{"topometric_indices_8mm", "ihd"},
+	},
+	{
 		Key:   "ki",
 		Label: "KI",
 		Path:  []string{"topometric_indices_8mm", "ki"},

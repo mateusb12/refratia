@@ -45,12 +45,12 @@ Não inclua um exame no objeto "exams" apenas porque ele é esperado pelo protoc
 
 Confronte identidade, datas e lateralidade entre os arquivos. Preserve avisos do equipamento e divergências do documento. Não resuma tabelas nem omita linhas repetidas por modelo de lente. Retorne somente um objeto JSON.`
 
-const pentacamRepairPrompt = `Analise somente as imagens dos PDFs do Pentacam enviados. Cada PDF pode ter 9 páginas; examine todas as páginas e associe cada valor ao arquivo/lateralidade correta. Esta é uma segunda leitura focada nos campos que frequentemente ficam em tabelas ou imagens pequenas.
+const pentacamRepairPrompt = `Analise somente as imagens dos PDFs do Pentacam enviados. Examine todas as páginas e associe cada valor ao arquivo/lateralidade correta. Esta é uma segunda leitura focada nos campos que frequentemente ficam em tabelas ou imagens pequenas.
 
 Retorne somente este objeto JSON, mantendo null apenas quando o valor realmente não estiver legível em nenhuma página:
-{"eyes":{"OD":{"anterior_cornea":{"k1_d":null,"k2_d":null,"km_d":null,"astigmatism_d":null,"axis_deg":null,"kmax_d":null},"pachymetry":{"thinnest_um":null},"belin_ambrosio":{"d":null,"art_max":null},"topometric_indices_8mm":{"isv":null,"iva":null,"iha":null,"ki":null,"cki":null,"tkc":"—"},"corneal_rings":{"zernike":{"5mm":{"z31_coma":null},"6mm":{"z31_coma":null}}},"anterior_segment":{"internal_anterior_chamber_depth_mm":null},"cataract_preop":{"total_corneal_z40_6mm_um":null}},"OS":{"anterior_cornea":{"k1_d":null,"k2_d":null,"km_d":null,"astigmatism_d":null,"axis_deg":null,"kmax_d":null},"pachymetry":{"thinnest_um":null},"belin_ambrosio":{"d":null,"art_max":null},"topometric_indices_8mm":{"isv":null,"iva":null,"iha":null,"ki":null,"cki":null,"tkc":"—"},"corneal_rings":{"zernike":{"5mm":{"z31_coma":null},"6mm":{"z31_coma":null}}},"anterior_segment":{"internal_anterior_chamber_depth_mm":null},"cataract_preop":{"total_corneal_z40_6mm_um":null}}}}
+{"eyes":{"OD":{"anterior_cornea":{"k1_d":null,"k2_d":null,"km_d":null,"astigmatism_d":null,"axis_deg":null,"kmax_d":null},"pachymetry":{"thinnest_um":null},"belin_ambrosio":{"d":null,"art_max":null},"topometric_indices_8mm":{"isv":null,"iva":null,"iha":null,"ihd":null,"ki":null,"cki":null,"tkc":"—"},"corneal_rings":{"zernike":{"5mm":{"z31_coma":null},"6mm":{"z31_coma":null}}},"anterior_segment":{"internal_anterior_chamber_depth_mm":null},"cataract_preop":{"total_corneal_z40_6mm_um":null}},"OS":{"anterior_cornea":{"k1_d":null,"k2_d":null,"km_d":null,"astigmatism_d":null,"axis_deg":null,"kmax_d":null},"pachymetry":{"thinnest_um":null},"belin_ambrosio":{"d":null,"art_max":null},"topometric_indices_8mm":{"isv":null,"iva":null,"iha":null,"ihd":null,"ki":null,"cki":null,"tkc":"—"},"corneal_rings":{"zernike":{"5mm":{"z31_coma":null},"6mm":{"z31_coma":null}}},"anterior_segment":{"internal_anterior_chamber_depth_mm":null},"cataract_preop":{"total_corneal_z40_6mm_um":null}}}}
 
-Use a lateralidade impressa no documento. Não misture OD e OS. Em "Ectasia Reforçada Belin / Ambrósio", leia D no rodapé direito e ARTmax no quadro "Índice de Progressão"; não confunda ARTmax com Mín, Méd ou Máx. Em "Topométrico / Estadiamento KC", leia ISV, IVA, IHA, KI, CKI e TKC. Em "Paquimétrico", leia a espessura do ponto mais fino. Em "Anéis Corneanos", leia Z31 coma nas zonas 5 mm e 6 mm. Em "Cataract Pre-OP", leia Z40 na zona 6 mm. Se TKC estiver visivelmente impresso como traço, retorne "—" para registrar que o campo foi localizado, mas não há classificação; use null somente se o campo não puder ser localizado.`
+Use a lateralidade impressa no documento. Não misture OD e OS. Em "Ectasia Reforçada Belin / Ambrósio", leia D no rodapé direito e ARTmax no quadro "Índice de Progressão"; não confunda ARTmax com Mín, Méd ou Máx. Em "Topométrico / Estadiamento KC", leia ISV, IVA, IHA, IHD, KI, CKI e TKC. Em "Paquimétrico", leia a espessura do ponto mais fino. Em "Anéis Corneanos", leia Z31 coma nas zonas 5 mm e 6 mm. Em "Cataract Pre-OP", leia Z40 na zona 6 mm. Se TKC estiver visivelmente impresso como traço, retorne "—" para registrar que o campo foi localizado, mas não há classificação; use null somente se o campo não puder ser localizado.`
 
 const iolRepairPrompt = `Analise somente as imagens do PDF de biometria/cálculo de LIO enviado. Examine todas as páginas, principalmente a página que contém os blocos OD e OS no topo. Extraia os valores impressos separadamente para cada olho. Não use valores do Pentacam nem faça cálculos.
 
@@ -616,6 +616,9 @@ func pentacamNeedsRepair(exam map[string]any) bool {
 		) || !hasNumberAtAnyPath(eye,
 			[]string{"topometric_indices_8mm", "iha"},
 			[]string{"indices_zona_8mm", "iha"},
+		) || !hasNumberAtAnyPath(eye,
+			[]string{"topometric_indices_8mm", "ihd"},
+			[]string{"indices_zona_8mm", "ihd"},
 		) || !hasNumberAtAnyPath(eye,
 			[]string{"topometric_indices_8mm", "ki"},
 			[]string{"indices_zona_8mm", "ki"},

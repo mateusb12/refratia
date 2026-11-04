@@ -17,6 +17,7 @@ Thinnest Pachy: 529 um
 ISV: 10
 IVA: 0.09
 IHA: 4.20
+IHD: 0.018
 KI: 1.01
 CKI: 1.00
 TKC: -
@@ -60,7 +61,7 @@ Z31 (Coma): 0.097 um
 func TestPentacamDoesNotInventMissingDecimal(t *testing.T) {
 	pages := map[int]string{
 		4: "K1 435 D\nK2 43.80 D\nKm 43.60 D\nAstig 0.20 D",
-		6: "Thinnest Pachy 529\nISV 10\nIVA 0.09\nIHA 4.2\nKI 1.01\nCKI 1.00\nTKC -",
+		6: "Thinnest Pachy 529\nISV 10\nIVA 0.09\nIHA 4.2\nIHD 0.018\nKI 1.01\nCKI 1.00\nTKC -",
 		7: "BAD D 0.65\nTotal Corneal Z40 (6mm) 0.287\nProf.Cam.Ant.(Int.) 3.36",
 		8: "ARTmax 416",
 		9: "Z31 (Coma) 0.097",

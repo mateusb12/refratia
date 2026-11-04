@@ -29,6 +29,7 @@ export const examContracts: Record<string, ExamContract> = {
       { key: 'isv', label: 'ISV', paths: [['topometric_indices_8mm', 'isv'], ['indices_zona_8mm', 'isv']] },
       { key: 'iva', label: 'IVA', paths: [['topometric_indices_8mm', 'iva'], ['indices_zona_8mm', 'iva']] },
       { key: 'iha', label: 'IHA', paths: [['topometric_indices_8mm', 'iha'], ['indices_zona_8mm', 'iha']] },
+      { key: 'ihd', label: 'IHD', paths: [['topometric_indices_8mm', 'ihd'], ['indices_zona_8mm', 'ihd']] },
       { key: 'ki', label: 'KI', paths: [['topometric_indices_8mm', 'ki'], ['indices_zona_8mm', 'ki']] },
       { key: 'cki', label: 'CKI', paths: [['topometric_indices_8mm', 'cki'], ['indices_zona_8mm', 'cki']] },
       { key: 'tkc', label: 'TKC', paths: [['topometric_indices_8mm', 'tkc'], ['indices_zona_8mm', 'tkc']] },

@@ -116,6 +116,7 @@ var pentacamRequiredNumericPaths = [][]string{
 	{"topometric_indices_8mm", "isv"},
 	{"topometric_indices_8mm", "iva"},
 	{"topometric_indices_8mm", "iha"},
+	{"topometric_indices_8mm", "ihd"},
 	{"topometric_indices_8mm", "ki"},
 	{"topometric_indices_8mm", "cki"},
 	{"corneal_rings", "zernike", "5mm", "z31_coma"},
