@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"sync"
 
-	progressutil "refratia/backend/shared/progress"
+	progress "refratia/backend/shared/progress"
 )
 
 type progressStream struct {
@@ -45,7 +45,7 @@ func newProgressStream(
 }
 
 func (stream *progressStream) emit(
-	event progressutil.Event,
+	event progress.Event,
 ) {
 	stream.mu.Lock()
 	defer stream.mu.Unlock()
@@ -63,7 +63,7 @@ func (stream *progressStream) emit(
 }
 
 func (stream *progressStream) reporter(
-	event progressutil.Event,
+	event progress.Event,
 ) {
 	stream.emit(event)
 }
@@ -72,7 +72,7 @@ func (stream *progressStream) writeError(
 	status int,
 	message string,
 ) {
-	stream.emit(progressutil.Event{
+	stream.emit(progress.Event{
 		Type:    "error",
 		Status:  status,
 		Message: message,
@@ -82,7 +82,7 @@ func (stream *progressStream) writeError(
 func (stream *progressStream) writeResult(
 	payload any,
 ) {
-	stream.emit(progressutil.Event{
+	stream.emit(progress.Event{
 		Type:    "result",
 		Payload: payload,
 	})

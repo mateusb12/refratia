@@ -11,7 +11,7 @@ import (
 	"refratia/backend/features/retinography"
 	"refratia/backend/features/specularmicroscopy"
 
-	progressutil "refratia/backend/shared/progress"
+	progress "refratia/backend/shared/progress"
 
 	patientfeature "refratia/backend/features/patient"
 )
@@ -99,9 +99,9 @@ func emitLocalFileResult(
 		payload["analysis"] = analysis
 	}
 
-	progressutil.Emit(
+	progress.Emit(
 		ctx,
-		progressutil.Event{
+		progress.Event{
 			Type:     "file_result",
 			Percent:  100,
 			Stage:    "file_result",
@@ -329,9 +329,9 @@ func emitLocalPartial(
 	message string,
 	analysis map[string]any,
 ) {
-	progressutil.Emit(
+	progress.Emit(
 		ctx,
-		progressutil.Event{
+		progress.Event{
 			Type:     "partial",
 			Percent:  100,
 			Stage:    "result",
@@ -359,15 +359,15 @@ func extractPatientLocal(
 	}
 
 	for index, file := range files {
-		fileCtx := progressutil.WithRange(
+		fileCtx := progress.WithRange(
 			ctx,
 			index*100/total,
 			(index+1)*100/total,
 		)
 
-		fileCtx = progressutil.TrackFileProgress(fileCtx)
+		fileCtx = progress.TrackFileProgress(fileCtx)
 
-		fileCtx = progressutil.WithFilename(
+		fileCtx = progress.WithFilename(
 			fileCtx,
 			file.Metadata.Filename,
 		)
@@ -417,7 +417,7 @@ func extractPatientLocal(
 			examEye = localExamEyeFromFilename(file.Metadata.Filename)
 		}
 
-		progressutil.Report(
+		progress.Report(
 			fileCtx,
 			2,
 			"document",
@@ -429,7 +429,7 @@ func extractPatientLocal(
 		)
 
 		if examType == "RETINA" {
-			progressutil.Report(
+			progress.Report(
 				fileCtx,
 				8,
 				"retinography_preprocess",
@@ -437,7 +437,7 @@ func extractPatientLocal(
 			)
 
 			ok, err := tryExtractRetinographyLocal(
-				progressutil.WithRange(
+				progress.WithRange(
 					fileCtx,
 					8,
 					96,
@@ -474,7 +474,7 @@ func extractPatientLocal(
 				message = err.Error()
 			}
 
-			progressutil.Report(
+			progress.Report(
 				fileCtx,
 				96,
 				"retinography_parse",
@@ -495,8 +495,8 @@ func extractPatientLocal(
 		}
 
 		if examType == "MICROSCOPIA_ESPECULAR" {
-			progressutil.Report(fileCtx, 8, "microscopy_preprocess", "Extraindo microscopia especular")
-			ok, err := tryExtractSpecularMicroscopyLocal(progressutil.WithRange(fileCtx, 8, 96), file, analysis)
+			progress.Report(fileCtx, 8, "microscopy_preprocess", "Extraindo microscopia especular")
+			ok, err := tryExtractSpecularMicroscopyLocal(progress.WithRange(fileCtx, 8, 96), file, analysis)
 			if ok {
 				status := "extracted"
 				message :=
@@ -534,7 +534,7 @@ func extractPatientLocal(
 
 				continue
 			}
-			progressutil.Report(fileCtx, 96, "microscopy_parse", "Microscopia especular não pôde ser extraída localmente")
+			progress.Report(fileCtx, 96, "microscopy_parse", "Microscopia especular não pôde ser extraída localmente")
 			emitLocalFileResult(fileCtx, file.Metadata.Filename, examType, examEye, "failed", err.Error(), nil)
 			continue
 		}
@@ -543,7 +543,7 @@ func extractPatientLocal(
 		// pelo filename, mas ainda não possuem todos
 		// os extratores locais implementados.
 		if file.Metadata.ContentType != "application/pdf" {
-			progressutil.Report(
+			progress.Report(
 				fileCtx,
 				96,
 				strings.ToLower(examType),
@@ -565,7 +565,7 @@ func extractPatientLocal(
 
 		switch examType {
 		case "EYESUITE":
-			progressutil.Report(
+			progress.Report(
 				fileCtx,
 				8,
 				"eyesuite",
@@ -577,7 +577,7 @@ func extractPatientLocal(
 				file,
 				analysis,
 			) {
-				progressutil.Report(
+				progress.Report(
 					fileCtx,
 					96,
 					"eyesuite",
@@ -604,7 +604,7 @@ func extractPatientLocal(
 				continue
 			}
 
-			progressutil.Report(
+			progress.Report(
 				fileCtx,
 				96,
 				"eyesuite",
@@ -624,7 +624,7 @@ func extractPatientLocal(
 			continue
 
 		case "PENTACAM":
-			progressutil.Report(
+			progress.Report(
 				fileCtx,
 				8,
 				"pentacam",
@@ -632,7 +632,7 @@ func extractPatientLocal(
 			)
 
 			if tryExtractPentacamLocal(
-				progressutil.WithRange(
+				progress.WithRange(
 					fileCtx,
 					8,
 					96,
@@ -660,7 +660,7 @@ func extractPatientLocal(
 				continue
 			}
 
-			progressutil.Report(
+			progress.Report(
 				fileCtx,
 				96,
 				"pentacam",
@@ -683,7 +683,7 @@ func extractPatientLocal(
 			"CORNEA",
 			"MICROSCOPIA_ESPECULAR":
 
-			progressutil.Report(
+			progress.Report(
 				fileCtx,
 				100,
 				strings.ToLower(examType),
@@ -696,7 +696,7 @@ func extractPatientLocal(
 		// Compatibilidade com arquivos antigos ainda
 		// não padronizados: mantém o comportamento
 		// heurístico anterior.
-		progressutil.Report(
+		progress.Report(
 			fileCtx,
 			8,
 			"eyesuite",
@@ -718,7 +718,7 @@ func extractPatientLocal(
 			continue
 		}
 
-		progressutil.Report(
+		progress.Report(
 			fileCtx,
 			14,
 			"pentacam",
@@ -726,7 +726,7 @@ func extractPatientLocal(
 		)
 
 		if tryExtractPentacamLocal(
-			progressutil.WithRange(
+			progress.WithRange(
 				fileCtx,
 				14,
 				100,
@@ -744,7 +744,7 @@ func extractPatientLocal(
 			continue
 		}
 
-		progressutil.Report(
+		progress.Report(
 			fileCtx,
 			100,
 			"document",

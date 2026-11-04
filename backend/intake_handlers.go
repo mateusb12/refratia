@@ -19,7 +19,7 @@ import (
 
 	intakefeature "refratia/backend/features/intake"
 	patientfeature "refratia/backend/features/patient"
-	progressutil "refratia/backend/shared/progress"
+	progress "refratia/backend/shared/progress"
 )
 
 const (
@@ -155,12 +155,12 @@ func analyzeIntakeHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		ctx = progressutil.WithReporter(
+		ctx = progress.WithReporter(
 			ctx,
 			stream.reporter,
 		)
 
-		progressutil.Report(
+		progress.Report(
 			ctx,
 			4,
 			"upload",
@@ -201,7 +201,7 @@ func analyzeIntakeHandler(w http.ResponseWriter, r *http.Request) {
 		processFiles,
 	)
 
-	progressutil.Report(
+	progress.Report(
 		ctx,
 		8,
 		"ocr",
@@ -209,7 +209,7 @@ func analyzeIntakeHandler(w http.ResponseWriter, r *http.Request) {
 	)
 
 	analysis, extractionErr := extractPatient(
-		progressutil.WithRange(ctx, 8, 88),
+		progress.WithRange(ctx, 8, 88),
 		files,
 	)
 
@@ -226,7 +226,7 @@ func analyzeIntakeHandler(w http.ResponseWriter, r *http.Request) {
 	// debug exibir "sem campos" mesmo quando os valores estavam em analysis.exams.
 	classifySourceFilesFromExams(analysis)
 
-	progressutil.Report(
+	progress.Report(
 		ctx,
 		90,
 		"identity",
@@ -291,7 +291,7 @@ func analyzeIntakeHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	progressutil.Report(
+	progress.Report(
 		ctx,
 		93,
 		"storage",
@@ -308,7 +308,7 @@ func analyzeIntakeHandler(w http.ResponseWriter, r *http.Request) {
 			percent += index * 4 / len(files)
 		}
 
-		progressutil.Report(
+		progress.Report(
 			ctx,
 			percent,
 			"storage",
@@ -416,7 +416,7 @@ func analyzeIntakeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	progressutil.Report(
+	progress.Report(
 		ctx,
 		99,
 		"preview",
@@ -461,7 +461,7 @@ func analyzeIntakeHandler(w http.ResponseWriter, r *http.Request) {
 		"message":       "Documentos e análise armazenados. Confira a extração antes de confirmar.",
 	}
 
-	progressutil.Report(
+	progress.Report(
 		ctx,
 		100,
 		"complete",

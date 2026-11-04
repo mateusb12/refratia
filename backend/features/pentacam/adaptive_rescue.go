@@ -38,15 +38,15 @@ func readPentacamAdaptiveNumber(
 
 	type evidence struct {
 		thresholds map[uint8]bool
-		crops      map[int]bool
+		ocrRegions map[int]bool
 	}
 
 	candidates := map[float64]*evidence{}
 
-	for cropIndex, c := range spec.Crops {
-		cell, err := cropReferencePNG(
+	for regionIndex, c := range spec.Crops {
+		cell, err := extractOCRRegionPNG(
 			page,
-			referenceCrop{
+			pentacamOCRRegion{
 				X: c.X,
 				Y: c.Y,
 				W: c.W,
@@ -103,12 +103,12 @@ func readPentacamAdaptiveNumber(
 				if candidates[value] == nil {
 					candidates[value] = &evidence{
 						thresholds: map[uint8]bool{},
-						crops:      map[int]bool{},
+						ocrRegions: map[int]bool{},
 					}
 				}
 
 				candidates[value].thresholds[threshold] = true
-				candidates[value].crops[cropIndex] = true
+				candidates[value].ocrRegions[regionIndex] = true
 			}
 		}
 	}
@@ -121,7 +121,7 @@ func readPentacamAdaptiveNumber(
 		// mesmo decimal em >=3 thresholds
 		// e >=2 janelas espaciais.
 		if len(evidence.thresholds) < 3 ||
-			len(evidence.crops) < 2 {
+			len(evidence.ocrRegions) < 2 {
 			continue
 		}
 

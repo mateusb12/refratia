@@ -13,11 +13,11 @@ import (
 	"strings"
 )
 
-type referenceCrop struct {
+type pentacamOCRRegion struct {
 	X, Y, W, H int
 }
 
-func cropReferencePNG(data []byte, crop referenceCrop) ([]byte, error) {
+func extractOCRRegionPNG(data []byte, ocrRegion pentacamOCRRegion) ([]byte, error) {
 	img, _, err := image.Decode(bytes.NewReader(data))
 	if err != nil {
 		return nil, err
@@ -28,14 +28,14 @@ func cropReferencePNG(data []byte, crop referenceCrop) ([]byte, error) {
 	sy := float64(b.Dy()) / 3508.0
 
 	r := image.Rect(
-		int(float64(crop.X)*sx),
-		int(float64(crop.Y)*sy),
-		int(float64(crop.X+crop.W)*sx),
-		int(float64(crop.Y+crop.H)*sy),
+		int(float64(ocrRegion.X)*sx),
+		int(float64(ocrRegion.Y)*sy),
+		int(float64(ocrRegion.X+ocrRegion.W)*sx),
+		int(float64(ocrRegion.Y+ocrRegion.H)*sy),
 	).Intersect(b)
 
 	if r.Empty() {
-		return nil, fmt.Errorf("crop vazio")
+		return nil, fmt.Errorf("ocrRegion vazio")
 	}
 
 	dst := image.NewRGBA(image.Rect(0, 0, r.Dx(), r.Dy()))
@@ -75,14 +75,14 @@ func runTesseractTextPSM(ctx context.Context, pngData []byte, psm int) (string, 
 
 	output, err := cmd.Output()
 	if err != nil {
-		return "", fmt.Errorf("tesseract focused: %w", err)
+		return "", fmt.Errorf("tesseract OCR region: %w", err)
 	}
 
 	return strings.TrimSpace(string(output)), nil
 }
 
-func focusedOCRVariants(ctx context.Context, page []byte, crop referenceCrop) ([]string, error) {
-	image, err := cropReferencePNG(page, crop)
+func extractOCRTextsFromRegion(ctx context.Context, page []byte, ocrRegion pentacamOCRRegion) ([]string, error) {
+	image, err := extractOCRRegionPNG(page, ocrRegion)
 	if err != nil {
 		return nil, err
 	}

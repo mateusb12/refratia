@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"refratia/backend/shared/ocr"
+	"refratia/backend/shared/parallelwork"
 
 	pdfutil "refratia/backend/shared/pdf"
 )
@@ -14,54 +15,93 @@ type Result struct {
 	Identity *Identity
 }
 
-func ExtractPDF(ctx context.Context, data []byte) (Result, error) {
-	if _, _, err := pdfutil.Inspect(ctx, data); err != nil {
-		return Result{}, err
+func ExtractPDF(executionContext context.Context, data []byte) (Result, error) {
+	if _, _, errorValue := pdfutil.Inspect(executionContext, data); errorValue != nil {
+		return Result{}, errorValue
 	}
+	return extractPDF(executionContext, data, true)
+}
 
-	var bestExam map[string]any
-	var lastErr error
+type dpiAttempt struct {
+	exam       map[string]any
+	identity   *Identity
+	errorValue error
+}
 
-	for _, dpi := range []int{300, 450} {
-		image, err := pdfutil.RenderPageAtDPI(ctx, data, 1, dpi)
-		if err != nil {
-			lastErr = err
-			continue
+func extractPDF(executionContext context.Context, data []byte, parallelDPI bool) (Result, error) {
+	dpis := []int{300, 450}
+	attempt := func(executionContext context.Context, dpi int) (dpiAttempt, error) {
+		image, errorValue := pdfutil.RenderPageAtDPI(executionContext, data, 1, dpi)
+		if errorValue != nil {
+			return dpiAttempt{errorValue: errorValue}, nil
 		}
 
-		tsv, err := ocr.RunTesseractTSV(ctx, image)
-		if err != nil {
-			lastErr = err
-			continue
+		tsv, errorValue := ocr.RunTesseractTSV(executionContext, image)
+		if errorValue != nil {
+			return dpiAttempt{errorValue: errorValue}, nil
 		}
 
-		exam, err := parseEyeSuiteTSV(tsv)
-		if err != nil {
-			lastErr = fmt.Errorf("%d DPI: %w", dpi, err)
-			continue
+		exam, errorValue := parseEyeSuiteTSV(tsv)
+		if errorValue != nil {
+			return dpiAttempt{errorValue: fmt.Errorf("%d DPI: %w", dpi, errorValue)}, nil
 		}
 
-		if bestExam == nil {
-			bestExam = exam
-		}
-
-		identity, identityErr := parseEyeSuiteIdentityTSV(tsv)
-		if identityErr == nil {
-			return Result{
-				Exam:     exam,
-				Identity: &identity,
+		identity, identityError := parseEyeSuiteIdentityTSV(tsv)
+		if identityError != nil {
+			return dpiAttempt{
+				exam:       exam,
+				errorValue: fmt.Errorf("%d DPI identidade: %w", dpi, identityError),
 			}, nil
 		}
 
-		lastErr = fmt.Errorf("%d DPI identidade: %w", dpi, identityErr)
+		return dpiAttempt{exam: exam, identity: &identity}, nil
+	}
+
+	attempts := make([]dpiAttempt, len(dpis))
+	if parallelDPI {
+		results, errorValue := parallelwork.Map(executionContext, dpis, 2, attempt)
+		if errorValue != nil {
+			return Result{}, errorValue
+		}
+		attempts = results
+	} else {
+		for index, dpi := range dpis {
+			result, _ := attempt(executionContext, dpi)
+			attempts[index] = result
+			if result.identity != nil {
+				break
+			}
+		}
+	}
+
+	var bestExam map[string]any
+	var lastError error
+	for _, result := range attempts {
+		if result.errorValue != nil {
+			lastError = result.errorValue
+			if result.exam == nil {
+				continue
+			}
+		}
+
+		if bestExam == nil && result.exam != nil {
+			bestExam = result.exam
+		}
+
+		if result.identity != nil {
+			return Result{
+				Exam:     result.exam,
+				Identity: result.identity,
+			}, nil
+		}
 	}
 
 	if bestExam != nil {
 		return Result{Exam: bestExam}, nil
 	}
 
-	if lastErr == nil {
-		lastErr = fmt.Errorf("extração local não produziu resultado")
+	if lastError == nil {
+		lastError = fmt.Errorf("extração local não produziu resultado")
 	}
-	return Result{}, fmt.Errorf("EyeSuite: %w", lastErr)
+	return Result{}, fmt.Errorf("EyeSuite: %w", lastError)
 }

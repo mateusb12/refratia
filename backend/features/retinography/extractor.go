@@ -14,7 +14,7 @@ import (
 	"regexp"
 	"strings"
 
-	progressutil "refratia/backend/shared/progress"
+	progress "refratia/backend/shared/progress"
 )
 
 const (
@@ -120,7 +120,7 @@ func Extract(
 	ctx context.Context,
 	data []byte,
 ) (Result, error) {
-	progressutil.Report(
+	progress.Report(
 		ctx,
 		5,
 		"retinography_preprocess",
@@ -137,7 +137,7 @@ func Extract(
 		)
 	}
 
-	progressutil.Report(
+	progress.Report(
 		ctx,
 		20,
 		"retinography_preprocess",
@@ -149,7 +149,7 @@ func Extract(
 		return Result{}, err
 	}
 
-	progressutil.Report(
+	progress.Report(
 		ctx,
 		55,
 		"retinography_ocr",
@@ -164,7 +164,7 @@ func Extract(
 		return Result{}, err
 	}
 
-	progressutil.Report(
+	progress.Report(
 		ctx,
 		80,
 		"retinography_parse",
@@ -195,7 +195,7 @@ func Extract(
 		},
 	}
 
-	progressutil.Report(
+	progress.Report(
 		ctx,
 		100,
 		"retinography_parse",

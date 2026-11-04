@@ -17,7 +17,7 @@ import (
 	"strings"
 	"time"
 
-	progressUtil "refratia/backend/shared/progress"
+	progress "refratia/backend/shared/progress"
 
 	patientFeature "refratia/backend/features/patient"
 )
@@ -163,7 +163,7 @@ func resolveLocalGapsWithFallback(
 			prepareError
 	}
 
-	progressUtil.Report(
+	progress.Report(
 		ctx,
 		90,
 		"fallback",
@@ -215,7 +215,7 @@ func resolveLocalGapsWithFallback(
 		fallback,
 	)
 
-	progressUtil.Report(
+	progress.Report(
 		ctx,
 		95,
 		"fallback",
@@ -230,7 +230,7 @@ func extractPatient(
 	ctx context.Context,
 	files []uploadedFile,
 ) (map[string]any, error) {
-	progressUtil.Report(
+	progress.Report(
 		ctx,
 		0,
 		"ocr",
@@ -238,7 +238,7 @@ func extractPatient(
 	)
 
 	analysis := extractPatientLocal(
-		progressUtil.WithRange(ctx, 0, 82),
+		progress.WithRange(ctx, 0, 82),
 		files,
 	)
 
@@ -250,7 +250,7 @@ func extractPatient(
 			checkpointStorageError
 	}
 
-	progressUtil.Report(
+	progress.Report(
 		ctx,
 		83,
 		"validation",
@@ -265,7 +265,7 @@ func extractPatient(
 	var prepared []preparedFile
 
 	if len(gaps) > 0 {
-		progressUtil.Report(
+		progress.Report(
 			ctx,
 			85,
 			"fallback",
@@ -282,7 +282,7 @@ func extractPatient(
 				gaps,
 			)
 
-			progressUtil.Report(
+			progress.Report(
 				ctx,
 				95,
 				"fallback",
@@ -313,7 +313,7 @@ func extractPatient(
 					gaps,
 				)
 
-				progressUtil.Report(
+				progress.Report(
 					ctx,
 					95,
 					"fallback",
@@ -328,7 +328,7 @@ func extractPatient(
 		files,
 	); len(repairFiles) > 0 &&
 		os.Getenv("OPENAI_API_KEY") != "" {
-		progressUtil.Report(
+		progress.Report(
 			ctx,
 			96,
 			"iol",
@@ -372,7 +372,7 @@ func extractPatient(
 		}
 	}
 
-	progressUtil.Report(
+	progress.Report(
 		ctx,
 		99,
 		"consolidation",
@@ -384,7 +384,7 @@ func extractPatient(
 		files,
 	)
 
-	progressUtil.Report(
+	progress.Report(
 		ctx,
 		100,
 		"consolidation",

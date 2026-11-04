@@ -15,12 +15,12 @@ import (
 )
 
 type pentacamCellSpec struct {
-	Key     string
-	Page    int
-	Crop    referenceCrop
-	Decimal bool
-	Min     float64
-	Max     float64
+	Key       string
+	Page      int
+	OCRRegion pentacamOCRRegion
+	Decimal   bool
+	Min       float64
+	Max       float64
 }
 
 func fillPentacamFocusedCells(
@@ -29,29 +29,29 @@ func fillPentacamFocusedCells(
 	values map[string]any,
 ) {
 	specs := []pentacamCellSpec{
-		{"k1_d", 4, referenceCrop{535, 1270, 180, 70}, true, 20, 70},
-		{"k2_d", 4, referenceCrop{535, 1335, 180, 70}, true, 20, 70},
-		{"km_d", 4, referenceCrop{535, 1385, 155, 85}, true, 20, 70},
-		{"astigmatism_d", 4, referenceCrop{535, 1455, 180, 70}, true, 0, 15},
+		{"k1_d", 4, pentacamOCRRegion{535, 1270, 180, 70}, true, 20, 70},
+		{"k2_d", 4, pentacamOCRRegion{535, 1335, 180, 70}, true, 20, 70},
+		{"km_d", 4, pentacamOCRRegion{535, 1385, 155, 85}, true, 20, 70},
+		{"astigmatism_d", 4, pentacamOCRRegion{535, 1455, 180, 70}, true, 0, 15},
 
 		// Página 9 — Topométrico / Estadiamento KC.
 		// Célula K Máx. (ant.), sem incluir as bordas horizontais.
 		// Fixtures reais Rolmey: OD = 44.2 D; OS = 45.5 D.
-		{"kmax_d", 9, referenceCrop{335, 2250, 155, 55}, true, 20, 70},
+		{"kmax_d", 9, pentacamOCRRegion{335, 2250, 155, 55}, true, 20, 70},
 
-		{"iva", 9, referenceCrop{842, 2293, 52, 31}, true, 0, 5},
-		{"ki", 9, referenceCrop{830, 2315, 150, 65}, true, 0, 5},
+		{"iva", 9, pentacamOCRRegion{842, 2293, 52, 31}, true, 0, 5},
+		{"ki", 9, pentacamOCRRegion{830, 2315, 150, 65}, true, 0, 5},
 
-		{"bad_d", 11, referenceCrop{1765, 2120, 130, 100}, true, 0, 20},
-		{"z40_6mm_um", 10, referenceCrop{2298, 2095, 62, 45}, true, -5, 5},
-		{"acd_internal_mm", 10, referenceCrop{2280, 2415, 145, 120}, true, 0.5, 10},
+		{"bad_d", 11, pentacamOCRRegion{1765, 2120, 130, 100}, true, 0, 20},
+		{"z40_6mm_um", 10, pentacamOCRRegion{2298, 2095, 62, 45}, true, -5, 5},
+		{"acd_internal_mm", 10, pentacamOCRRegion{2280, 2415, 145, 120}, true, 0.5, 10},
 
-		{"art_max", 11, referenceCrop{1648, 1490, 42, 31}, false, 100, 1000},
-		{"z31_5mm_um", 12, referenceCrop{1000, 1545, 180, 90}, true, -5, 5},
+		{"art_max", 11, pentacamOCRRegion{1648, 1490, 42, 31}, false, 100, 1000},
+		{"z31_5mm_um", 12, pentacamOCRRegion{1000, 1545, 180, 90}, true, -5, 5},
 	}
 
 	for _, spec := range specs {
-		if _, exists := values[spec.Key]; exists {
+		if _, hasExtractedDocumentValue := values[spec.Key]; hasExtractedDocumentValue {
 			continue
 		}
 
@@ -71,19 +71,19 @@ func pentacamReadNumericCell(
 	page []byte,
 	spec pentacamCellSpec,
 ) (float64, bool) {
-	crop, err := cropReferencePNG(page, spec.Crop)
+	ocrRegion, err := extractOCRRegionPNG(page, spec.OCRRegion)
 	if err != nil {
 		return 0, false
 	}
 
-	variants := [][]byte{crop}
+	ocrInputImages := [][]byte{ocrRegion}
 
 	// O ponto decimal dessas células é muito pequeno.
 	// Binarizamos com vários limiares, mas SEM reconstruir dígitos.
 	for _, threshold := range []uint8{130, 160, 190, 220} {
-		v, err := pentacamBinaryUpscale(crop, 3, threshold)
+		v, err := pentacamBinaryUpscale(ocrRegion, 3, threshold)
 		if err == nil {
-			variants = append(variants, v)
+			ocrInputImages = append(ocrInputImages, v)
 		}
 	}
 
@@ -101,7 +101,7 @@ func pentacamReadNumericCell(
 		psms = []int{7}
 	}
 
-	for _, img := range variants {
+	for _, img := range ocrInputImages {
 		for _, psm := range psms {
 			text, err := pentacamNumericOCR(ctx, img, psm)
 			if err != nil {

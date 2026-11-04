@@ -15,7 +15,7 @@ func readPentacamK1Deterministic(
 		return 0, false
 	}
 
-	crops := []referenceCrop{
+	ocrRegions := []pentacamOCRRegion{
 		{X: 535, Y: 1270, W: 180, H: 70},
 		{X: 540, Y: 1275, W: 150, H: 60},
 		{X: 520, Y: 1255, W: 220, H: 100},
@@ -23,13 +23,13 @@ func readPentacamK1Deterministic(
 
 	type evidence struct {
 		thresholds map[uint8]bool
-		crops      map[int]bool
+		ocrRegions map[int]bool
 	}
 
 	values := map[float64]*evidence{}
 
-	for cropIndex, cropSpec := range crops {
-		cell, err := cropReferencePNG(page, cropSpec)
+	for regionIndex, regionSpec := range ocrRegions {
+		cell, err := extractOCRRegionPNG(page, regionSpec)
 		if err != nil {
 			continue
 		}
@@ -79,12 +79,12 @@ func readPentacamK1Deterministic(
 				if values[value] == nil {
 					values[value] = &evidence{
 						thresholds: map[uint8]bool{},
-						crops:      map[int]bool{},
+						ocrRegions: map[int]bool{},
 					}
 				}
 
 				values[value].thresholds[threshold] = true
-				values[value].crops[cropIndex] = true
+				values[value].ocrRegions[regionIndex] = true
 			}
 		}
 	}
@@ -94,7 +94,7 @@ func readPentacamK1Deterministic(
 
 	for value, evidence := range values {
 		if len(evidence.thresholds) < 3 ||
-			len(evidence.crops) < 2 {
+			len(evidence.ocrRegions) < 2 {
 			continue
 		}
 

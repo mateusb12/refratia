@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	progressutil "refratia/backend/shared/progress"
+	progress "refratia/backend/shared/progress"
 
 	"refratia/backend/features/pentacam"
 )
@@ -15,7 +15,7 @@ func tryExtractPentacamLocal(
 	file uploadedFile,
 	analysis map[string]any,
 ) bool {
-	progressutil.Report(
+	progress.Report(
 		ctx,
 		2,
 		"pentacam",
@@ -36,7 +36,7 @@ func tryExtractPentacamLocal(
 		eyeLabel = "olho esquerdo"
 	}
 
-	progressutil.Report(
+	progress.Report(
 		ctx,
 		8,
 		"pentacam",
@@ -44,7 +44,7 @@ func tryExtractPentacamLocal(
 	)
 
 	exam, err := pentacam.ExtractPDF(
-		progressutil.WithRange(ctx, 8, 96),
+		progress.WithRange(ctx, 8, 96),
 		file.Data,
 	)
 
@@ -59,7 +59,7 @@ func tryExtractPentacamLocal(
 		exam,
 	)
 
-	progressutil.Report(
+	progress.Report(
 		ctx,
 		100,
 		"pentacam",

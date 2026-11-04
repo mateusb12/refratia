@@ -15,7 +15,7 @@ import (
 	"strings"
 
 	"refratia/backend/shared/ocr"
-	progressutil "refratia/backend/shared/progress"
+	progress "refratia/backend/shared/progress"
 )
 
 type OCRPanel struct {
@@ -368,7 +368,7 @@ func Detect(
 }
 
 func Extract(ctx context.Context, data []byte) (Result, error) {
-	progressutil.Report(ctx, 0, "microscopy_preprocess", "Preparando painéis da microscopia especular")
+	progress.Report(ctx, 0, "microscopy_preprocess", "Preparando painéis da microscopia especular")
 
 	img, err := jpeg.Decode(bytes.NewReader(data))
 	if err != nil {
@@ -377,8 +377,8 @@ func Extract(ctx context.Context, data []byte) (Result, error) {
 
 	panels := make([]OCRPanel, 0, 2)
 	for index, panel := range microscopyPanels(img.Bounds()) {
-		progressutil.Report(ctx, 10+index*25, "microscopy_preprocess", fmt.Sprintf("Preparando painel %d/2", index+1))
-		progressutil.Report(
+		progress.Report(ctx, 10+index*25, "microscopy_preprocess", fmt.Sprintf("Preparando painel %d/2", index+1))
+		progress.Report(
 			ctx,
 			20+index*25,
 			"microscopy_ocr",
@@ -454,12 +454,12 @@ func Extract(ctx context.Context, data []byte) (Result, error) {
 		)
 	}
 
-	progressutil.Report(ctx, 75, "microscopy_parse", "Interpretando densidade endotelial")
+	progress.Report(ctx, 75, "microscopy_parse", "Interpretando densidade endotelial")
 	exam, evidence, err := ParseOCRPanels(panels)
 	if err != nil {
 		return Result{}, err
 	}
-	progressutil.Report(ctx, 100, "microscopy_parse", "Microscopia especular extraída localmente")
+	progress.Report(ctx, 100, "microscopy_parse", "Microscopia especular extraída localmente")
 	return Result{Exam: exam, Evidence: evidence}, nil
 }
 

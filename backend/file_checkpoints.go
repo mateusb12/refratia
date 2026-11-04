@@ -20,7 +20,7 @@ import (
 	"github.com/aws/smithy-go"
 
 	patientfeature "refratia/backend/features/patient"
-	progressutil "refratia/backend/shared/progress"
+	progress "refratia/backend/shared/progress"
 )
 
 const fileCheckpointVersion = "v1"
@@ -1121,7 +1121,7 @@ func emitReusedFileCheckpoint(
 			file.Metadata.Filename,
 		)
 
-	progressutil.Report(
+	progress.Report(
 		processingContext,
 		100,
 		"checkpoint",
@@ -1135,9 +1135,9 @@ func emitReusedFileCheckpoint(
 		checkpointAnalysis,
 	)
 
-	progressutil.Emit(
+	progress.Emit(
 		processingContext,
-		progressutil.Event{
+		progress.Event{
 			Type:     "file_result",
 			Percent:  100,
 			Stage:    "file_result",
