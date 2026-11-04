@@ -8,6 +8,7 @@ import (
 
 	"refratia/backend/features/eyesuite"
 	intakefeature "refratia/backend/features/intake"
+	"refratia/backend/features/refractometry"
 	"refratia/backend/features/retinography"
 	"refratia/backend/features/specularmicroscopy"
 
@@ -323,6 +324,26 @@ func tryExtractSpecularMicroscopyLocal(ctx context.Context, file uploadedFile, a
 	return true, nil
 }
 
+func tryExtractRefractometryLocal(
+	ctx context.Context,
+	file uploadedFile,
+	analysis map[string]any,
+) bool {
+	exam, err := refractometry.ExtractPDF(ctx, file.Data)
+	if err != nil {
+		return false
+	}
+
+	exam["source"] = []any{file.Metadata.Filename}
+	exams, _ := analysis["exams"].(map[string]any)
+	if exams == nil {
+		exams = map[string]any{}
+		analysis["exams"] = exams
+	}
+	exams["refractometry"] = exam
+	return true
+}
+
 func emitLocalPartial(
 	ctx context.Context,
 	filename,
@@ -564,6 +585,54 @@ func extractPatientLocal(
 		}
 
 		switch examType {
+		case "AUTO":
+			progress.Report(
+				fileCtx,
+				8,
+				"refractometry",
+				"Extraindo refratometria",
+			)
+
+			if tryExtractRefractometryLocal(
+				progress.WithRange(fileCtx, 8, 96),
+				file,
+				analysis,
+			) {
+				emitLocalPartial(
+					fileCtx,
+					file.Metadata.Filename,
+					"Refratometria concluída",
+					analysis,
+				)
+				emitLocalFileResult(
+					fileCtx,
+					file.Metadata.Filename,
+					"AUTO",
+					examEye,
+					"extracted",
+					"Refratometria extraída localmente",
+					analysis,
+				)
+				continue
+			}
+
+			progress.Report(
+				fileCtx,
+				96,
+				"refractometry",
+				"Refratometria não pôde ser extraída localmente",
+			)
+			emitLocalFileResult(
+				fileCtx,
+				file.Metadata.Filename,
+				"AUTO",
+				examEye,
+				"failed",
+				"Falha na extração de refratometria",
+				nil,
+			)
+			continue
+
 		case "EYESUITE":
 			progress.Report(
 				fileCtx,
@@ -767,6 +836,10 @@ func localResolvedExamKeys(analysis map[string]any) map[string]bool {
 		resolved["pentacam_corneal_tomography"] = true
 	}
 
+	if refractometryLocalComplete(analysis) {
+		resolved["refractometry"] = true
+	}
+
 	if specularMicroscopyLocalComplete(analysis) {
 		resolved["specular_microscopy"] = true
 	}
@@ -776,6 +849,28 @@ func localResolvedExamKeys(analysis map[string]any) map[string]bool {
 	}
 
 	return resolved
+}
+
+func refractometryLocalComplete(analysis map[string]any) bool {
+	exams, _ := analysis["exams"].(map[string]any)
+	exam, _ := exams["refractometry"].(map[string]any)
+	eyes, _ := exam["eyes"].(map[string]any)
+	if len(eyes) == 0 {
+		return false
+	}
+
+	for _, eyeName := range []string{"OD", "OS"} {
+		eye, _ := eyes[eyeName].(map[string]any)
+		if eye == nil {
+			return false
+		}
+		for _, field := range []string{"sphere_d", "cylinder_d", "axis_deg"} {
+			if !hasNumberAtAnyPath(eye, []string{field}) {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func retinographyLocalComplete(
