@@ -352,3 +352,5 @@ export function useIntakeWorkflow({
     setIntakeProcessFiles,
   }
 }
+
+export type IntakeWorkflow = ReturnType<typeof useIntakeWorkflow>

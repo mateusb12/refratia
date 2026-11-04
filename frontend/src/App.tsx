@@ -26,22 +26,17 @@ import {
   Stethoscope,
   Sun,
   Trash2,
-  UploadCloud,
   UserRound,
   X,
 } from 'lucide-react'
 import patientData from '../data/paciente_compilado.json'
 import RoadmapPage from './components/roadmap/RoadmapPage'
-import ExamProtocolChecklist from './components/intake/ExamProtocolChecklist'
-import IntakeProcessingProgress from './components/intake/IntakeProcessingProgress'
-import IntakeCheckpointPreflight from './components/intake/IntakeCheckpointPreflight'
-import IntakeFileClassification from './components/intake/IntakeFileClassification'
-import { useIntakeWorkflow } from './components/intake/useIntakeWorkflow'
+import NewAnalysisPage from './components/intake/NewAnalysisPage'
+import { IntakeAnalysisSummary } from './components/intake/IntakePreview'
 import BenchmarkOcrPage from './components/benchmark/BenchmarkOcrPage'
 import SavedExamsPage from './components/storage/SavedExamsPage'
 import ProtocolPage from './components/protocol/ProtocolPage'
-import { normalizeSavedAnalysis, type IntakeAnalysis, type IntakePreview } from './contracts/patient-analysis'
-import { assessExamContract } from './contracts/exam-contracts'
+import { normalizeSavedAnalysis, type IntakeAnalysis } from './contracts/patient-analysis'
 
 type Theme = 'light' | 'dark'
 type CaseKind = 'demo' | 'real'
@@ -88,15 +83,6 @@ function reportDataKind(value: unknown): DataKind {
   return hasReportValue(value) ? 'Dado bruto' : 'Dado ausente'
 }
 
-function formatContractValue(value: unknown) {
-  if (value === null || value === undefined || value === '') return 'não informado'
-  if (typeof value === 'object') {
-    if ('normalized' in value) return String((value as { normalized?: unknown }).normalized ?? 'não informado')
-    return JSON.stringify(value)
-  }
-  return String(value)
-}
-
 function formatCaseSavedTime(caseId: string) {
   const match = caseId.match(/^case-(\d{8})T(\d{2})(\d{2})\d{2}Z-/)
   if (!match) return null
@@ -119,11 +105,6 @@ const eyeLabel = (eye: Eye) => (eye === 'OS' ? 'OE' : eye)
 const API_URL = import.meta.env.VITE_API_URL?.trim() ?? ''
 const CASE_DELETE_TOKEN = import.meta.env.VITE_CASE_DELETE_TOKEN ?? 'local-dev-delete-only'
 
-function fileIcon(fileName: string) {
-  const extension = fileName.split('.').pop()?.toLowerCase()
-  return `${import.meta.env.BASE_URL}${extension === 'pdf' ? 'pdf.png' : extension === 'png' ? 'png.png' : 'jpeg.png'}`
-}
-
 const examLabels: Record<string, string> = {
   fundus_retinography: 'Retinografia de fundo de olho',
   iol_calculation: 'Cálculo de lente intraocular',
@@ -131,292 +112,6 @@ const examLabels: Record<string, string> = {
   oct_retina: 'OCT de retina',
   pentacam_corneal_tomography: 'Tomografia corneana Pentacam',
   specular_microscopy: 'Microscopia especular',
-}
-
-function IntakeCompletenessNotice({ analysis }: { analysis: IntakeAnalysis }) {
-  const found = Object.keys(analysis.exams ?? {})
-  const missing = Object.entries(examLabels).filter(([key]) => !found.includes(key)).map(([key, label]) => ({ key, label }))
-  if (!missing.length) return null
-  const informativeKeys = new Set(['fundus_retinography', 'oct_retina'])
-  const missingRequired = missing.filter(({ key }) => !informativeKeys.has(key))
-  const missingInformative = missing.filter(({ key }) => informativeKeys.has(key))
-  if (!missingRequired.length) {
-    return (
-      <div className="mt-4 rounded-xl border border-border bg-surface-muted p-4 text-sm text-text-secondary">
-        <strong className="text-primary">Dados informativos pendentes.</strong>
-        <p className="mb-0 mt-1 leading-relaxed">
-          Não foram enviados: {missingInformative.map(({ label }) => label).join(' · ')}. Conforme o protocolo, esses exames são informativos e sua ausência não altera a conduta cirúrgica.
-        </p>
-      </div>
-    )
-  }
-  return (
-    <div className="mt-4 rounded-xl border border-warning/40 bg-warning-soft p-4 text-sm text-text-secondary">
-      <strong className="text-warning">Análise parcial — dados necessários não enviados.</strong>
-      <p className="mb-0 mt-1 leading-relaxed">
-        Estes exames não foram identificados: {missingRequired.map(({ label }) => label).join(' · ')}. A ausência limita apenas as etapas que dependem deles.
-        {missingInformative.length > 0 && ` Também não foram enviados os exames informativos: ${missingInformative.map(({ label }) => label).join(' · ')}; isso não altera a conduta cirúrgica.`}
-      </p>
-    </div>
-  )
-}
-
-function IntakeAnalysisSummary({ analysis }: { analysis: IntakeAnalysis }) {
-  const sourceFiles = analysis.source_files ?? []
-  const exams = Object.entries(analysis.exams ?? {})
-  const notes = analysis.extraction_notes ?? {}
-
-  return (
-    <div className="mt-4 space-y-4">
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div className="rounded-xl border border-border bg-surface p-4">
-          <span className="text-xs font-bold uppercase tracking-[0.12em] text-text-muted">Paciente</span>
-          <strong className="mt-2 block text-base">{analysis.patient?.full_name || 'Não identificado'}</strong>
-          <span className="mt-1 block text-sm text-text-secondary">
-            Nascimento: {readableBirthDate(analysis.patient?.birth_date)}
-          </span>
-        </div>
-        <div className="rounded-xl border border-border bg-surface p-4">
-          <span className="text-xs font-bold uppercase tracking-[0.12em] text-text-muted">Resumo da extração</span>
-          <strong className="mt-2 block text-base">{exams.length} tipo(s) de exame identificado(s)</strong>
-          <span className="mt-1 block text-sm text-text-secondary">{sourceFiles.length} arquivo(s) relacionado(s)</span>
-        </div>
-      </div>
-
-      <div className="rounded-xl border border-border bg-surface p-4">
-        <span className="text-xs font-bold uppercase tracking-[0.12em] text-text-muted">Exames encontrados</span>
-        <div className="mt-3 grid gap-3 sm:grid-cols-2">
-          {exams.length > 0 ? exams.map(([key, exam]) => (
-            <div className="rounded-lg border border-border bg-surface-muted p-3" key={key}>
-              <strong className="block text-sm">{examLabels[key] ?? key.replaceAll('_', ' ')}</strong>
-              {exam?.eyes && (
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {Object.keys(exam.eyes).map((eye) => <StatusBadge key={eye} tone="neutral">{eye}</StatusBadge>)}
-                </div>
-              )}
-              {exam?.source?.length > 0 && <p className="mb-0 mt-2 truncate text-xs text-text-secondary" title={exam.source.join(', ')}>Fonte: {exam.source.join(', ')}</p>}
-            </div>
-          )) : <span className="text-sm text-text-secondary">Nenhum exame identificado.</span>}
-        </div>
-      </div>
-
-      <div className="rounded-xl border border-border bg-surface p-4">
-        <span className="text-xs font-bold uppercase tracking-[0.12em] text-text-muted">Arquivos processados</span>
-        <div className="mt-3 grid gap-3 sm:grid-cols-2">
-          {sourceFiles.map((source, index) => {
-            const fileName = String(source.path ?? source.filename ?? `Arquivo ${index + 1}`)
-            const pages = Array.isArray(source.pages) ? source.pages.length : null
-            return (
-              <div className="flex min-w-0 items-center gap-3 rounded-lg border border-border bg-surface-muted p-3" key={`${fileName}-${index}`}>
-                <img alt="" className="h-10 w-10 flex-none object-contain" src={fileIcon(fileName)} />
-                <div className="min-w-0">
-                  <strong className="block truncate text-sm" title={fileName}>{fileName}</strong>
-                  <span className="text-xs text-text-secondary">
-                    {[source.exam, source.eye, pages ? `${pages} páginas` : null].filter(Boolean).join(' · ') || 'Arquivo processado'}
-                  </span>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      </div>
-
-      {Object.keys(analysis.conventions ?? {}).length > 0 && (
-        <div className="rounded-xl border border-border bg-surface p-4">
-          <span className="text-xs font-bold uppercase tracking-[0.12em] text-text-muted">Convenções usadas</span>
-          <div className="mt-3 grid gap-x-5 gap-y-2 sm:grid-cols-2">
-            {Object.entries(analysis.conventions ?? {}).map(([key, value]) => (
-              <div className="text-sm" key={key}><strong>{key}:</strong> <span className="text-text-secondary">{String(value)}</span></div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {typeof notes.clinical_use_warning === 'string' && (
-        <div className="rounded-xl border border-warning/30 bg-warning-soft p-4 text-sm text-text-secondary">
-          <strong className="text-warning">Atenção:</strong> {notes.clinical_use_warning}
-        </div>
-      )}
-      {typeof notes.fallback_warning === 'string' && (
-        <div className="rounded-xl border border-warning/30 bg-warning-soft p-4 text-sm text-text-secondary">
-          <strong className="text-warning">Análise local preservada:</strong> {notes.fallback_warning}
-        </div>
-      )}
-      {Array.isArray(notes.invalid_exams) && notes.invalid_exams.length > 0 && (
-        <div className="rounded-xl border border-danger/30 bg-danger-soft p-4 text-sm text-text-secondary">
-          <strong className="text-danger">Exames com estrutura incompleta:</strong>
-          <ul className="mb-0 mt-2 list-disc pl-5">
-            {notes.invalid_exams.map((item, index) => {
-              const invalid = item as Record<string, unknown>
-              return <li key={`${String(invalid.exam)}-${index}`}>{String(invalid.exam ?? 'Exame')} — {String(invalid.reason ?? 'motivo não informado')}</li>
-            })}
-          </ul>
-        </div>
-      )}
-    </div>
-  )
-}
-
-function extractedPreviewFields(source: Record<string, unknown> | undefined) {
-  if (!source) return []
-  const ignored = new Set(['index', 'path', 'filename', 'type', 'size_bytes', 'sha256', 'signed_url'])
-  const fields: Array<[string, string]> = []
-
-  function visit(value: unknown, path: string) {
-    if (fields.length >= 8 || value === null || value === undefined) return
-    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
-      fields.push([path, String(value)])
-      return
-    }
-    if (Array.isArray(value)) {
-      value.slice(0, 3).forEach((item, index) => visit(item, `${path}[${index + 1}]`))
-      return
-    }
-    if (typeof value === 'object') {
-      Object.entries(value as Record<string, unknown>).forEach(([key, child]) => {
-        if (!ignored.has(key)) visit(child, path ? `${path}.${key}` : key)
-      })
-    }
-  }
-
-  visit(source, '')
-  return fields
-}
-
-function IntakeDocumentsDebug({ preview, localPreviews }: { preview: IntakePreview; localPreviews?: Record<string, string> }) {
-  const sources = preview.analysis.source_files ?? []
-
-  return (
-    <div className="mt-5 rounded-xl border border-border bg-surface p-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <span className="text-xs font-bold uppercase tracking-[0.12em] text-text-muted">Debug por documento</span>
-          <h3 className="mb-0 mt-1 font-display text-lg">O que foi lido em cada arquivo</h3>
-          <p className="mb-0 mt-1 text-sm text-text-secondary">Compare a prévia original com os campos que entraram na extração.</p>
-        </div>
-        <StatusBadge tone="success">{preview.files.length} arquivo(s) analisado(s)</StatusBadge>
-      </div>
-
-      <div className="mt-4 grid gap-4 lg:grid-cols-2">
-        {preview.files.map((file, index) => {
-          const source = sources[index] as Record<string, unknown> | undefined
-          const previewUrl = file.signed_url ?? localPreviews?.[file.filename]
-          const isPdf = file.contentType === 'application/pdf' || file.filename.toLowerCase().endsWith('.pdf')
-          const isImage = file.contentType.startsWith('image/')
-          const fields = extractedPreviewFields(source)
-          const contractAssessment = source ? assessExamContract(preview.analysis, source) : null
-          return (
-            <article className="overflow-hidden rounded-xl border border-border bg-surface-muted" key={`${file.filename}-${file.sha256}`}>
-              <div className="grid min-h-[190px] place-items-center border-b border-border bg-black/[.04] p-3 dark:bg-white/[.03]">
-                {previewUrl && isPdf ? (
-                  <iframe className="h-[190px] w-full rounded-lg bg-white" src={previewUrl} title={`Prévia de ${file.filename}`} />
-                ) : previewUrl && isImage ? (
-                  <img alt={`Prévia de ${file.filename}`} className="max-h-[190px] max-w-full rounded-lg object-contain" src={previewUrl} />
-                ) : (
-                  <div className="grid place-items-center gap-2 text-center">
-                    <img alt="" className="h-16 w-16 object-contain" src={fileIcon(file.filename)} />
-                    <span className="text-xs text-text-muted">Prévia indisponível para este formato</span>
-                  </div>
-                )}
-              </div>
-              <div className="p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <strong className="block truncate text-sm" title={file.filename}>{file.filename}</strong>
-                    <span className="mt-1 block text-xs text-text-muted">{(file.size / 1024 / 1024).toFixed(2)} MB · {contractAssessment?.contract.label ?? (source?.exam ? String(source.exam) : 'tipo não identificado')}{(contractAssessment?.eye ?? source?.eye) ? ` · ${String(contractAssessment?.eye ?? source?.eye)}` : ''}</span>
-                    {file.canonicalFilename && file.canonicalFilename !== file.filename && (
-                      <span className="mt-1 block truncate text-[11px] text-primary" title={file.canonicalFilename}>
-                        Nome padronizado: {file.canonicalFilename}
-                      </span>
-                    )}
-                  </div>
-                  <StatusBadge tone={contractAssessment?.missing.length ? 'warning' : 'success'}>
-                    {contractAssessment ? `${contractAssessment.extracted.length}/${contractAssessment.contract.fields.length} campos` : fields.length ? 'Extraído' : 'Sem campos'}
-                  </StatusBadge>
-                </div>
-                {contractAssessment && (
-                  <div className="mt-3 overflow-hidden rounded-lg border border-border bg-surface text-xs">
-                    <table className="w-full border-collapse text-left">
-                      <thead className="bg-surface-muted text-text-secondary">
-                        <tr>
-                          <th className="w-12 px-3 py-2 font-bold">Status</th>
-                          <th className="px-3 py-2 font-bold">Campo do contrato</th>
-                          <th className="px-3 py-2 font-bold">Valor</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {contractAssessment.contract.fields.map((field) => {
-                          const extracted = contractAssessment.extracted.includes(field)
-                          const informative = contractAssessment.contract.key === 'fundus_retinography'
-                            || contractAssessment.contract.key === 'oct_retina'
-                            || ['coma', 'z40'].includes(field.key)
-                          const conditional = ['acd', 'cell_density', 'astigmatism', 'astigmatism_axis'].includes(field.key)
-                          const missingTone = informative ? 'bg-surface-muted' : conditional ? 'bg-warning-soft/60' : 'bg-danger-soft/60'
-                          return (
-                            <tr className={extracted ? 'bg-success-soft/60' : missingTone} key={field.key}>
-                              <td className="px-3 py-2 text-base" title={extracted ? 'Campo extraído' : informative ? 'Campo informativo ausente' : conditional ? 'Campo condicional ausente' : 'Campo ausente'}>{extracted ? '✅' : informative ? 'ℹ️' : conditional ? '⚠️' : '❌'}</td>
-                              <td className={clsx('px-3 py-2 font-semibold', extracted ? 'text-success' : informative ? 'text-text-secondary' : conditional ? 'text-warning' : 'text-danger')}>{field.label}</td>
-                              <td className="max-w-[180px] truncate px-3 py-2 text-text-secondary" title={extracted ? formatContractValue(contractAssessment.values[field.key]) : undefined}>{extracted ? formatContractValue(contractAssessment.values[field.key]) : informative ? 'Não avaliado' : conditional ? 'Depende do fluxo' : 'Não encontrado'}</td>
-                            </tr>
-                          )
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-                <details className="mt-3 rounded-lg border border-border bg-surface">
-                  <summary className="cursor-pointer px-3 py-2 text-xs font-bold text-primary">Ver campos identificados ({fields.length})</summary>
-                  <div className="border-t border-border px-3 py-2">
-                    {fields.length ? fields.map(([key, value]) => (
-                      <div className="grid grid-cols-[minmax(0,.9fr)_minmax(0,1.1fr)] gap-3 border-b border-border py-2 text-xs last:border-0" key={`${key}-${value}`}>
-                        <span className="break-words font-semibold text-text-secondary">{key}</span>
-                        <span className="break-words text-text-primary">{value}</span>
-                      </div>
-                    )) : <p className="mb-0 py-1 text-xs text-text-secondary">Nenhum campo estruturado foi associado a este arquivo.</p>}
-                  </div>
-                </details>
-                <details className="mt-2 rounded-lg border border-border bg-surface">
-                  <summary className="cursor-pointer px-3 py-2 text-xs font-bold text-text-secondary">Ver JSON deste arquivo</summary>
-                  <pre className="m-0 max-h-[280px] overflow-auto border-t border-border p-3 text-[11px] leading-relaxed text-text-secondary">{JSON.stringify(source ?? {}, null, 2)}</pre>
-                </details>
-              </div>
-            </article>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
-
-interface Metric {
-  label: string
-  value: string
-  detail: string
-  tone: 'default' | 'success' | 'warning'
-}
-
-interface DocumentReview {
-  name: string
-  filename: string
-  status: 'Processado' | 'Atenção' | 'Não enviado'
-  detail: string
-  url?: string
-}
-
-interface ExtractedDatum {
-  name: string
-  fullName?: string
-  value: string
-  unit?: string
-  source: string
-  kind: DataKind
-  confidence: Confidence
-  document: string
-  screen: string
-  field: string
-  crossCheck?: string
-  formula?: string
-  contractNote?: string
 }
 
 const steps = [
@@ -713,6 +408,37 @@ const recommendationReasons = [
   'ARTmax não identificado',
 ]
 
+interface Metric {
+  label: string
+  value: string
+  detail: string
+  tone: 'default' | 'success' | 'warning'
+}
+
+interface DocumentReview {
+  name: string
+  filename: string
+  status: 'Processado' | 'Atenção' | 'Não enviado'
+  detail: string
+  url?: string
+}
+
+interface ExtractedDatum {
+  name: string
+  fullName?: string
+  value: string
+  unit?: string
+  source: string
+  kind: DataKind
+  confidence: Confidence
+  document: string
+  screen: string
+  field: string
+  crossCheck?: string
+  formula?: string
+  contractNote?: string
+}
+
 interface ReportCase {
   initials: string
   patient: string
@@ -824,65 +550,6 @@ function MetricCard({ label, value, detail, tone }: Metric) {
       <strong className="relative mt-4 block font-display text-2xl leading-none tracking-[-0.04em]">{value}</strong>
       <span className="relative mt-1.5 block text-xs text-text-muted">{detail}</span>
     </article>
-  )
-}
-
-function ProcessSteps({
-  current,
-  reviewed,
-  reachedStep = current,
-  maxStep = steps.length,
-  onStepChange,
-}: {
-  current: number
-  reviewed: boolean
-  reachedStep?: number
-  maxStep?: number
-  onStepChange?: (step: number) => void
-}) {
-  return (
-    <ol className="mt-6 grid list-none grid-cols-5 gap-2 p-0 max-[1100px]:grid-cols-2 max-[580px]:grid-cols-1" aria-label="Etapas da análise">
-      {steps.map((step, index) => {
-        const number = index + 1
-        const completed = (number !== current && number <= reachedStep) || (number === steps.length && reviewed)
-        const active = current === number && !completed
-        const available = number <= maxStep
-        return (
-          <li
-            key={step.title}
-            aria-current={active ? 'step' : undefined}
-            className="min-w-0"
-          >
-            <button
-              className={clsx(
-                'flex w-full min-w-0 items-center gap-2.5 rounded-[10px] border p-[11px] text-left',
-                active && 'border-primary-border bg-primary-soft',
-                completed && 'border-border bg-surface-muted',
-                !active && !completed && 'border-border bg-surface opacity-60',
-                available && onStepChange && 'cursor-pointer hover:border-primary',
-                !available && 'cursor-not-allowed',
-              )}
-              disabled={!available || !onStepChange}
-              onClick={() => onStepChange?.(number)}
-              type="button"
-            >
-              <span className={clsx(
-                'grid h-7 w-7 flex-none place-items-center rounded-full border text-xs font-bold',
-                active && 'border-primary bg-primary text-white',
-                completed && 'border-success bg-success text-white',
-                !active && !completed && 'border-border-strong bg-surface text-text-secondary',
-              )}>
-                {completed ? <Check size={14} strokeWidth={3} /> : number}
-              </span>
-              <span className="min-w-0">
-                <strong className="block truncate text-xs">{step.title}</strong>
-                <small className="mt-0.5 block truncate text-xs text-text-muted">{step.description}</small>
-              </span>
-            </button>
-          </li>
-        )
-      })}
-    </ol>
   )
 }
 
@@ -1959,160 +1626,6 @@ function TraceabilityDrawer({ data, onClose }: { data: ExtractedDatum | null; on
   )
 }
 
-function previewExamLabel(exam: string) {
-  const labels: Record<string, string> = {
-    pentacam_corneal_tomography: 'Pentacam',
-    iol_calculation: 'Cálculo de LIO',
-    specular_microscopy: 'Microscopia especular',
-  }
-  return labels[exam] ?? exam.replaceAll('_', ' ')
-}
-
-function previewFieldLabel(field: string) {
-  return field
-    .split('.')
-    .map((part) => part.replaceAll('_', ' '))
-    .join(' › ')
-}
-
-function previewValue(value: unknown) {
-  if (value === null || value === undefined || value === '') return '—'
-  if (typeof value === 'boolean') return value ? 'Sim' : 'Não'
-
-  if (typeof value === 'number') {
-    return value.toLocaleString('pt-BR', { maximumFractionDigits: 4 })
-  }
-
-  if (Array.isArray(value)) {
-    return `${value.length} ${value.length === 1 ? 'item' : 'itens'}`
-  }
-
-  if (typeof value === 'object') {
-    const count = Object.keys(value as Record<string, unknown>).length
-    return `${count} ${count === 1 ? 'campo' : 'campos'}`
-  }
-
-  return String(value)
-}
-
-function previewKindLabel(kind: string) {
-  if (kind === 'added') return 'Novo'
-  if (kind === 'changed') return 'Alterado'
-  if (kind === 'removed') return 'Removido'
-  return 'Inalterado'
-}
-
-function previewKindClass(kind: string) {
-  if (kind === 'added') return 'border-success/30 bg-success-soft text-success'
-  if (kind === 'changed') return 'border-warning/30 bg-warning-soft text-warning'
-  if (kind === 'removed') return 'border-danger/30 bg-danger-soft text-danger'
-  return 'border-border bg-surface-muted text-text-muted'
-}
-
-function IntakeChangeTable({
-  rows,
-}: {
-  rows: NonNullable<IntakePreview['changePreview']>['rows']
-}) {
-  return (
-    <div className="mt-3 overflow-x-auto rounded-xl border border-border">
-      <table className="w-full min-w-[820px] border-collapse text-left text-xs">
-        <thead className="bg-surface-muted text-text-secondary">
-          <tr>
-            <th className="px-3 py-2.5 font-bold">Exame</th>
-            <th className="px-3 py-2.5 font-bold">Olho</th>
-            <th className="px-3 py-2.5 font-bold">Campo</th>
-            <th className="px-3 py-2.5 font-bold">Atual</th>
-            <th className="px-3 py-2.5 font-bold">Novo</th>
-            <th className="px-3 py-2.5 font-bold">Alteração</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, index) => (
-            <tr
-              className="border-t border-border align-top"
-              key={`${row.exam}-${row.eye ?? 'AO'}-${row.field}-${index}`}
-            >
-              <td className="px-3 py-2.5 font-semibold text-text-primary">
-                {previewExamLabel(row.exam)}
-              </td>
-              <td className="px-3 py-2.5 font-mono text-text-secondary">
-                {row.eye || '—'}
-              </td>
-              <td className="max-w-[280px] px-3 py-2.5 text-text-secondary">
-                {previewFieldLabel(row.field)}
-              </td>
-              <td className="max-w-[220px] break-words px-3 py-2.5 font-mono text-text-muted">
-                {previewValue(row.before)}
-              </td>
-              <td className="max-w-[220px] break-words px-3 py-2.5 font-mono text-text-primary">
-                {previewValue(row.after)}
-              </td>
-              <td className="px-3 py-2.5">
-                <span className={`inline-flex rounded-full border px-2 py-1 font-bold ${previewKindClass(row.kind)}`}>
-                  {previewKindLabel(row.kind)}
-                </span>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  )
-}
-
-function PatientChangePreview({ preview }: { preview: IntakePreview }) {
-  const changes = preview.changePreview
-  if (!changes) return null
-
-  const visibleRows = changes.rows.filter((row) => row.kind !== 'unchanged')
-  const unchangedRows = changes.rows.filter((row) => row.kind === 'unchanged')
-  const noChanges = visibleRows.length === 0
-
-  return (
-    <div className="mt-4 rounded-xl border border-border bg-surface p-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <strong className="mr-1 text-sm text-text-primary">Alterações deste upload</strong>
-
-        <span className="rounded-full border border-success/30 bg-success-soft px-2.5 py-1 text-xs font-bold text-success">
-          {changes.added} novos
-        </span>
-
-        <span className="rounded-full border border-warning/30 bg-warning-soft px-2.5 py-1 text-xs font-bold text-warning">
-          {changes.changed} alterados
-        </span>
-
-        <span className="rounded-full border border-danger/30 bg-danger-soft px-2.5 py-1 text-xs font-bold text-danger">
-          {changes.removed} removidos
-        </span>
-
-        {changes.unchanged > 0 && (
-          <span className="rounded-full border border-border bg-surface-muted px-2.5 py-1 text-xs font-bold text-text-muted">
-            {changes.unchanged} inalterados
-          </span>
-        )}
-      </div>
-
-      {noChanges ? (
-        <p className="mb-0 mt-3 rounded-lg bg-surface-muted p-3 text-sm text-text-secondary">
-          Nenhuma alteração clínica detectada. Os arquivos enviados já fazem parte deste paciente.
-        </p>
-      ) : (
-        <IntakeChangeTable rows={visibleRows} />
-      )}
-
-      {unchangedRows.length > 0 && (
-        <details className="mt-3">
-          <summary className="cursor-pointer text-xs font-bold text-primary">
-            Mostrar {unchangedRows.length} campo(s) inalterado(s)
-          </summary>
-          <IntakeChangeTable rows={unchangedRows} />
-        </details>
-      )}
-    </div>
-  )
-}
-
 function App() {
   const [theme, setTheme] = useState<Theme>(getInitialTheme)
   const [route, setRoute] = useState(() => window.location.pathname)
@@ -2131,70 +1644,9 @@ function App() {
   const [storedCaseError, setStoredCaseError] = useState('')
   const [caseDeleteBusy, setCaseDeleteBusy] = useState(false)
 
-  const intake = useIntakeWorkflow({
-    apiUrl: API_URL,
-    onCaseConfirmed: (newCase) => setSavedCases((cases) => [newCase, ...cases.filter((item) => item.caseId !== newCase.caseId)]),
-    onNavigateToReports: () => setActiveSection('Relatórios'),
-  })
-  const {
-    intakeBusy,
-    intakeCheckpointBusy,
-    intakeCheckpointError,
-    intakeCheckpointStates,
-    intakeClassificationComplete,
-    intakeClassifications,
-    intakeCompletedFiles,
-    intakeElapsed,
-    intakeFileProgress,
-    intakeFiles,
-    intakeForceReprocess,
-    intakeLiveAnalysis,
-    intakeLocalPreviews,
-    intakeMessage,
-    intakePreview,
-    intakeProcessFiles,
-    intakeProgress,
-    intakeProgressFilename,
-    intakeProgressMessage,
-    intakeProgressStage,
-    intakeReachedStep,
-    intakeWorkflowStep,
-    analyzeIntake,
-    abortIntakeAnalysis,
-    confirmIntake,
-    deleteDraft,
-    discardIntake,
-    goToIntakeStep,
-    replaceIntakeFiles,
-    setIntakeClassifications,
-    setIntakeFiles,
-    setIntakeForceReprocess,
-    setIntakeMessage,
-    setIntakeProcessFiles,
-    setIntakePreview,
-  } = intake
-
   const isRealCase = selectedCase === 'real'
   const reportData = isRealCase ? patientData : storedCase?.analysis
-  const workflowStep = reportData || isRealCase
-    ? steps.length
-    : selectedCase === 'demo'
-      ? processingStep
-      : intakePreview
-        ? 4
-        : intakeFiles.length > 0
-          ? intakeWorkflowStep
-          : 1
-  const workflowStatus = reportData || isRealCase
-    ? (isReviewed ? 'Relatório revisado' : 'Revise o relatório')
-    : intakePreview
-      ? 'Análise concluída'
-      : intakeFiles.length > 0
-        ? intakeWorkflowStep >= 4
-          ? 'Analisando arquivos'
-          : intakeWorkflowStep >= 3 ? 'Confira os dados' : 'Confira os documentos'
-        : 'Envie os exames'
-  const reportGenerated = workflowStep === steps.length || Boolean(reportData)
+  const reportGenerated = isRealCase || Boolean(reportData) || (selectedCase === 'demo' && processingStep === steps.length)
   const activeExtractedData = reportData ? getReportExtractedData(reportData) : extractedData
   const activeMetrics = reportData ? getReportMetrics(reportData, activeExtractedData) : metrics
   const activeDocuments = reportData ? getReportDocuments(reportData) : documents
@@ -2621,345 +2073,20 @@ function App() {
             </>
           )}
 
-          {activeSection === 'Nova análise' && (
-            <>
-              {selectedCase && (
-                <button
-                  className="mb-4 inline-flex items-center gap-2 border-0 bg-transparent p-0 text-sm font-semibold text-primary hover:text-primary-hover"
-                  onClick={backToReports}
-                  type="button"
-                >
-                  <ArrowLeft size={16} /> Voltar para casos
-                </button>
-              )}
-              <section className="mt-5 rounded-2xl border border-primary-border bg-primary-soft/30 p-6 shadow-sm max-[580px]:p-4">
-                <Eyebrow>{workflowStep >= 3 ? 'CONFERIR DADOS' : 'IMPORTAR EXAMES'}</Eyebrow>
-                <h2 className="mb-0 mt-1 font-display text-xl">
-                  {workflowStep >= 3 ? 'Confirme os dados dos arquivos' : 'Envie os arquivos do paciente'}
-                </h2>
-                <p className="mb-0 mt-1.5 text-sm leading-relaxed text-text-secondary">
-                  {workflowStep >= 3
-                    ? 'Revise o tipo e o olho de cada arquivo antes de iniciar a análise.'
-                    : 'Após a análise, o sistema identifica o paciente e mostra exatamente o que será criado, adicionado ou alterado antes da confirmação.'}
-                </p>
-                <div className="mt-5 rounded-xl border border-border bg-surface/60 p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <Eyebrow>ETAPA ATUAL</Eyebrow>
-                      <p className="mb-0 mt-1 text-sm font-semibold text-text-primary">{workflowStatus}</p>
-                    </div>
-                    <StatusBadge tone={workflowStep === 2 ? 'warning' : workflowStep >= 4 ? 'success' : 'neutral'}>
-                      Etapa {Math.min(workflowStep, steps.length)} de {steps.length}
-                    </StatusBadge>
-                  </div>
-                  <ProcessSteps
-                    current={workflowStep}
-                    maxStep={reportData || isRealCase
-                      ? steps.length
-                      : intakeWorkflowStep >= 4 || intakeBusy || intakePreview
-                        ? 4
-                        : intakeFiles.length > 0
-                          ? 3
-                          : 1}
-                    reachedStep={reportData || isRealCase
-                      ? steps.length
-                      : selectedCase === 'demo'
-                        ? workflowStep
-                        : intakeReachedStep}
-                    onStepChange={(step) => {
-                      if (!reportData && !isRealCase) goToIntakeStep(step)
-                    }}
-                    reviewed={isReviewed}
-                  />
-                </div>
-                {workflowStep < 3 && <label
-                  className="mt-5 flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-primary/40 bg-surface p-8 text-center hover:border-primary max-[580px]:p-6"
-                  onDragOver={(event) => event.preventDefault()}
-                  onDrop={(event) => {
-                    event.preventDefault()
-                    void deleteDraft(intakePreview)
-                    replaceIntakeFiles(Array.from(event.dataTransfer.files))
-                    setIntakePreview(null)
-                    setIntakeMessage('')
-                  }}
-                >
-                  <UploadCloud className="text-primary" size={30} />
-                  <strong className="mt-3 text-sm">Arraste os arquivos aqui ou clique para selecionar</strong>
-                  <span className="mt-1 text-xs text-text-muted">PDF, DOC, DOCX, XLS, XLSX, JPG e PNG · até 20 MB por arquivo</span>
-                  <input
-                    accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
-                    className="sr-only"
-                    multiple
-                    onChange={(event) => {
-                      void deleteDraft(intakePreview)
-                      replaceIntakeFiles(Array.from(event.target.files ?? []))
-                      setIntakePreview(null)
-                      setIntakeMessage('')
-                    }}
-                    type="file"
-                  />
-                </label>}
-                {intakeFiles.length > 0 && (
-                  <div className="mt-4 rounded-xl border border-border bg-surface p-4">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <strong className="text-sm">
-                        {intakeFiles.length} arquivo(s) {workflowStep >= 4 ? 'em análise' : 'selecionado(s)'}
-                      </strong>
-                      <div className="flex items-center gap-2">
-                        {intakeBusy && (
-                          <button
-                            className="rounded-xl border border-danger/40 bg-danger-soft px-4 py-2.5 text-sm font-bold text-danger hover:border-danger/70"
-                            onClick={abortIntakeAnalysis}
-                            type="button"
-                          >
-                            Cancelar análise
-                          </button>
-                        )}
-
-                        {workflowStep < 4 && <PrimaryButton
-                          disabled={
-                            workflowStep >= 3 && (
-                              intakeBusy ||
-                              intakeCheckpointBusy ||
-                              !intakeClassificationComplete
-                            )
-                          }
-                          onClick={() => {
-                            if (workflowStep < 3) {
-                              goToIntakeStep(3)
-                              return
-                            }
-                            void analyzeIntake()
-                          }}
-                        >
-                          {workflowStep < 3
-                            ? 'Próxima etapa'
-                            : intakeBusy
-                            ? 'Analisando…'
-                            : intakeCheckpointBusy
-                              ? 'Verificando arquivos…'
-                              : intakeForceReprocess
-                                ? 'Reprocessar arquivos'
-                                : 'Analisar arquivos'}
-                        </PrimaryButton>}
-                      </div>
-                    </div>
-                    {workflowStep < 3 && <ExamProtocolChecklist files={intakeFiles} />}
-
-                    {workflowStep === 3 && <>
-                    <IntakeFileClassification
-                      apiUrl={API_URL}
-                      files={intakeFiles}
-                      localPreviews={intakeLocalPreviews}
-                      onChange={setIntakeClassifications}
-                      onRemove={(file) => {
-                        void deleteDraft(intakePreview)
-                        setIntakeFiles((files) => files.filter((currentFile) => currentFile !== file))
-                        setIntakePreview(null)
-                      }}
-                      value={intakeClassifications}
-                    />
-
-                    {!intakeClassificationComplete && (
-                      <p className="mb-0 mt-3 text-xs text-warning">
-                        Confirme o tipo e o olho de todos os arquivos para liberar a verificação de processamento.
-                      </p>
-                    )}
-
-                    {intakeClassificationComplete && (
-                      <IntakeCheckpointPreflight
-                        checking={intakeCheckpointBusy}
-                        disabled={intakeBusy}
-                        error={intakeCheckpointError}
-                        files={intakeFiles}
-                        forceReprocess={intakeForceReprocess}
-                        onProcessFilesChange={(key, value) => {
-                          setIntakeProcessFiles((current) => ({
-                            ...current,
-                            [key]: value,
-                          }))
-                        }}
-                        onForceReprocessChange={setIntakeForceReprocess}
-                        processFiles={intakeProcessFiles}
-                        states={intakeCheckpointStates}
-                      />
-                    )}
-                    </>}
-
-                    {workflowStep >= 4 && intakeBusy && (
-                      <IntakeProcessingProgress
-                        elapsedSeconds={intakeElapsed}
-                        fileProgress={intakeFileProgress}
-                        files={intakeFiles}
-                        overallFilename={intakeProgressFilename}
-                        overallMessage={intakeProgressMessage}
-                        overallProgress={intakeProgress}
-                        overallStage={intakeProgressStage}
-                      />
-                    )}
-                    {workflowStep >= 4 && intakeLiveAnalysis && (
-                      <div className="mt-4 rounded-xl border border-success/40 bg-success-soft p-4">
-                        <div className="flex flex-wrap items-start justify-between gap-3">
-                          <div>
-                            <span className="text-xs font-bold uppercase tracking-[0.12em] text-success">
-                              Resultados durante a análise
-                            </span>
-
-                            <p className="mb-0 mt-1 text-xs text-text-secondary">
-                              Exames exibidos assim que cada parser termina.
-                            </p>
-                          </div>
-
-                          <span className="rounded-full border border-success/30 bg-surface px-3 py-1 text-xs font-bold text-success">
-                            {intakeCompletedFiles.length} processado(s)
-                          </span>
-                        </div>
-
-                        {intakeCompletedFiles.length > 0 && (
-                          <div className="mt-4 grid gap-2 sm:grid-cols-2">
-                            {intakeCompletedFiles.map((filename) => (
-                              <div
-                                className="flex min-w-0 items-center gap-3 rounded-lg border border-success/20 bg-surface/70 px-3 py-2"
-                                key={filename}
-                              >
-                                <span className="grid h-6 w-6 flex-none place-items-center rounded-full bg-success-soft text-success">
-                                  ✓
-                                </span>
-
-                                <div className="min-w-0">
-                                  <strong className="block text-xs text-success">
-                                    Parsing concluído
-                                  </strong>
-
-                                  <span
-                                    className="block truncate font-mono text-[10px] text-text-secondary"
-                                    title={filename}
-                                  >
-                                    {filename}
-                                  </span>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-
-                        <div className="mt-4 border-t border-success/20 pt-4">
-                          <IntakeAnalysisSummary
-                            analysis={intakeLiveAnalysis}
-                          />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-                {intakePreview && (
-                  <div className="mt-4 rounded-xl border border-success/30 bg-success-soft p-4">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <strong className="text-sm">
-                          {intakePreview.patientMatch.status === 'existing'
-                            ? 'Paciente já cadastrado'
-                            : intakePreview.patientMatch.status === 'new'
-                              ? 'Novo paciente'
-                              : 'Identidade precisa de revisão'}
-                        </strong>
-                        <p className="mb-0 mt-1 text-sm font-semibold text-text-primary">
-                          {intakePreview.patientMatch.status === 'existing'
-                            ? intakePreview.patientMatch.patientName
-                              ?? intakePreview.analysis.patient?.full_name
-                              ?? 'Paciente não identificado'
-                            : intakePreview.analysis.patient?.full_name
-                              ?? 'Paciente não identificado'}
-                        </p>
-                        <p className="mb-0 mt-1 text-xs text-text-secondary">
-                          {readableBirthDate(intakePreview.analysis.patient?.birth_date)}
-                          {' · '}
-                          {Object.keys(intakePreview.analysis.exams ?? {}).length} tipo(s) de exame
-                          {intakePreview.patientMatch.status === 'existing'
-                            ? ` · ${intakePreview.patientMatch.caseId}`
-                            : ''}
-                        </p>
-                      </div>
-                      <StatusBadge tone="success">
-                        {intakePreview.patientMatch.status === 'existing'
-                          ? 'Atualização'
-                          : intakePreview.patientMatch.status === 'new'
-                            ? 'Novo cadastro'
-                            : 'Revisar identidade'}
-                      </StatusBadge>
-                    </div>
-
-                    <p className="mb-0 mt-2 text-sm leading-relaxed text-text-secondary">
-                      {intakePreview.patientMatch.status === 'existing'
-                        ? 'Os exames enviados serão incorporados ao registro existente somente após sua confirmação.'
-                        : intakePreview.patientMatch.status === 'new'
-                          ? 'Este paciente ainda não possui um caso correspondente e será criado somente após sua confirmação.'
-                          : 'Não foi possível determinar com segurança se este paciente já possui cadastro. Revise a identidade antes de confirmar.'}
-                    </p>
-
-                    <PatientChangePreview preview={intakePreview} />
-                    <IntakeDocumentsDebug localPreviews={intakeLocalPreviews} preview={intakePreview} />
-                    <IntakeCompletenessNotice analysis={intakePreview.analysis} />
-                    <IntakeAnalysisSummary analysis={intakePreview.analysis} />
-                    <details className="mt-4 rounded-lg border border-border bg-surface">
-                      <summary className="cursor-pointer px-3 py-2 text-xs font-bold text-primary">Ver JSON completo (debug)</summary>
-                      <pre className="m-0 max-h-[520px] overflow-auto border-t border-border p-3 text-xs leading-relaxed text-text-secondary">{JSON.stringify(intakePreview.analysis, null, 2)}</pre>
-                    </details>
-                    <div className="mt-4 flex flex-wrap gap-3">
-                      <PrimaryButton disabled={intakeBusy} onClick={confirmIntake}>
-                        {intakeBusy
-                          ? 'Salvando…'
-                          : intakePreview.patientMatch.status === 'existing'
-                            ? 'Atualizar paciente'
-                            : intakePreview.patientMatch.status === 'new'
-                              ? 'Criar paciente'
-                              : 'Revisar identidade'}
-                      </PrimaryButton>
-                      <button className="rounded-[9px] border border-border-strong bg-surface px-4 py-[11px] text-sm font-semibold hover:border-danger hover:text-danger" disabled={intakeBusy} onClick={discardIntake} type="button">Descartar</button>
-                    </div>
-                  </div>
-                )}
-                {intakeMessage && <p aria-live="assertive" className="mb-0 mt-3 whitespace-pre-wrap rounded-lg border border-danger/30 bg-danger-soft p-3 text-sm font-semibold text-danger">{intakeMessage}</p>}
-              </section>
-              <section className="mt-5 rounded-2xl border border-border bg-surface p-6 shadow-sm max-[580px]:p-4">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <Eyebrow>FLUXO DA ANÁLISE</Eyebrow>
-                    <h2 className="mb-0 mt-1 font-display text-xl">Escolha um caso para revisar</h2>
-                  </div>
-                  <StatusBadge tone={reportGenerated ? 'success' : 'neutral'}>
-                    {reportGenerated ? 'Pronto para revisar' : 'Aguardando caso'}
-                  </StatusBadge>
-                </div>
-                <div className="mt-5 grid gap-4">
-                  {savedCases.map((item) => (
-                    <button
-                      aria-pressed={storedCase?.caseId === item.caseId}
-                      className={clsx(
-                        'grid grid-cols-[auto_minmax(0,1fr)_auto] items-center rounded-xl border bg-surface-muted p-[18px] text-left hover:border-primary hover:bg-primary-soft/80',
-                        storedCase?.caseId === item.caseId ? 'border-primary ring-2 ring-primary/15' : 'border-border-strong',
-                      )}
-                      key={item.caseId}
-                      onClick={() => void openSavedCase(item.caseId)}
-                      type="button"
-                    >
-                      <span className="grid h-[45px] w-[45px] place-items-center rounded-xl bg-success-soft text-success">
-                        <Database size={22} />
-                      </span>
-                      <span className="mx-3.5 min-w-0">
-                        <strong className="block truncate text-sm">{item.patientName}</strong>
-                        <small className="mt-1 block text-xs leading-relaxed text-text-muted">
-                          Caso salvo · {formatCaseSavedTime(item.caseId) ?? item.caseId}
-                        </small>
-                      </span>
-                      <StatusBadge tone="success">Abrir relatório</StatusBadge>
-                    </button>
-                  ))}
-                </div>
-              </section>
-            </>
-          )}
-
+          <NewAnalysisPage
+              visible={activeSection === 'Nova análise'}
+              apiUrl={API_URL}
+              isReviewed={isReviewed}
+              onBackToReports={backToReports}
+              onCaseConfirmed={(newCase) => setSavedCases((cases) => [newCase, ...cases.filter((item) => item.caseId !== newCase.caseId)])}
+              onNavigateToReports={() => setActiveSection('Relatórios')}
+              onOpenCase={(caseId) => void openSavedCase(caseId)}
+              processingStep={processingStep}
+              reportData={reportData}
+              savedCases={savedCases}
+              selectedCase={selectedCase}
+              selectedCaseId={storedCase?.caseId ?? null}
+          />
           {activeSection === 'Exames salvos' && (
             <SavedExamsPage
               apiUrl={API_URL}
