@@ -16,6 +16,7 @@ import (
 	"refratia/backend/features/eyesuite"
 	intakefeature "refratia/backend/features/intake"
 	"refratia/backend/features/pentacam"
+	"refratia/backend/features/refractometry"
 	"refratia/backend/features/specularmicroscopy"
 	"refratia/backend/shared/progress"
 )
@@ -368,6 +369,36 @@ func benchmarkPentacamResult(
 	}
 
 	return fields, extracted
+}
+
+func benchmarkIdentityFields(identity pentacam.Identity) ([]benchmarkField, int) {
+	values := []struct {
+		key   string
+		label string
+		value string
+	}{
+		{key: "identity.full_name", label: "Nome do paciente", value: identity.FullName},
+		{key: "identity.birth_date", label: "Data de nascimento", value: identity.BirthDateRaw},
+		{key: "identity.exam_date", label: "Data do exame", value: identity.ExamDateRaw},
+	}
+
+	fields := make([]benchmarkField, 0, len(values))
+	extracted := 0
+	for _, item := range values {
+		found := strings.TrimSpace(item.value) != ""
+		if found {
+			extracted++
+		}
+		fields = append(fields, benchmarkField{
+			Key: item.key, Label: item.label, Found: found, Value: item.value,
+		})
+	}
+	return fields, extracted
+}
+
+func appendBenchmarkFields(fields *[]benchmarkField, extracted *int, extra []benchmarkField, extraExtracted int) {
+	*fields = append(*fields, extra...)
+	*extracted += extraExtracted
 }
 
 func benchmarkSpecularMicroscopyResult(exam map[string]any, expectedEye string) ([]benchmarkField, int) {
@@ -752,15 +783,17 @@ func benchmarkExtractFieldsHandler(
 			return
 		}
 
-		fields, extracted :=
-			benchmarkPentacamResult(exam)
+		fields, extracted := benchmarkPentacamResult(exam)
+		identity, _ := pentacam.ExtractIdentity(ctx, file.Data)
+		identityFields, identityExtracted := benchmarkIdentityFields(identity)
+		appendBenchmarkFields(&fields, &extracted, identityFields, identityExtracted)
 
 		emit(
 			benchmarkFieldsEvent{
 				Type:    "result",
 				Percent: 100,
 				Message: fmt.Sprintf(
-					"%d/%d campos extraídos",
+					"%d/%d campos extraídos pelo parser do fluxo normal",
 					extracted,
 					len(fields),
 				),
@@ -849,35 +882,19 @@ func benchmarkExtractFieldsHandler(
 
 		emit(benchmarkFieldsEvent{
 			Type: "progress", Percent: 7,
-			Message:  "Executando leitura limpa de refratometria (sem cache)",
+			Message:  "Executando o mesmo parser local de refratometria do fluxo normal",
 			ExamType: meta.ExamType, Eye: meta.Eye,
 		})
 
-		// O benchmark chama a leitura diretamente, sem contexto de checkpoint,
-		// para medir esta execução como se fosse a primeira.
-		prompt := fmt.Sprintf(`Leia somente o arquivo de refratometria %q.
-Retorne somente JSON neste formato:
-{"exams":{"refractometry":{"eyes":{"OD":{"sphere_d":null,"cylinder_d":null,"axis_deg":null},"OS":{"sphere_d":null,"cylinder_d":null,"axis_deg":null}}}}}
-Extraia apenas valores realmente legíveis. Preserve sinais. Se um olho não estiver presente, mantenha seus campos como null. Não faça cálculos nem use qualquer resultado anterior.`, file.Metadata.Filename)
-
-		raw, extractErr := requestOpenAIJSON(ctx, []uploadedFile{file}, prompt, 2000)
+		exam, extractErr := refractometry.ExtractPDF(progress.WithRange(ctx, 7, 96), file.Data)
 		if extractErr != nil {
-			emit(benchmarkFieldsEvent{Type: "error", Error: extractErr.Error()})
+			emit(benchmarkFieldsEvent{Type: "error", Error: fmt.Sprintf("parser local de refratometria: %v", extractErr)})
 			return
 		}
-
-		var analysis map[string]any
-		if err := json.Unmarshal([]byte(raw), &analysis); err != nil {
-			emit(benchmarkFieldsEvent{Type: "error", Error: "o benchmark retornou JSON inválido"})
-			return
-		}
-
-		exams, _ := analysis["exams"].(map[string]any)
-		exam, _ := exams["refractometry"].(map[string]any)
 		fields, extracted := benchmarkRefractometryResult(exam, meta.Eye)
 		emit(benchmarkFieldsEvent{
 			Type: "result", Percent: 100,
-			Message:  fmt.Sprintf("%d/%d campos extraídos", extracted, len(fields)),
+			Message:  fmt.Sprintf("%d/%d campos extraídos pelo parser do fluxo normal", extracted, len(fields)),
 			ExamType: meta.ExamType, Eye: meta.Eye,
 			ElapsedMS: time.Since(started).Milliseconds(),
 			Fields:    fields, Extracted: extracted, Total: len(fields), Supported: true,

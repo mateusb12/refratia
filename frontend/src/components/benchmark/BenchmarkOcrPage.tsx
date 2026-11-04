@@ -365,8 +365,9 @@ export default function BenchmarkOcrPage() {
         </h2>
 
         <p className="mb-0 mt-2 text-sm text-text-secondary">
-          O tipo do exame é definido pelo nome do arquivo. O benchmark mede
-          somente os campos que o parser correspondente consegue extrair.
+          O tipo do exame é definido pelo nome do arquivo. O benchmark executa
+          o mesmo parser determinístico usado pelo fluxo normal e mostra o que
+          entrou na extração, incluindo identidade e datas quando disponíveis.
         </p>
       </section>
 
@@ -707,7 +708,7 @@ export default function BenchmarkOcrPage() {
                     </h3>
 
                     <span className="text-xs text-text-muted">
-                      Valores clínicos ocultados neste benchmark
+                      Valores extraídos pelo parser do fluxo normal
                     </span>
                   </div>
 
@@ -807,9 +808,9 @@ export default function BenchmarkOcrPage() {
             id="benchmark-exam-details"
           >
             <p className="mb-4 text-sm text-text-secondary">
-              O resultado mede apenas os campos listados abaixo. Um campo é
-              considerado extraído quando o parser encontra um valor válido
-              para ele no documento.
+              O resultado mostra os campos que o parser determinístico do fluxo
+              normal conseguiu encontrar neste arquivo. Campos que dependem de
+              fallback complementar podem aparecer somente na análise completa.
             </p>
 
             <div className="grid gap-3 md:grid-cols-2">
