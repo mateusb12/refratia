@@ -34,7 +34,19 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 		"Preparando páginas do Pentacam",
 	)
 
+	pageCount, _, errorValue := pdfutil.Inspect(executionContext, data)
+	if errorValue != nil {
+		return nil, errorValue
+	}
+
 	renderPages := []int{4, 8, 9, 10, 11, 12}
+	availablePages := renderPages[:0]
+	for _, page := range renderPages {
+		if page <= pageCount {
+			availablePages = append(availablePages, page)
+		}
+	}
+	renderPages = availablePages
 
 	if parallelRender {
 		rendered, errorValue := parallelwork.Map(executionContext, renderPages, 3, func(executionContext context.Context, page int) ([]byte, error) {
@@ -108,6 +120,10 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 	values := map[string]any{}
 
 	read := func(page int, ocrRegion pentacamOCRRegion, documentFields []pentacamDocumentField) error {
+		if pages[page] == nil {
+			return nil
+		}
+
 		ocrTexts, errorValue := extractOCRTextsFromRegion(executionContext, pages[page], ocrRegion)
 		if errorValue != nil {
 			return errorValue

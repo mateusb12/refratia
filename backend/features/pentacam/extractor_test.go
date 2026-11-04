@@ -3,6 +3,7 @@ package pentacam
 import (
 	"context"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -44,6 +45,65 @@ func TestExtractPDFMariaGoreteODRecoversVisibleFields(t *testing.T) {
 	assertPentacamFieldValue(t, exam, "belin_ambrosio", "d", 1.05)
 	assertPentacamFieldValue(t, exam, "topometric_indices_8mm", "ihd", 0.018)
 	assertPentacamFieldValue(t, exam, "anterior_segment", "internal_anterior_chamber_depth_mm", 2.66)
+}
+
+func TestDetectEyeMariaGoreteOE(t *testing.T) {
+	data, errorValue := os.ReadFile(
+		"../../../frontend/data/maria-gorete/PENTACAM OE MARIA GORETE.pdf",
+	)
+	if errorValue != nil {
+		t.Fatal(errorValue)
+	}
+
+	eye, errorValue := DetectEye(context.Background(), data)
+	if errorValue != nil {
+		t.Fatal(errorValue)
+	}
+	if eye != "OS" {
+		t.Fatalf("olho esquerdo esperado como OS, recebido %q", eye)
+	}
+}
+
+func TestExtractPDFMariaGoreteOERecoversRequiredFields(t *testing.T) {
+	data, errorValue := os.ReadFile(
+		"../../../frontend/data/maria-gorete/PENTACAM OE MARIA GORETE.pdf",
+	)
+	if errorValue != nil {
+		t.Fatal(errorValue)
+	}
+
+	exam, errorValue := ExtractPDF(context.Background(), data)
+	if errorValue != nil {
+		t.Fatal(errorValue)
+	}
+
+	missing := []string{}
+	requiredPaths := [][]string{
+		{"anterior_cornea", "k1_d"},
+		{"anterior_cornea", "k2_d"},
+		{"anterior_cornea", "km_d"},
+		{"anterior_cornea", "astigmatism_d"},
+		{"pachymetry", "thinnest_um"},
+		{"belin_ambrosio", "d"},
+		{"belin_ambrosio", "art_max"},
+		{"topometric_indices_8mm", "isv"},
+		{"topometric_indices_8mm", "iva"},
+		{"topometric_indices_8mm", "iha"},
+		{"topometric_indices_8mm", "ihd"},
+		{"topometric_indices_8mm", "ki"},
+		{"topometric_indices_8mm", "cki"},
+		{"corneal_rings", "zernike", "5mm", "z31_coma"},
+		{"anterior_segment", "internal_anterior_chamber_depth_mm"},
+		{"cataract_preop", "total_corneal_z40_6mm_um"},
+	}
+	for _, path := range requiredPaths {
+		if !hasNumberAtAnyPath(exam, path) {
+			missing = append(missing, strings.Join(path, "."))
+		}
+	}
+	if len(missing) == len(requiredPaths) {
+		t.Fatalf("nenhum campo numérico do OE foi extraído; ausentes: %v", missing)
+	}
 }
 
 func assertPentacamFieldValue(t *testing.T, exam map[string]any, section, field string, expected float64) {
