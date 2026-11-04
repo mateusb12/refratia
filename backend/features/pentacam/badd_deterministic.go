@@ -17,8 +17,9 @@ var pentacamNonDigit = regexp.MustCompile(`[^0-9]`)
 func readPentacamBADDDeterministic(
 	ctx context.Context,
 	pdf []byte,
+	pageNumber int,
 ) (float64, bool) {
-	page, err := pdfutil.RenderPageAtDPI(ctx, pdf, 10, 300)
+	page, err := pdfutil.RenderPageAtDPI(ctx, pdf, pageNumber, 300)
 	if err != nil {
 		return 0, false
 	}

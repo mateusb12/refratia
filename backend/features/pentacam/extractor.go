@@ -18,6 +18,41 @@ type pentacamDocumentField struct {
 	Decimal bool
 }
 
+type pentacamPageLayout struct {
+	anteriorCornea int
+	pachymetry     int
+	topometric     int
+	badd           int
+	z40            int
+	acd            int
+	z31            int
+}
+
+func pentacamPageLayoutFor(pageCount int) pentacamPageLayout {
+	layout := pentacamPageLayout{
+		anteriorCornea: 4,
+		pachymetry:     8,
+		topometric:     9,
+		badd:           11,
+		z40:            10,
+		acd:            10,
+		z31:            12,
+	}
+
+	// Some Pentacam exports omit one of the aberrometry pages. In those
+	// reports every page after the anterior-cornea summary shifts one slot.
+	if pageCount == 11 {
+		layout.pachymetry--
+		layout.topometric--
+		layout.badd--
+		layout.z40--
+		layout.acd--
+		layout.z31--
+	}
+
+	return layout
+}
+
 func ExtractPDF(executionContext context.Context, data []byte) (map[string]any, error) {
 	return extractPDF(executionContext, data, true)
 }
@@ -39,7 +74,16 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 		return nil, errorValue
 	}
 
-	renderPages := []int{4, 8, 9, 10, 11, 12}
+	layout := pentacamPageLayoutFor(pageCount)
+	renderPages := []int{
+		layout.anteriorCornea,
+		layout.pachymetry,
+		layout.topometric,
+		layout.badd,
+		layout.z40,
+		layout.acd,
+		layout.z31,
+	}
 	availablePages := renderPages[:0]
 	for _, page := range renderPages {
 		if page <= pageCount {
@@ -155,7 +199,7 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 	)
 
 	// Página 4 — córnea anterior.
-	_ = read(4, pentacamOCRRegion{X: 250, Y: 1240, W: 500, H: 310}, []pentacamDocumentField{
+	_ = read(layout.anteriorCornea, pentacamOCRRegion{X: 250, Y: 1240, W: 500, H: 310}, []pentacamDocumentField{
 		{"k1_d", `\b(?:k1|ki)\b`, true},
 		{"k2_d", `\bk2\b`, true},
 		{"km_d", `\bkm\b`, true},
@@ -170,7 +214,7 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 	)
 
 	// Página 8 — paquimetria.
-	_ = read(8, pentacamOCRRegion{X: 1550, Y: 1400, W: 700, H: 350}, nil)
+	_ = read(layout.pachymetry, pentacamOCRRegion{X: 1550, Y: 1400, W: 700, H: 350}, nil)
 
 	progress.Report(
 		executionContext,
@@ -182,7 +226,7 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 	// Página 9 — índices topométricos.
 	topometricOCRTexts, _ := extractOCRTextsFromRegion(
 		executionContext,
-		pages[9],
+		pages[layout.topometric],
 		pentacamOCRRegion{X: 730, Y: 2160, W: 450, H: 330},
 	)
 
@@ -203,7 +247,7 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 		}
 	}
 
-	if value, ok := readPentacamIHDFromRenderedPage(executionContext, pages[9]); ok {
+	if value, ok := readPentacamIHDFromRenderedPage(executionContext, pages[layout.topometric]); ok {
 		values["ihd"] = value
 	}
 
@@ -219,7 +263,7 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 	)
 
 	// Página 11 — BAD-D.
-	_ = read(11, pentacamOCRRegion{X: 1600, Y: 2110, W: 330, H: 130}, nil)
+	_ = read(layout.badd, pentacamOCRRegion{X: 1600, Y: 2110, W: 330, H: 130}, nil)
 
 	progress.Report(
 		executionContext,
@@ -229,7 +273,7 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 	)
 
 	// Página 10 — Z40 6 mm.
-	_ = read(10, pentacamOCRRegion{X: 1970, Y: 2050, W: 460, H: 150}, []pentacamDocumentField{
+	_ = read(layout.z40, pentacamOCRRegion{X: 1970, Y: 2050, W: 460, H: 150}, []pentacamDocumentField{
 		{"z40_6mm_um", `\bz40\b`, true},
 	})
 
@@ -241,7 +285,7 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 	)
 
 	// Página 10 — profundidade da câmara anterior INTERNA.
-	_ = read(10, pentacamOCRRegion{X: 1990, Y: 2370, W: 440, H: 180}, []pentacamDocumentField{
+	_ = read(layout.acd, pentacamOCRRegion{X: 1990, Y: 2370, W: 440, H: 180}, []pentacamDocumentField{
 		{
 			"acd_internal_mm",
 			`(?:prof|pot)\w*\W*cam\w*\W*ant\w*\W*\(?int`,
@@ -257,7 +301,7 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 	)
 
 	// Página 11 — ARTmax.
-	_ = read(11, pentacamOCRRegion{X: 1490, Y: 1420, W: 300, H: 150}, []pentacamDocumentField{
+	_ = read(layout.badd, pentacamOCRRegion{X: 1490, Y: 1420, W: 300, H: 150}, []pentacamDocumentField{
 		{"art_max", `\bartmax\b`, false},
 	})
 
@@ -269,7 +313,7 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 	)
 
 	// Página 12 — Z31 da coluna 5 mm.
-	_ = read(12, pentacamOCRRegion{X: 970, Y: 1490, W: 290, H: 180}, []pentacamDocumentField{
+	_ = read(layout.z31, pentacamOCRRegion{X: 970, Y: 1490, W: 290, H: 180}, []pentacamDocumentField{
 		{"z31_5mm_um", `\bz31\W*\(?coma\w*\)?`, true},
 	})
 
@@ -281,19 +325,19 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 		"Lendo células numéricas",
 	)
 
-	fillPentacamFocusedCells(executionContext, pages, values)
+	fillPentacamFocusedCells(executionContext, pages, values, layout)
 
 	if _, hasThinnestPachymetry := values["thinnest_um"]; !hasThinnestPachymetry {
-		if value, ok := readPentacamThinnestPachymetryFromDedicatedRender(executionContext, data); ok {
+		if value, ok := readPentacamThinnestPachymetryFromDedicatedRender(executionContext, data, layout.pachymetry); ok {
 			values["thinnest_um"] = value
 		}
 	}
 
-	if value, ok := readPentacamBADDFromDedicatedRender(executionContext, data); ok {
+	if value, ok := readPentacamBADDFromDedicatedRender(executionContext, data, layout.badd); ok {
 		values["bad_d"] = value
 	}
 
-	if value, ok := readPentacamACDFromRenderedPage(executionContext, pages[10]); ok {
+	if value, ok := readPentacamACDFromRenderedPage(executionContext, pages[layout.acd]); ok {
 		values["acd_internal_mm"] = value
 	}
 
@@ -316,7 +360,7 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 	)
 
 	if current, hasBadDValue := values["bad_d"]; !hasBadDValue || current == nil {
-		if value, ok := readPentacamBADDDeterministic(executionContext, data); ok {
+		if value, ok := readPentacamBADDDeterministic(executionContext, data, layout.badd); ok {
 			values["bad_d"] = value
 		}
 	}
@@ -359,7 +403,7 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 	)
 
 	if current, hasInternalChamberDepthValue := values["acd_internal_mm"]; !hasInternalChamberDepthValue || current == nil {
-		if value, ok := readPentacamACDAdaptive(executionContext, data); ok {
+		if value, ok := readPentacamACDAdaptive(executionContext, data, layout.acd); ok {
 			values["acd_internal_mm"] = value
 		}
 	}

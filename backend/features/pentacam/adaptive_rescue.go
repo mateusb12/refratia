@@ -189,8 +189,9 @@ func readPentacamIHDFromRenderedPage(
 func readPentacamThinnestPachymetryFromDedicatedRender(
 	ctx context.Context,
 	pdf []byte,
+	pageNumber int,
 ) (float64, bool) {
-	page, err := pdfutil.RenderPageAtDPI(ctx, pdf, 8, 300)
+	page, err := pdfutil.RenderPageAtDPI(ctx, pdf, pageNumber, 300)
 	if err != nil {
 		return 0, false
 	}
@@ -227,8 +228,9 @@ func readPentacamThinnestPachymetryFromDedicatedRender(
 func readPentacamBADDFromDedicatedRender(
 	ctx context.Context,
 	pdf []byte,
+	pageNumber int,
 ) (float64, bool) {
-	page, err := pdfutil.RenderPageAtDPI(ctx, pdf, 10, 300)
+	page, err := pdfutil.RenderPageAtDPI(ctx, pdf, pageNumber, 300)
 	if err != nil {
 		return 0, false
 	}
@@ -236,13 +238,15 @@ func readPentacamBADDFromDedicatedRender(
 	texts, err := extractOCRTextsFromRegion(
 		ctx,
 		page,
-		pentacamOCRRegion{X: 1600, Y: 2050, W: 700, H: 350},
+		pentacamOCRRegion{X: 1550, Y: 2350, W: 850, H: 350},
 	)
 	if err != nil {
 		return 0, false
 	}
 
-	labelPattern := regexp.MustCompile(`(?is)\bbad\W*d\b(.{0,24})`)
+	// Em algumas versões do relatório a coluna aparece apenas como "D:",
+	// sem o rótulo BAD-D. É o valor da mesma célula do índice Belin/Ambrosio.
+	labelPattern := regexp.MustCompile(`(?is)(?:\bbad\W*d\b|\bd\s*:)\s*(.{0,24})`)
 	numberPattern := regexp.MustCompile(`[0-9]+(?:\.[0-9]+)?`)
 
 	for _, text := range texts {
@@ -291,6 +295,7 @@ func readPentacamACDFromRenderedPage(
 func readPentacamACDAdaptive(
 	ctx context.Context,
 	pdf []byte,
+	pageNumber int,
 ) (float64, bool) {
 	// Cataract Pre-OP — Prof.Cam.Ant.(Int.).
 	//
@@ -300,7 +305,7 @@ func readPentacamACDAdaptive(
 		ctx,
 		pdf,
 		pentacamAdaptiveSpec{
-			Page:           10,
+			Page:           pageNumber,
 			RequireDecimal: true,
 			MinValue:       1,
 			MaxValue:       10,

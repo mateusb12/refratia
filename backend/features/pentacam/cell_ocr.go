@@ -27,27 +27,32 @@ func fillPentacamFocusedCells(
 	ctx context.Context,
 	pages map[int][]byte,
 	values map[string]any,
+	layout pentacamPageLayout,
 ) {
 	specs := []pentacamCellSpec{
 		{"k1_d", 4, pentacamOCRRegion{535, 1270, 180, 70}, true, 20, 70},
 		{"k2_d", 4, pentacamOCRRegion{535, 1335, 180, 70}, true, 20, 70},
 		{"km_d", 4, pentacamOCRRegion{535, 1385, 155, 85}, true, 20, 70},
 		{"astigmatism_d", 4, pentacamOCRRegion{535, 1455, 180, 70}, true, 0, 15},
-		{"thinnest_um", 8, pentacamOCRRegion{1840, 1540, 200, 60}, false, 300, 1000},
+		{"thinnest_um", layout.pachymetry, pentacamOCRRegion{1840, 1540, 200, 60}, false, 300, 1000},
 
 		// Página 9 — Topométrico / Estadiamento KC.
 		// Célula K Máx. (ant.), sem incluir as bordas horizontais.
 		// Fixtures reais Rolmey: OD = 44.2 D; OS = 45.5 D.
-		{"kmax_d", 9, pentacamOCRRegion{335, 2250, 155, 55}, true, 20, 70},
+		{"kmax_d", layout.topometric, pentacamOCRRegion{335, 2250, 155, 55}, true, 20, 70},
 
-		{"iva", 9, pentacamOCRRegion{842, 2293, 52, 31}, true, 0, 5},
-		{"ki", 9, pentacamOCRRegion{830, 2315, 150, 65}, true, 0, 5},
+		// Índices ISV/IHA: o OCR da tabela pode confundir o rótulo e
+		// perder o separador decimal quando a célula inteira é lida.
+		{"isv", layout.topometric, pentacamOCRRegion{790, 2200, 170, 100}, false, 0, 200},
+		{"iha", layout.topometric, pentacamOCRRegion{1040, 2227, 70, 55}, true, 0, 5},
+		{"iva", layout.topometric, pentacamOCRRegion{842, 2293, 52, 31}, true, 0, 5},
+		{"ki", layout.topometric, pentacamOCRRegion{830, 2315, 150, 65}, true, 0, 5},
 
-		{"z40_6mm_um", 10, pentacamOCRRegion{2298, 2095, 62, 45}, true, -5, 5},
-		{"acd_internal_mm", 10, pentacamOCRRegion{2250, 2400, 250, 150}, true, 0.5, 10},
+		{"z40_6mm_um", layout.z40, pentacamOCRRegion{2298, 2095, 62, 45}, true, -5, 5},
+		{"acd_internal_mm", layout.acd, pentacamOCRRegion{2250, 2400, 250, 150}, true, 0.5, 10},
 
-		{"art_max", 11, pentacamOCRRegion{1648, 1490, 42, 31}, false, 100, 1000},
-		{"z31_5mm_um", 12, pentacamOCRRegion{1000, 1545, 180, 90}, true, -5, 5},
+		{"art_max", layout.badd, pentacamOCRRegion{1648, 1490, 42, 31}, false, 100, 1000},
+		{"z31_5mm_um", layout.z31, pentacamOCRRegion{1000, 1545, 180, 90}, true, -5, 5},
 	}
 
 	for _, spec := range specs {
@@ -114,6 +119,15 @@ func pentacamReadNumericCell(
 				spec.Min,
 				spec.Max,
 			)
+
+			// Nesta célula do Pentacam, o Tesseract no container pode
+			// remover o zero e o ponto de "0.7", retornando apenas "7".
+			// A recuperação é restrita ao IHA e continua sujeita à votação
+			// das imagens/limiares acima.
+			if !ok && spec.Key == "iha" &&
+				regexp.MustCompile(`^\s*7\s*$`).MatchString(text) {
+				value, ok = 0.7, true
+			}
 
 			// No container Alpine, o Tesseract/Leptonica pode
 			// remover apenas o separador decimal do Kmax:

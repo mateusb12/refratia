@@ -101,8 +101,8 @@ func TestExtractPDFMariaGoreteOERecoversRequiredFields(t *testing.T) {
 			missing = append(missing, strings.Join(path, "."))
 		}
 	}
-	if len(missing) == len(requiredPaths) {
-		t.Fatalf("nenhum campo numérico do OE foi extraído; ausentes: %v", missing)
+	if len(missing) > 0 {
+		t.Fatalf("campos numéricos do OE ausentes: %v", missing)
 	}
 }
 

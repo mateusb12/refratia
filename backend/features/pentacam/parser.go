@@ -157,6 +157,7 @@ func normalizePentacamText(value string) string {
 		"ó", "o", "ô", "o", "õ", "o",
 		"ú", "u",
 		"ç", "c",
+		"¥", "v",
 		",", ".",
 	)
 	return replacer.Replace(value)
