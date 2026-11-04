@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"refratia/backend/features/eyesuite"
@@ -625,9 +626,17 @@ func benchmarkExtractFieldsHandler(
 		activeTaskLabel = ""
 	}
 
+	// The parser can report progress from concurrent page workers. The
+	// ResponseWriter, json.Encoder, and active task state must be updated as a
+	// single serialized stream; concurrent writes corrupt HTTP/1.1 chunking.
+	var progressEventMutex sync.Mutex
+
 	ctx := progress.WithReporter(
 		r.Context(),
 		func(event progress.Event) {
+			progressEventMutex.Lock()
+			defer progressEventMutex.Unlock()
+
 			if event.Type == "task_progress" {
 				emit(
 					benchmarkFieldsEvent{

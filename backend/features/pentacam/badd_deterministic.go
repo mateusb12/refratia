@@ -18,7 +18,7 @@ func readPentacamBADDDeterministic(
 	ctx context.Context,
 	pdf []byte,
 ) (float64, bool) {
-	page, err := pdfutil.RenderPageAtDPI(ctx, pdf, 11, 300)
+	page, err := pdfutil.RenderPageAtDPI(ctx, pdf, 10, 300)
 	if err != nil {
 		return 0, false
 	}

@@ -1,6 +1,10 @@
 package pentacam
 
-import "testing"
+import (
+	"context"
+	"os"
+	"testing"
+)
 
 func TestParsePentacamFieldNumberRequiresPrintedDecimal(t *testing.T) {
 	if _, ok := parsePentacamFieldNumber("K1 435D", `\bk1\b`, true); ok {
@@ -17,5 +21,41 @@ func TestPentacamFocusedTKCDash(t *testing.T) {
 	got, ok := pentacamFocusedTKC([]string{"CKI 1.01   TKC: —"})
 	if !ok || got != "—" {
 		t.Fatalf("TKC inesperado: %#v %v", got, ok)
+	}
+}
+
+func TestExtractPDFMariaGoreteODRecoversVisibleFields(t *testing.T) {
+	fixturePath := os.Getenv("PENTACAM_FIXTURE")
+	if fixturePath == "" {
+		fixturePath = "../../../frontend/data/maria-gorete/PENTACAM OD MARIA GORETE.pdf"
+	}
+
+	data, errorValue := os.ReadFile(fixturePath)
+	if errorValue != nil {
+		t.Fatal(errorValue)
+	}
+
+	exam, errorValue := ExtractPDF(context.Background(), data)
+	if errorValue != nil {
+		t.Fatal(errorValue)
+	}
+
+	assertPentacamFieldValue(t, exam, "pachymetry", "thinnest_um", 531)
+	assertPentacamFieldValue(t, exam, "belin_ambrosio", "d", 1.05)
+	assertPentacamFieldValue(t, exam, "topometric_indices_8mm", "ihd", 0.018)
+	assertPentacamFieldValue(t, exam, "anterior_segment", "internal_anterior_chamber_depth_mm", 2.66)
+}
+
+func assertPentacamFieldValue(t *testing.T, exam map[string]any, section, field string, expected float64) {
+	t.Helper()
+
+	sectionValues, ok := exam[section].(map[string]any)
+	if !ok {
+		t.Fatalf("seção %q ausente: %#v", section, exam[section])
+	}
+
+	actual, ok := sectionValues[field].(float64)
+	if !ok || actual != expected {
+		t.Fatalf("campo %s.%s esperado %v, recebido %#v", section, field, expected, sectionValues[field])
 	}
 }

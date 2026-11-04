@@ -154,9 +154,7 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 	)
 
 	// Página 8 — paquimetria.
-	_ = read(8, pentacamOCRRegion{X: 740, Y: 1880, W: 400, H: 150}, []pentacamDocumentField{
-		{"thinnest_um", `\bthinnest\W+pachy\b`, false},
-	})
+	_ = read(8, pentacamOCRRegion{X: 1550, Y: 1400, W: 700, H: 350}, nil)
 
 	progress.Report(
 		executionContext,
@@ -176,7 +174,6 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 		{"isv", `\b(?:isv|15v)\b`, false},
 		{"iva", `\biva\b`, true},
 		{"iha", `\biha\b`, true},
-		{"ihd", `\bihd\b`, true},
 		{"ki", `\bk[i1l]\b`, true},
 		{"cki", `\bcki\b`, true},
 	}
@@ -188,6 +185,10 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 				break
 			}
 		}
+	}
+
+	if value, ok := readPentacamIHDFromRenderedPage(executionContext, pages[9]); ok {
+		values["ihd"] = value
 	}
 
 	if tkc, ok := pentacamFocusedTKC(topometricOCRTexts); ok {
@@ -202,9 +203,7 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 	)
 
 	// Página 11 — BAD-D.
-	_ = read(11, pentacamOCRRegion{X: 1600, Y: 2110, W: 330, H: 130}, []pentacamDocumentField{
-		{"bad_d", `\bbad\W*d`, true},
-	})
+	_ = read(11, pentacamOCRRegion{X: 1600, Y: 2110, W: 330, H: 130}, nil)
 
 	progress.Report(
 		executionContext,
@@ -267,6 +266,20 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 	)
 
 	fillPentacamFocusedCells(executionContext, pages, values)
+
+	if _, hasThinnestPachymetry := values["thinnest_um"]; !hasThinnestPachymetry {
+		if value, ok := readPentacamThinnestPachymetryFromDedicatedRender(executionContext, data); ok {
+			values["thinnest_um"] = value
+		}
+	}
+
+	if value, ok := readPentacamBADDFromDedicatedRender(executionContext, data); ok {
+		values["bad_d"] = value
+	}
+
+	if value, ok := readPentacamACDFromRenderedPage(executionContext, pages[10]); ok {
+		values["acd_internal_mm"] = value
+	}
 
 	progress.Report(
 		executionContext,
@@ -404,7 +417,7 @@ func parsePentacamFieldNumber(text, label string, decimal bool) (float64, bool) 
 	}
 
 	re := regexp.MustCompile(
-		`(?is)` + label + `[^0-9+\-]{0,40}(` + number + `)`,
+		`(?is)` + label + `[^0-9+\-]{0,8}(` + number + `)`,
 	)
 	match := re.FindStringSubmatch(text)
 	if len(match) != 2 {

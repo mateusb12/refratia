@@ -2,6 +2,8 @@ package pentacam
 
 import (
 	"context"
+	"regexp"
+	"strconv"
 
 	pdfutil "refratia/backend/shared/pdf"
 )
@@ -158,6 +160,132 @@ func readPentacamK1Adaptive(
 			},
 		},
 	)
+}
+
+func readPentacamIHDFromRenderedPage(
+	ctx context.Context,
+	page []byte,
+) (float64, bool) {
+	// A célula vermelha do IHD é reconhecida com estabilidade em 450 DPI
+	// quando a janela inclui a coluna numérica completa.
+	texts, err := extractOCRTextsFromRegion(
+		ctx,
+		page,
+		pentacamOCRRegion{X: 730, Y: 2160, W: 700, H: 330},
+	)
+	if err != nil {
+		return 0, false
+	}
+
+	for _, text := range texts {
+		if value, ok := parsePentacamFieldNumber(text, `\bihd\b`, true); ok && value <= 1 {
+			return value, true
+		}
+	}
+
+	return 0, false
+}
+
+func readPentacamThinnestPachymetryFromDedicatedRender(
+	ctx context.Context,
+	pdf []byte,
+) (float64, bool) {
+	page, err := pdfutil.RenderPageAtDPI(ctx, pdf, 8, 300)
+	if err != nil {
+		return 0, false
+	}
+
+	texts, err := extractOCRTextsFromRegion(
+		ctx,
+		page,
+		pentacamOCRRegion{X: 1550, Y: 1400, W: 700, H: 350},
+	)
+	if err != nil {
+		return 0, false
+	}
+
+	labelPattern := regexp.MustCompile(`(?is)(?:\bthinnest\W+pachy\b|\bponto\W+(?:mais\W+)?fino\b)(.{0,32})`)
+	numberPattern := regexp.MustCompile(`[0-9]+(?:\.[0-9]+)?`)
+
+	for _, text := range texts {
+		match := labelPattern.FindStringSubmatch(text)
+		if len(match) != 2 {
+			continue
+		}
+
+		for _, numberText := range numberPattern.FindAllString(match[1], -1) {
+			value, parseErr := strconv.ParseFloat(numberText, 64)
+			if parseErr == nil && value >= 300 && value <= 1000 {
+				return value, true
+			}
+		}
+	}
+
+	return 0, false
+}
+
+func readPentacamBADDFromDedicatedRender(
+	ctx context.Context,
+	pdf []byte,
+) (float64, bool) {
+	page, err := pdfutil.RenderPageAtDPI(ctx, pdf, 10, 300)
+	if err != nil {
+		return 0, false
+	}
+
+	texts, err := extractOCRTextsFromRegion(
+		ctx,
+		page,
+		pentacamOCRRegion{X: 1600, Y: 2050, W: 700, H: 350},
+	)
+	if err != nil {
+		return 0, false
+	}
+
+	labelPattern := regexp.MustCompile(`(?is)\bbad\W*d\b(.{0,24})`)
+	numberPattern := regexp.MustCompile(`[0-9]+(?:\.[0-9]+)?`)
+
+	for _, text := range texts {
+		match := labelPattern.FindStringSubmatch(text)
+		if len(match) != 2 {
+			continue
+		}
+
+		for _, numberText := range numberPattern.FindAllString(match[1], -1) {
+			value, parseErr := strconv.ParseFloat(numberText, 64)
+			if parseErr == nil && value >= 0 && value <= 20 {
+				return value, true
+			}
+		}
+	}
+
+	return 0, false
+}
+
+func readPentacamACDFromRenderedPage(
+	ctx context.Context,
+	page []byte,
+) (float64, bool) {
+	texts, err := extractOCRTextsFromRegion(
+		ctx,
+		page,
+		pentacamOCRRegion{X: 2000, Y: 2350, W: 600, H: 300},
+	)
+	if err != nil {
+		return 0, false
+	}
+
+	for _, text := range texts {
+		if value, ok := parsePentacamFieldNumber(
+			text,
+			`\bprof\W*cam\W*ant\W*int\b`,
+			true,
+		); ok && value >= 1 && value <= 10 {
+			return value, true
+		}
+	}
+
+	return 0, false
 }
 
 func readPentacamACDAdaptive(
