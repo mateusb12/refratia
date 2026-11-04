@@ -38,7 +38,35 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 
 	if parallelRender {
 		rendered, errorValue := parallelwork.Map(executionContext, renderPages, 3, func(executionContext context.Context, page int) ([]byte, error) {
-			return pdfutil.RenderPageAtDPI(executionContext, data, page, 450)
+			taskIdentifier, taskLabel := pentacamRenderTask(page)
+			progress.ReportTask(
+				executionContext,
+				taskIdentifier,
+				taskLabel,
+				progress.TaskStatusRunning,
+				0,
+			)
+
+			renderedPage, errorValue := pdfutil.RenderPageAtDPI(executionContext, data, page, 450)
+			if errorValue != nil {
+				progress.ReportTask(
+					executionContext,
+					taskIdentifier,
+					taskLabel,
+					progress.TaskStatusFailed,
+					100,
+				)
+				return nil, errorValue
+			}
+
+			progress.ReportTask(
+				executionContext,
+				taskIdentifier,
+				taskLabel,
+				progress.TaskStatusCompleted,
+				100,
+			)
+			return renderedPage, nil
 		})
 		if errorValue != nil {
 			return nil, errorValue
@@ -352,6 +380,19 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 			"total_corneal_z40_6mm_um": values["z40_6mm_um"],
 		},
 	}, nil
+}
+
+func pentacamRenderTask(page int) (string, string) {
+	labels := map[int]string{
+		4:  "Página 4 — Córnea anterior",
+		8:  "Página 8 — Paquimetria",
+		9:  "Página 9 — Índices topométricos",
+		10: "Página 10 — Cataract Pre-OP",
+		11: "Página 11 — BAD-D / ARTmax",
+		12: "Página 12 — Anéis corneanos",
+	}
+
+	return "pentacam-page-" + strconv.Itoa(page), labels[page]
 }
 
 func parsePentacamFieldNumber(text, label string, decimal bool) (float64, bool) {

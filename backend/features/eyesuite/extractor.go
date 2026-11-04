@@ -6,6 +6,7 @@ import (
 
 	"refratia/backend/shared/ocr"
 	"refratia/backend/shared/parallelwork"
+	"refratia/backend/shared/progress"
 
 	pdfutil "refratia/backend/shared/pdf"
 )
@@ -31,29 +32,38 @@ type dpiAttempt struct {
 func extractPDF(executionContext context.Context, data []byte, parallelDPI bool) (Result, error) {
 	dpis := []int{300, 450}
 	attempt := func(executionContext context.Context, dpi int) (dpiAttempt, error) {
+		taskIdentifier := fmt.Sprintf("eyesuite-dpi-%d", dpi)
+		taskLabel := fmt.Sprintf("OCR da biometria — %d DPI", dpi)
+		progress.ReportTask(executionContext, taskIdentifier, taskLabel, progress.TaskStatusRunning, 0)
+
 		image, errorValue := pdfutil.RenderPageAtDPI(executionContext, data, 1, dpi)
 		if errorValue != nil {
+			progress.ReportTask(executionContext, taskIdentifier, taskLabel, progress.TaskStatusFailed, 100)
 			return dpiAttempt{errorValue: errorValue}, nil
 		}
 
 		tsv, errorValue := ocr.RunTesseractTSV(executionContext, image)
 		if errorValue != nil {
+			progress.ReportTask(executionContext, taskIdentifier, taskLabel, progress.TaskStatusFailed, 100)
 			return dpiAttempt{errorValue: errorValue}, nil
 		}
 
 		exam, errorValue := parseEyeSuiteTSV(tsv)
 		if errorValue != nil {
+			progress.ReportTask(executionContext, taskIdentifier, taskLabel, progress.TaskStatusFailed, 100)
 			return dpiAttempt{errorValue: fmt.Errorf("%d DPI: %w", dpi, errorValue)}, nil
 		}
 
 		identity, identityError := parseEyeSuiteIdentityTSV(tsv)
 		if identityError != nil {
+			progress.ReportTask(executionContext, taskIdentifier, taskLabel, progress.TaskStatusFailed, 100)
 			return dpiAttempt{
 				exam:       exam,
 				errorValue: fmt.Errorf("%d DPI identidade: %w", dpi, identityError),
 			}, nil
 		}
 
+		progress.ReportTask(executionContext, taskIdentifier, taskLabel, progress.TaskStatusCompleted, 100)
 		return dpiAttempt{exam: exam, identity: &identity}, nil
 	}
 

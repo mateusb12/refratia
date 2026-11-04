@@ -3,15 +3,25 @@ package progress
 import "context"
 
 type Event struct {
-	Type        string `json:"type"`
-	Percent     int    `json:"percent,omitempty"`
-	FilePercent int    `json:"filePercent,omitempty"`
-	Stage       string `json:"stage,omitempty"`
-	Message     string `json:"message,omitempty"`
-	Filename    string `json:"filename,omitempty"`
-	Status      int    `json:"status,omitempty"`
-	Payload     any    `json:"payload,omitempty"`
+	Type           string `json:"type"`
+	Percent        int    `json:"percent,omitempty"`
+	FilePercent    int    `json:"filePercent,omitempty"`
+	Stage          string `json:"stage,omitempty"`
+	Message        string `json:"message,omitempty"`
+	Filename       string `json:"filename,omitempty"`
+	Status         int    `json:"status,omitempty"`
+	Payload        any    `json:"payload,omitempty"`
+	TaskIdentifier string `json:"taskId,omitempty"`
+	TaskLabel      string `json:"taskLabel,omitempty"`
+	TaskStatus     string `json:"taskStatus,omitempty"`
+	TaskPercent    int    `json:"taskPercent,omitempty"`
 }
+
+const (
+	TaskStatusRunning   = "running"
+	TaskStatusCompleted = "completed"
+	TaskStatusFailed    = "failed"
+)
 
 type Reporter func(Event)
 
@@ -195,4 +205,33 @@ func Report(
 			Message: message,
 		},
 	)
+}
+
+func ReportTask(
+	executionContext context.Context,
+	taskIdentifier,
+	taskLabel,
+	taskStatus string,
+	taskPercent int,
+) {
+	if taskPercent < 0 {
+		taskPercent = 0
+	}
+
+	if taskPercent > 100 {
+		taskPercent = 100
+	}
+
+	emit, ok := executionContext.Value(reporterKey{}).(Reporter)
+	if !ok || emit == nil {
+		return
+	}
+
+	emit(Event{
+		Type:           "task_progress",
+		TaskIdentifier: taskIdentifier,
+		TaskLabel:      taskLabel,
+		TaskStatus:     taskStatus,
+		TaskPercent:    taskPercent,
+	})
 }

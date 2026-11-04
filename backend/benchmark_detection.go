@@ -39,17 +39,21 @@ func benchmarkValueText(value any) string {
 }
 
 type benchmarkFieldsEvent struct {
-	Type      string           `json:"type"`
-	Percent   int              `json:"percent,omitempty"`
-	Message   string           `json:"message,omitempty"`
-	ExamType  string           `json:"examType,omitempty"`
-	Eye       string           `json:"eye,omitempty"`
-	ElapsedMS int64            `json:"elapsedMs,omitempty"`
-	Fields    []benchmarkField `json:"fields,omitempty"`
-	Extracted int              `json:"extracted,omitempty"`
-	Total     int              `json:"total,omitempty"`
-	Supported bool             `json:"supported,omitempty"`
-	Error     string           `json:"error,omitempty"`
+	Type           string           `json:"type"`
+	Percent        int              `json:"percent,omitempty"`
+	Message        string           `json:"message,omitempty"`
+	ExamType       string           `json:"examType,omitempty"`
+	Eye            string           `json:"eye,omitempty"`
+	ElapsedMS      int64            `json:"elapsedMs,omitempty"`
+	Fields         []benchmarkField `json:"fields,omitempty"`
+	Extracted      int              `json:"extracted,omitempty"`
+	Total          int              `json:"total,omitempty"`
+	Supported      bool             `json:"supported,omitempty"`
+	Error          string           `json:"error,omitempty"`
+	TaskIdentifier string           `json:"taskId,omitempty"`
+	TaskLabel      string           `json:"taskLabel,omitempty"`
+	TaskStatus     string           `json:"taskStatus,omitempty"`
+	TaskPercent    int              `json:"taskPercent,omitempty"`
 }
 
 type benchmarkFilename struct {
@@ -559,21 +563,114 @@ func benchmarkExtractFieldsHandler(
 
 	encoder := json.NewEncoder(w)
 
-	emit := func(event benchmarkFieldsEvent) {
+	writeEvent := func(event benchmarkFieldsEvent) {
 		_ = encoder.Encode(event)
 		flusher.Flush()
+	}
+
+	activeTaskIdentifier := ""
+	activeTaskLabel := ""
+	emitTask := func(taskIdentifier, taskLabel, taskStatus string, taskPercent int) {
+		writeEvent(
+			benchmarkFieldsEvent{
+				Type:           "task_progress",
+				TaskIdentifier: taskIdentifier,
+				TaskLabel:      taskLabel,
+				TaskStatus:     taskStatus,
+				TaskPercent:    taskPercent,
+				ExamType:       meta.ExamType,
+				Eye:            meta.Eye,
+			},
+		)
+	}
+
+	emit := func(event benchmarkFieldsEvent) {
+		if event.Type == "result" && activeTaskIdentifier != "" {
+			emitTask(
+				activeTaskIdentifier,
+				activeTaskLabel,
+				progress.TaskStatusCompleted,
+				100,
+			)
+			activeTaskIdentifier = ""
+			activeTaskLabel = ""
+		}
+
+		if event.Type == "error" && activeTaskIdentifier != "" {
+			emitTask(
+				activeTaskIdentifier,
+				activeTaskLabel,
+				progress.TaskStatusFailed,
+				100,
+			)
+			activeTaskIdentifier = ""
+			activeTaskLabel = ""
+		}
+
+		writeEvent(event)
+	}
+
+	completeCurrentTask := func() {
+		if activeTaskIdentifier == "" {
+			return
+		}
+
+		emitTask(
+			activeTaskIdentifier,
+			activeTaskLabel,
+			progress.TaskStatusCompleted,
+			100,
+		)
+		activeTaskIdentifier = ""
+		activeTaskLabel = ""
 	}
 
 	ctx := progress.WithReporter(
 		r.Context(),
 		func(event progress.Event) {
+			if event.Type == "task_progress" {
+				emit(
+					benchmarkFieldsEvent{
+						Type:           event.Type,
+						Percent:        event.Percent,
+						Message:        event.Message,
+						ExamType:       meta.ExamType,
+						Eye:            meta.Eye,
+						TaskIdentifier: event.TaskIdentifier,
+						TaskLabel:      event.TaskLabel,
+						TaskStatus:     event.TaskStatus,
+						TaskPercent:    event.TaskPercent,
+					},
+				)
+				return
+			}
+
+			if event.Type == "progress" && event.Message != "" {
+				stageTaskIdentifier := "stage:" + event.Stage + ":" + event.Message
+				if stageTaskIdentifier != activeTaskIdentifier {
+					completeCurrentTask()
+					activeTaskIdentifier = stageTaskIdentifier
+					activeTaskLabel = event.Message
+					emitTask(
+						activeTaskIdentifier,
+						activeTaskLabel,
+						progress.TaskStatusRunning,
+						0,
+					)
+				}
+			}
+
 			emit(
 				benchmarkFieldsEvent{
-					Type:     "progress",
-					Percent:  event.Percent,
-					Message:  event.Message,
-					ExamType: meta.ExamType,
-					Eye:      meta.Eye,
+					Type:           event.Type,
+					Percent:        event.Percent,
+					Message:        event.Message,
+					ExamType:       meta.ExamType,
+					Eye:            meta.Eye,
+					TaskIdentifier: event.TaskIdentifier,
+					TaskLabel:      event.TaskLabel,
+					TaskStatus:     event.TaskStatus,
+					TaskPercent:    event.TaskPercent,
 				},
 			)
 		},

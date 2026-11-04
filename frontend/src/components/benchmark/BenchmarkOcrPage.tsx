@@ -21,7 +21,7 @@ interface BenchmarkField {
 }
 
 interface BenchmarkEvent {
-  type: 'progress' | 'result' | 'error'
+  type: 'progress' | 'task_progress' | 'result' | 'error'
   percent?: number
   message?: string
   examType?: string
@@ -32,7 +32,25 @@ interface BenchmarkEvent {
   total?: number
   supported?: boolean
   error?: string
+  taskId?: string
+  taskLabel?: string
+  taskStatus?: 'running' | 'completed' | 'failed'
+  taskPercent?: number
 }
+
+interface BenchmarkTask {
+  taskId: string
+  taskLabel: string
+  taskStatus: 'running' | 'completed' | 'failed'
+  taskPercent: number
+}
+
+const benchmarkSteps = [
+  'Preparar documento',
+  'Processar páginas',
+  'Extrair dados',
+  'Atividades específicas',
+]
 
 function duration(ms?: number) {
   if (ms == null) return ''
@@ -94,6 +112,7 @@ export default function BenchmarkOcrPage() {
 
   const [progress, setProgress] = useState(0)
   const [progressMessage, setProgressMessage] = useState('')
+  const [tasks, setTasks] = useState<Record<string, BenchmarkTask>>({})
 
   const [examType, setExamType] = useState('')
   const [eye, setEye] = useState('')
@@ -110,6 +129,7 @@ export default function BenchmarkOcrPage() {
   function resetRun() {
     setProgress(0)
     setProgressMessage('')
+    setTasks({})
     setFields([])
     setExtracted(0)
     setTotal(0)
@@ -223,6 +243,24 @@ export default function BenchmarkOcrPage() {
         const event =
           JSON.parse(trimmed) as BenchmarkEvent
 
+        if (
+          event.type === 'task_progress' &&
+          event.taskId &&
+          event.taskLabel &&
+          event.taskStatus
+        ) {
+          setTasks((current) => ({
+            ...current,
+            [event.taskId!]: {
+              taskId: event.taskId!,
+              taskLabel: event.taskLabel!,
+              taskStatus: event.taskStatus!,
+              taskPercent: event.taskPercent ?? 0,
+            },
+          }))
+          return
+        }
+
         if (typeof event.percent === 'number') {
           setProgress(
             Math.max(
@@ -306,6 +344,14 @@ export default function BenchmarkOcrPage() {
     total > 0
       ? Math.round((extracted / total) * 100)
       : 0
+
+  const benchmarkTasks = Object.values(tasks)
+  const runningTaskCount = benchmarkTasks.filter(
+    (task) => task.taskStatus === 'running',
+  ).length
+
+  const activeBenchmarkStep =
+    progress >= 68 ? 3 : progress >= 25 ? 2 : progress >= 7 ? 1 : 0
 
   return (
     <div className="space-y-5">
@@ -483,6 +529,139 @@ export default function BenchmarkOcrPage() {
                   <span className="text-xs text-text-muted">
                     {progressMessage}
                   </span>
+                </div>
+              </div>
+            )}
+
+            {!error && (busy || benchmarkTasks.length > 0) && (
+              <div className="mt-4 rounded-xl border border-border bg-surface-muted p-4">
+                <div className="overflow-x-auto pb-1">
+                  <div className="min-w-[640px]">
+                    <div className="flex items-stretch">
+                      {benchmarkSteps.map((step, index) => {
+                        const stepCompleted = completed || index < activeBenchmarkStep
+                        const stepActive = !completed && index === activeBenchmarkStep
+
+                        return (
+                          <div
+                            className={`relative flex min-w-[160px] flex-1 flex-col items-center rounded-xl border px-3 py-3 transition-colors ${
+                              stepActive
+                                ? 'border-primary bg-primary-soft'
+                                : 'border-transparent'
+                            }`}
+                            key={step}
+                          >
+                            {index < benchmarkSteps.length - 1 && (
+                              <span
+                                className={`pointer-events-none absolute left-1/2 top-9 z-10 h-0.5 w-full ${
+                                  index < activeBenchmarkStep || completed
+                                    ? 'bg-success'
+                                    : 'bg-border-strong'
+                                }`}
+                              />
+                            )}
+
+                            <span
+                              className={`relative z-20 grid h-12 w-12 flex-none place-items-center rounded-full text-sm font-bold transition-all ${
+                                stepCompleted
+                                  ? 'bg-success-soft text-success'
+                                  : stepActive
+                                    ? 'bg-primary text-surface ring-4 ring-primary-soft'
+                                    : 'bg-surface text-text-muted ring-1 ring-border'
+                              }`}
+                            >
+                              {stepCompleted ? (
+                                <Check size={20} strokeWidth={3} />
+                              ) : stepActive ? (
+                                <LoaderCircle className="animate-spin" size={20} />
+                              ) : (
+                                index + 1
+                              )}
+                            </span>
+
+                            <span
+                              className={`relative z-20 mt-2 whitespace-nowrap text-sm font-medium ${
+                                stepCompleted || stepActive
+                                  ? 'text-text-primary'
+                                  : 'text-text-muted'
+                              }`}
+                            >
+                              {step}
+                            </span>
+                          </div>
+                        )
+                      })}
+                    </div>
+
+                    <div className="mt-3 flex items-center justify-between gap-3">
+                      <span className="rounded-full bg-primary-soft px-2.5 py-1 text-[11px] font-medium text-primary">
+                        {completed
+                          ? 'Extração concluída'
+                          : benchmarkSteps[activeBenchmarkStep]}
+                      </span>
+
+                      <span className="font-mono text-[11px] text-text-muted">
+                        {completed ? '100%' : `${progress}%`}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between gap-3">
+                  <strong className="text-sm text-text-primary">
+                    Atividades da extração
+                  </strong>
+
+                  <span className="text-xs text-text-muted">
+                    {busy
+                      ? runningTaskCount > 0
+                        ? `${runningTaskCount} em execução`
+                        : 'Finalizando'
+                      : 'Concluído'}
+                  </span>
+                </div>
+
+                <div className="mt-3 max-h-80 space-y-2 overflow-y-auto pr-1">
+                  {benchmarkTasks.map((task) => (
+                    <div
+                      className="flex items-center gap-3 rounded-lg border border-border bg-surface px-3 py-2.5"
+                      key={task.taskId}
+                    >
+                      {task.taskStatus === 'completed' ? (
+                        <span className="grid h-6 w-6 flex-none place-items-center rounded-full bg-success-soft text-success">
+                          <Check size={14} strokeWidth={3} />
+                        </span>
+                      ) : task.taskStatus === 'failed' ? (
+                        <span className="grid h-6 w-6 flex-none place-items-center rounded-full bg-danger-soft text-danger">
+                          <X size={14} strokeWidth={3} />
+                        </span>
+                      ) : (
+                        <span className="grid h-6 w-6 flex-none place-items-center rounded-full bg-warning-soft text-warning">
+                          <LoaderCircle className="animate-spin" size={14} />
+                        </span>
+                      )}
+
+                      <span className="min-w-0 flex-1 text-xs text-text-secondary">
+                        {task.taskLabel}
+                      </span>
+
+                      <span
+                        className={`font-mono text-[11px] ${
+                          task.taskStatus === 'completed'
+                            ? 'text-success'
+                            : task.taskStatus === 'failed'
+                              ? 'text-danger'
+                              : 'text-warning'
+                        }`}
+                      >
+                        {task.taskStatus === 'completed'
+                          ? 'Concluído'
+                          : task.taskStatus === 'failed'
+                            ? 'Falhou'
+                            : `${task.taskPercent}%`}
+                      </span>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
