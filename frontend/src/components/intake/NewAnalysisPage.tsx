@@ -5,7 +5,7 @@ import ExamProtocolChecklist from './ExamProtocolChecklist'
 import IntakeCheckpointPreflight from './IntakeCheckpointPreflight'
 import IntakeFileClassification from './IntakeFileClassification'
 import IntakeProcessingProgress from './IntakeProcessingProgress'
-import { IntakeAnalysisSummary, IntakeCompletenessNotice, IntakeDocumentsDebug, PatientChangePreview } from './IntakePreview'
+import { IntakeAnalysisSummary, IntakeDocumentsDebug, PatientChangePreview } from './IntakePreview'
 import { useIntakeWorkflow } from './useIntakeWorkflow'
 import { formatBirthDate } from '../../utils/date'
 
@@ -37,8 +37,8 @@ function StatusBadge({ children, tone }: { children: ReactNode; tone: 'success' 
   return <span className={clsx('inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-1.5 text-xs font-bold', tone === 'success' && 'bg-success-soft text-success', tone === 'warning' && 'bg-warning-soft text-warning', tone === 'blocking' && 'bg-danger-soft text-danger', tone === 'neutral' && 'bg-surface-muted text-text-secondary')}>{children}</span>
 }
 
-function PrimaryButton({ children, onClick, disabled }: { children: ReactNode; onClick?: () => void; disabled?: boolean }) {
-  return <button className="inline-flex items-center justify-center gap-2 rounded-[9px] border-0 bg-primary px-4 py-[11px] text-sm font-semibold text-white transition-[background,transform] duration-150 hover:enabled:-translate-y-px hover:enabled:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-45" disabled={disabled} onClick={onClick} type="button">{children}</button>
+function PrimaryButton({ children, onClick, disabled, className }: { children: ReactNode; onClick?: () => void; disabled?: boolean; className?: string }) {
+  return <button className={clsx('inline-flex items-center justify-center gap-2 rounded-[9px] border-0 bg-primary px-4 py-[11px] text-sm font-semibold text-white transition-[background,transform] duration-150 hover:enabled:-translate-y-px hover:enabled:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-45', className)} disabled={disabled} onClick={onClick} type="button">{children}</button>
 }
 
 function ProcessSteps({ current, reviewed, reachedStep = current, maxStep = steps.length, onStepChange }: { current: number; reviewed: boolean; reachedStep?: number; maxStep?: number; onStepChange?: (step: number) => void }) {
@@ -136,7 +136,6 @@ export default function NewAnalysisPage({
     abortIntakeAnalysis,
     confirmIntake,
     deleteDraft,
-    discardIntake,
     goToIntakeStep,
     replaceIntakeFiles,
     setIntakeClassifications,
@@ -425,14 +424,13 @@ export default function NewAnalysisPage({
 
                     <PatientChangePreview preview={intakePreview} />
                     <IntakeDocumentsDebug localPreviews={intakeLocalPreviews} preview={intakePreview} />
-                    <IntakeCompletenessNotice analysis={intakePreview.analysis} />
-                    <IntakeAnalysisSummary analysis={intakePreview.analysis} />
+                    <IntakeAnalysisSummary analysis={intakePreview.analysis} showOverview={false} showFallbackWarning={false} />
                     <details className="mt-4 rounded-lg border border-border bg-surface">
                       <summary className="cursor-pointer px-3 py-2 text-xs font-bold text-primary">Ver JSON completo (debug)</summary>
                       <pre className="m-0 max-h-[520px] overflow-auto border-t border-border p-3 text-xs leading-relaxed text-text-secondary">{JSON.stringify(intakePreview.analysis, null, 2)}</pre>
                     </details>
-                    <div className="mt-4 flex flex-wrap gap-3">
-                      <PrimaryButton disabled={intakeBusy} onClick={confirmIntake}>
+                    <div className="mt-5">
+                      <PrimaryButton className="min-h-16 w-full max-w-md !bg-[#287f69] px-8 py-4 text-xl font-extrabold tracking-wide hover:enabled:!bg-[#1f6d5a]" disabled={intakeBusy} onClick={confirmIntake}>
                         {intakeBusy
                           ? 'Salvando…'
                           : intakePreview.patientMatch.status === 'existing'
@@ -441,7 +439,6 @@ export default function NewAnalysisPage({
                               ? 'Criar paciente'
                               : 'Revisar identidade'}
                       </PrimaryButton>
-                      <button className="rounded-[9px] border border-border-strong bg-surface px-4 py-[11px] text-sm font-semibold hover:border-danger hover:text-danger" disabled={intakeBusy} onClick={discardIntake} type="button">Descartar</button>
                     </div>
                   </div>
                 )}

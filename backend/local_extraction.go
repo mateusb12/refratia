@@ -321,6 +321,16 @@ func tryExtractSpecularMicroscopyLocal(ctx context.Context, file uploadedFile, a
 		analysis["exams"] = exams
 	}
 	exams["specular_microscopy"] = result.Exam
+	if result.ExamDateTime != "" {
+		verification, _ := analysis["verificacao_identidade"].([]any)
+		verification = append(verification, map[string]any{
+			"source":         file.Metadata.Filename,
+			"timestamp_lido": result.ExamDateTime,
+			"confidence":     "deterministic_template",
+			"method":         "local_ocr_tesseract",
+		})
+		analysis["verificacao_identidade"] = verification
+	}
 	return true, nil
 }
 
@@ -341,6 +351,16 @@ func tryExtractRefractometryLocal(
 		analysis["exams"] = exams
 	}
 	exams["refractometry"] = exam
+	if timestamp, ok := exam["exam_datetime"].(string); ok && timestamp != "" {
+		verification, _ := analysis["verificacao_identidade"].([]any)
+		verification = append(verification, map[string]any{
+			"source":         file.Metadata.Filename,
+			"timestamp_lido": timestamp,
+			"confidence":     "deterministic_template",
+			"method":         "local_ocr_tesseract",
+		})
+		analysis["verificacao_identidade"] = verification
+	}
 	return true
 }
 

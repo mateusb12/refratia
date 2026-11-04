@@ -42,3 +42,21 @@ func BenchmarkExtractPDFStrategies(b *testing.B) {
 		})
 	}
 }
+
+func TestExtractPDFMariaGoreteIdentity(t *testing.T) {
+	data, err := os.ReadFile("../../../frontend/data/maria-gorete/BIOMETRIA AO MARIA GORETE.pdf")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := ExtractPDF(context.Background(), data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Identity == nil {
+		t.Fatalf("identidade não extraída: %#v", result)
+	}
+	if result.Identity.TimestampRaw == "" {
+		t.Fatalf("timestamp não extraído: %#v", result.Identity)
+	}
+}

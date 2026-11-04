@@ -401,6 +401,15 @@ func appendBenchmarkFields(fields *[]benchmarkField, extracted *int, extra []ben
 	*extracted += extraExtracted
 }
 
+func benchmarkTimestampField(label, timestamp string) (benchmarkField, int) {
+	found := strings.TrimSpace(timestamp) != ""
+	field := benchmarkField{Key: "identity.exam_date", Label: label, Found: found, Value: timestamp}
+	if found {
+		return field, 1
+	}
+	return field, 0
+}
+
 func benchmarkSpecularMicroscopyResult(exam map[string]any, expectedEye string) ([]benchmarkField, int) {
 	eyes := []string{expectedEye}
 	if expectedEye == "AO" {
@@ -892,6 +901,10 @@ func benchmarkExtractFieldsHandler(
 			return
 		}
 		fields, extracted := benchmarkRefractometryResult(exam, meta.Eye)
+		if timestamp, ok := exam["exam_datetime"].(string); ok {
+			dateField, dateExtracted := benchmarkTimestampField("Data do exame", timestamp)
+			appendBenchmarkFields(&fields, &extracted, []benchmarkField{dateField}, dateExtracted)
+		}
 		emit(benchmarkFieldsEvent{
 			Type: "result", Percent: 100,
 			Message:  fmt.Sprintf("%d/%d campos extraídos pelo parser do fluxo normal", extracted, len(fields)),
@@ -922,6 +935,8 @@ func benchmarkExtractFieldsHandler(
 			return
 		}
 		fields, extracted := benchmarkSpecularMicroscopyResult(result.Exam, meta.Eye)
+		dateField, dateExtracted := benchmarkTimestampField("Data do exame", result.ExamDateTime)
+		appendBenchmarkFields(&fields, &extracted, []benchmarkField{dateField}, dateExtracted)
 
 		emit(
 			benchmarkFieldsEvent{

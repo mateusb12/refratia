@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 
+	"refratia/backend/shared/examdate"
 	"refratia/backend/shared/ocr"
 	progress "refratia/backend/shared/progress"
 )
@@ -30,8 +31,9 @@ type Evidence struct {
 }
 
 type Result struct {
-	Exam     map[string]any
-	Evidence []Evidence
+	Exam         map[string]any
+	Evidence     []Evidence
+	ExamDateTime string
 }
 
 var ErrNoClinicalData = errors.New("microscopia especular: densidade endotelial não encontrada")
@@ -375,6 +377,21 @@ func Extract(ctx context.Context, data []byte) (Result, error) {
 		return Result{}, fmt.Errorf("microscopia especular: JPEG inválido: %w", err)
 	}
 
+	var examDateTime string
+	var fullImage bytes.Buffer
+	if err := png.Encode(&fullImage, img); err == nil {
+		if tsv, ocrErr := ocr.RunTesseractTSVWithPSM(ctx, fullImage.Bytes(), 11); ocrErr == nil {
+			if words, _, parseErr := ocr.ParseTSVWords(tsv); parseErr == nil {
+				rows := ocr.GroupRows(words, 12)
+				for _, row := range rows {
+					if examDateTime = examdate.FromOCR(ocr.RowText(row)); examDateTime != "" {
+						break
+					}
+				}
+			}
+		}
+	}
+
 	panels := make([]OCRPanel, 0, 2)
 	for index, panel := range microscopyPanels(img.Bounds()) {
 		progress.Report(ctx, 10+index*25, "microscopy_preprocess", fmt.Sprintf("Preparando painel %d/2", index+1))
@@ -460,7 +477,7 @@ func Extract(ctx context.Context, data []byte) (Result, error) {
 		return Result{}, err
 	}
 	progress.Report(ctx, 100, "microscopy_parse", "Microscopia especular extraída localmente")
-	return Result{Exam: exam, Evidence: evidence}, nil
+	return Result{Exam: exam, Evidence: evidence, ExamDateTime: examDateTime}, nil
 }
 
 func specularOCRDebugEnabled() bool {

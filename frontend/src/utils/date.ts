@@ -60,7 +60,7 @@ export function formatBirthDate(value: unknown) {
 
 export function formatDatePtBR(value: unknown) {
   const raw = typeof value === 'string' ? value.trim() : ''
-  const isoMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  const isoMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})(?:\s|$)/)
   if (isoMatch) return `${isoMatch[3]}/${isoMatch[2]}/${isoMatch[1]}`
 
   const slashMatch = raw.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/)
@@ -99,15 +99,17 @@ function parseDateParts(value: unknown) {
 		if (month > 0) return { year: Number(longMatch[3]), month, day: Number(longMatch[1]) }
 	}
 
-  const isoMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  const isoMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})(?:\s|$)/)
   if (isoMatch) return { year: Number(isoMatch[1]), month: Number(isoMatch[2]), day: Number(isoMatch[3]) }
 
-  const slashMatch = raw.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/)
+  const slashMatch = raw.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})(?:\s|$)/)
   if (!slashMatch) return null
 
   const first = Number(slashMatch[1])
   const second = Number(slashMatch[2])
+  const rawYear = Number(slashMatch[3])
+  const year = rawYear < 100 ? rawYear + 2000 : rawYear
   return second > 12
-    ? { year: Number(slashMatch[3]), month: first, day: second }
-    : { year: Number(slashMatch[3]), month: second, day: first }
+    ? { year, month: first, day: second }
+    : { year, month: second, day: first }
 }

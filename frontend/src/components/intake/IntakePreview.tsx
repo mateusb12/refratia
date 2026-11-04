@@ -58,14 +58,14 @@ export function IntakeCompletenessNotice({ analysis }: { analysis: IntakeAnalysi
   )
 }
 
-export function IntakeAnalysisSummary({ analysis }: { analysis: IntakeAnalysis }) {
+export function IntakeAnalysisSummary({ analysis, showOverview = true, showFallbackWarning = true }: { analysis: IntakeAnalysis; showOverview?: boolean; showFallbackWarning?: boolean }) {
   const sourceFiles = analysis.source_files ?? []
   const exams = Object.entries(analysis.exams ?? {})
   const notes = analysis.extraction_notes ?? {}
 
   return (
     <div className="mt-4 space-y-4">
-      <div className="grid gap-3 sm:grid-cols-2">
+      {showOverview && <div className="grid gap-3 sm:grid-cols-2">
         <div className="rounded-xl border border-border bg-surface p-4">
           <span className="text-xs font-bold uppercase tracking-[0.12em] text-text-muted">Paciente</span>
           <strong className="mt-2 block text-base">{analysis.patient?.full_name || 'Não identificado'}</strong>
@@ -78,9 +78,9 @@ export function IntakeAnalysisSummary({ analysis }: { analysis: IntakeAnalysis }
           <strong className="mt-2 block text-base">{exams.length} tipo(s) de exame identificado(s)</strong>
           <span className="mt-1 block text-sm text-text-secondary">{sourceFiles.length} arquivo(s) relacionado(s)</span>
         </div>
-      </div>
+      </div>}
 
-      <div className="rounded-xl border border-border bg-surface p-4">
+      {showOverview && <div className="rounded-xl border border-border bg-surface p-4">
         <span className="text-xs font-bold uppercase tracking-[0.12em] text-text-muted">Exames encontrados</span>
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           {exams.length > 0 ? exams.map(([key, exam]) => (
@@ -95,7 +95,7 @@ export function IntakeAnalysisSummary({ analysis }: { analysis: IntakeAnalysis }
             </div>
           )) : <span className="text-sm text-text-secondary">Nenhum exame identificado.</span>}
         </div>
-      </div>
+      </div>}
 
       <div className="rounded-xl border border-border bg-surface p-4">
         <span className="text-xs font-bold uppercase tracking-[0.12em] text-text-muted">Arquivos processados</span>
@@ -134,7 +134,7 @@ export function IntakeAnalysisSummary({ analysis }: { analysis: IntakeAnalysis }
           <strong className="text-warning">Atenção:</strong> {notes.clinical_use_warning}
         </div>
       )}
-      {typeof notes.fallback_warning === 'string' && (
+      {showFallbackWarning && typeof notes.fallback_warning === 'string' && (
         <div className="rounded-xl border border-warning/30 bg-warning-soft p-4 text-sm text-text-secondary">
           <strong className="text-warning">Análise local preservada:</strong> {notes.fallback_warning}
         </div>

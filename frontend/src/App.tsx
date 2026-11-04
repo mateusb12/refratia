@@ -101,6 +101,16 @@ function formatRefractionValue(value: unknown) {
   return value > 0 ? `+${formatted}` : formatted
 }
 
+function examLabelFromSource(source: string) {
+  const normalized = source.toUpperCase()
+  if (normalized.includes('PENTACAM')) return 'Pentacam'
+  if (normalized.includes('BIOMETRIA') || normalized.includes('EYESUITE')) return 'Biometria'
+  if (normalized.includes('AUTO') || normalized.includes('REFRAT')) return 'Autorrefrator'
+  if (normalized.includes('MICROSCOPIA') || normalized.includes('SPECULAR')) return 'Microscopia especular'
+  if (normalized.includes('RETINA') || normalized.includes('OCT')) return 'Imagem de retina'
+  return 'Documento'
+}
+
 function reportHeaderSummary(data: ReportData) {
   const raw = data as any
   const patient = raw.patient ?? {}
@@ -110,7 +120,13 @@ function reportHeaderSummary(data: ReportData) {
     .filter((entry: { source: string; date: string }) => entry.date !== 'não informado')
   const referenceDate = verification.find((entry: any) => entry?.timestamp_lido)?.timestamp_lido ?? raw.generated_on
   const age = calculateAge(patient.birth_date, referenceDate)
-  const flow = age === null ? 'não informado' : age >= 55 ? 'Fluxo C' : age >= 40 ? 'Fluxo B' : 'Fluxo A'
+  const flow = age === null
+    ? 'não informado'
+    : age >= 55
+      ? `Fluxo C — 55 anos ou mais (${age} anos)`
+      : age >= 40
+        ? `Fluxo B — 40 a 54 anos (${age} anos)`
+        : `Fluxo A — menos de 40 anos (${age} anos)`
   const refraction = raw.exams?.refractometry?.eyes ?? {}
   const formatEyeRefraction = (eye: string) => {
     const value = refraction[eye]
@@ -121,13 +137,13 @@ function reportHeaderSummary(data: ReportData) {
   const identity = identityGaps.includes('patient_identity')
     ? 'Revisar identidade'
     : verification.length > 0 ? `Confirmada por ${verification.length} documento(s)` : 'Sem evidência documental'
-  const uniqueDates = [...new Set(timestamps.map((entry: { source: string; date: string }) => `${entry.source.includes('PENTACAM') ? 'Pentacam' : 'Documento'}: ${entry.date}`))]
+  const uniqueDates = [...new Set(timestamps.map((entry: { source: string; date: string }) => `${examLabelFromSource(entry.source)}: ${entry.date}`))]
 
   return {
     age: age === null ? 'não informado' : `${age} anos`,
     flow,
     dates: uniqueDates.length > 0
-      ? uniqueDates.join(' · ')
+      ? uniqueDates.join('\n')
       : `Análise: ${formatDateLongPtBR(raw.generated_on)}`,
     refraction: `${formatEyeRefraction('OD')} · ${formatEyeRefraction('OS')}`,
     identity,
@@ -145,11 +161,11 @@ function ReportHeaderSummary({ data }: { data: ReportData }) {
   ]
 
   return (
-    <div className="mt-4 grid w-full max-w-[920px] grid-cols-2 gap-x-10 gap-y-3 text-sm leading-relaxed text-text-secondary max-[580px]:grid-cols-1">
+    <div className="mt-5 grid w-full max-w-none grid-cols-2 gap-x-14 gap-y-5 text-base leading-relaxed text-text-secondary max-[580px]:grid-cols-1">
       {rows.map(([label, value]) => (
-        <div className="min-w-0" key={label}>
-          <span className="block text-xs font-bold uppercase tracking-[0.08em] text-text-muted">{label}</span>
-          <span className="mt-0.5 block break-words text-sm font-medium text-text-primary" title={value}>{value}</span>
+        <div className={clsx('min-w-0', label === 'Identidade' && 'col-span-2 max-[580px]:col-span-1')} key={label}>
+          <span className="block text-sm font-bold uppercase tracking-[0.08em] text-text-muted">{label}</span>
+          <span className="mt-1 block break-words whitespace-pre-line text-base font-medium text-text-primary" title={value}>{value}</span>
         </div>
       ))}
     </div>
@@ -1842,7 +1858,7 @@ function App() {
         <ArrowLeft size={16} /> Voltar para casos
       </button>
       <div className={clsx(
-        'mt-5 flex items-center justify-between gap-6 rounded-2xl border p-6 max-[820px]:flex-col max-[820px]:items-start max-[580px]:p-4',
+        'relative mt-5 flex items-center justify-between gap-6 rounded-2xl border p-6 max-[820px]:flex-col max-[820px]:items-start max-[580px]:p-4',
         reportData ? 'border-warning/50 bg-warning-soft' : 'hero-bg border-primary-border',
       )}>
         <div className="flex min-w-0 flex-1 items-start gap-4">
@@ -1854,12 +1870,12 @@ function App() {
           </span>
           <div>
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="m-0 font-display text-xl">
+              <h2 className="m-0 font-display text-2xl tracking-[-0.02em]">
                 {isRealCase ? patientData.patient.full_name : reportData?.patient.full_name ?? 'Revise evidências antes da conclusão clínica'}
               </h2>
               {reportData && <StatusBadge tone="warning">{isRealCase ? 'CASO REAL' : 'CASO SALVO'}</StatusBadge>}
             </div>
-            <p className="mb-0 mt-1.5 max-w-[690px] text-sm leading-relaxed text-text-secondary">
+            <p className="mb-0 mt-2 max-w-[760px] text-base leading-relaxed text-text-secondary">
               {reportData
                 ? `Nascimento: ${isRealCase ? '12 de maio de 1967' : formatBirthDate(reportData.patient.birth_date)}`
                 : 'Confira documentos, dados extraídos, cálculos e a justificativa da recomendação preliminar.'}
@@ -1869,7 +1885,7 @@ function App() {
         </div>
         {storedCase && (
           <button
-            className="inline-flex items-center gap-2 rounded-[9px] border border-danger/50 bg-surface px-3 py-2 text-sm font-semibold text-danger hover:bg-danger-soft disabled:cursor-not-allowed disabled:opacity-50"
+            className="absolute bottom-5 right-6 inline-flex items-center gap-2 rounded-[9px] border border-danger/50 bg-surface px-3 py-2 text-sm font-semibold text-danger hover:bg-danger-soft disabled:cursor-not-allowed disabled:opacity-50 max-[580px]:bottom-4 max-[580px]:right-4"
             disabled={caseDeleteBusy}
             onClick={() => void deleteSavedCase()}
             type="button"

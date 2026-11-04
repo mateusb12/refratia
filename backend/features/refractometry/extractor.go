@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"refratia/backend/shared/examdate"
 	"refratia/backend/shared/ocr"
 	pdfutil "refratia/backend/shared/pdf"
 )
@@ -45,8 +46,12 @@ func ExtractPDF(ctx context.Context, data []byte) (map[string]any, error) {
 
 	eyes := map[string]any{}
 	activeEye := ""
+	examTimestamp := ""
 	for _, row := range ocr.GroupRows(words, 40) {
 		text := ocr.RowText(row)
+		if examTimestamp == "" {
+			examTimestamp = examdate.FromOCR(text)
+		}
 		if marker := eyeMarkerPattern.FindStringSubmatch(text); len(marker) == 2 {
 			if marker[1] == "R" || marker[1] == "r" {
 				activeEye = "OD"
@@ -74,7 +79,11 @@ func ExtractPDF(ctx context.Context, data []byte) (map[string]any, error) {
 		return nil, fmt.Errorf("refratometria: nenhuma média SPH/CYL/AX encontrada")
 	}
 
-	return map[string]any{"eyes": eyes}, nil
+	result := map[string]any{"eyes": eyes}
+	if examTimestamp != "" {
+		result["exam_datetime"] = examTimestamp
+	}
+	return result, nil
 }
 
 func parseAverageRow(text string) ([3]float64, bool) {

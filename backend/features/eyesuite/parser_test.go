@@ -122,7 +122,7 @@ func TestParseEyeSuiteIdentityWords(t *testing.T) {
 	if got.BirthDateRaw != "03/14/1980" {
 		t.Fatalf("nascimento inesperado: %q", got.BirthDateRaw)
 	}
-	if got.TimestampRaw != "08/31/26 11:52" {
+	if got.TimestampRaw != "2026-08-31 11:52" {
 		t.Fatalf("timestamp inesperado: %q", got.TimestampRaw)
 	}
 }

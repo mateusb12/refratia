@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"refratia/backend/shared/examdate"
 	"refratia/backend/shared/ocr"
 )
 
@@ -196,7 +197,10 @@ func parseEyeSuiteIdentityWords(words []ocr.Word) (Identity, error) {
 
 	anchor := -1
 	for i, row := range rows {
-		if eyeSuiteIDPattern.MatchString(ocr.RowText(row)) {
+		rowText := ocr.RowText(row)
+		if eyeSuiteIDPattern.MatchString(rowText) ||
+			(strings.Contains(strings.ToUpper(rowText), "CALCULATION") &&
+				strings.Contains(strings.ToUpper(rowText), "CID")) {
 			anchor = i
 			break
 		}
@@ -207,7 +211,7 @@ func parseEyeSuiteIdentityWords(words []ocr.Word) (Identity, error) {
 
 	var fullName, birthDate string
 
-	for i := anchor - 1; i >= 0 && i >= anchor-4; i-- {
+	for i := anchor; i >= 0 && i >= anchor-4; i-- {
 		dateIndex := -1
 
 		for j, word := range rows[i].Words {
@@ -242,19 +246,29 @@ func parseEyeSuiteIdentityWords(words []ocr.Word) (Identity, error) {
 
 	var examDate, examTime string
 
-	for i := anchor + 1; i < len(rows) && i <= anchor+5; i++ {
+	// Alguns relatórios imprimem a data/hora imediatamente antes da linha
+	// "Calculation ID", enquanto outros a imprimem depois. O fluxo normal
+	// precisa reconhecer os dois layouts.
+	for i := anchor - 2; i < len(rows) && i <= anchor+5; i++ {
+		if i < 0 {
+			continue
+		}
+		rowDate := ""
+		rowTime := ""
 		for _, word := range rows[i].Words {
 			clean := strings.Trim(word.Text, " ,;:")
 
-			if examDate == "" && eyeSuiteExamDatePattern.MatchString(clean) {
-				examDate = clean
+			if rowDate == "" && eyeSuiteExamDatePattern.MatchString(clean) {
+				rowDate = clean
 			}
-			if examTime == "" && eyeSuiteTimePattern.MatchString(clean) {
-				examTime = clean
+			if rowTime == "" && eyeSuiteTimePattern.MatchString(clean) {
+				rowTime = clean
 			}
 		}
 
-		if examDate != "" && examTime != "" {
+		if rowDate != "" && rowTime != "" {
+			examDate = rowDate
+			examTime = rowTime
 			break
 		}
 	}
@@ -263,9 +277,14 @@ func parseEyeSuiteIdentityWords(words []ocr.Word) (Identity, error) {
 		return Identity{}, errors.New("EyeSuite: timestamp não localizado")
 	}
 
+	timestamp := examdate.FromOCR(examDate + " " + examTime)
+	if timestamp == "" {
+		timestamp = examDate + " " + examTime
+	}
+
 	return Identity{
 		FullName:     fullName,
 		BirthDateRaw: birthDate,
-		TimestampRaw: examDate + " " + examTime,
+		TimestampRaw: timestamp,
 	}, nil
 }
