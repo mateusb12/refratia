@@ -13,5 +13,11 @@ services:
     ports:
       - "5173:5173"
 
+  backend:
+    develop:
+      watch:
+        - action: rebuild
+          path: ./backend
+
 volumes:
   frontend_node_modules:

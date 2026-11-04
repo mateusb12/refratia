@@ -13,6 +13,14 @@ npm run dev          # frontend
 npm run dev:backend  # backend, em outro terminal
 ```
 
+Para subir frontend e backend em containers com atualização automática:
+
+```bash
+npm run dev:containers
+```
+
+O frontend usa HMR do Vite. Alterações no backend recompilam e recriam automaticamente o container pelo Docker Compose Watch.
+
 Defina `OPENAI_API_KEY` no ambiente do backend para extrair os documentos antes da confirmação. `OPENAI_MODEL` é opcional (padrão: `gpt-5.4-mini`).
 
 
