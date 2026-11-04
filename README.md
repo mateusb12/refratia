@@ -16,10 +16,10 @@ npm run dev:backend  # backend, em outro terminal
 Para subir frontend e backend em containers com atualização automática:
 
 ```bash
-npm run dev:containers
+docker compose up -d
 ```
 
-O frontend usa HMR do Vite. Alterações no backend recompilam e recriam automaticamente o container pelo Docker Compose Watch.
+O override local monta o código do backend e inicia um watcher interno: o frontend usa HMR do Vite e alterações em arquivos Go recompilam e reiniciam automaticamente o backend.
 
 Defina `OPENAI_API_KEY` no ambiente do backend para extrair os documentos antes da confirmação. `OPENAI_MODEL` é opcional (padrão: `gpt-5.4-mini`).
 
@@ -29,7 +29,7 @@ Defina `OPENAI_API_KEY` no ambiente do backend para extrair os documentos antes 
 Requer Docker com Compose:
 
 ```bash
-docker compose up --build
+docker compose up -d
 ```
 
 - Frontend: http://localhost:5173

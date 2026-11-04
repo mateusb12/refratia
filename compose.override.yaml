@@ -14,10 +14,13 @@ services:
       - "5173:5173"
 
   backend:
-    develop:
-      watch:
-        - action: rebuild
-          path: ./backend
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./backend:/src
+    working_dir: /src
+    command: ["/usr/local/bin/refratia-dev-server"]
 
 volumes:
   frontend_node_modules:

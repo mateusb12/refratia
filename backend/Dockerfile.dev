@@ -1,0 +1,15 @@
+FROM golang:1.22-alpine
+
+RUN apk add --no-cache \
+    poppler-utils \
+    tesseract-ocr \
+    tesseract-ocr-data-eng
+
+WORKDIR /src
+
+COPY dev-server.sh /usr/local/bin/refratia-dev-server
+RUN chmod +x /usr/local/bin/refratia-dev-server
+
+EXPOSE 3000
+
+CMD ["/usr/local/bin/refratia-dev-server"]
