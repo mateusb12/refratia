@@ -7,6 +7,7 @@ import (
 
 	progress "refratia/backend/shared/progress"
 
+	patientfeature "refratia/backend/features/patient"
 	"refratia/backend/features/pentacam"
 )
 
@@ -52,6 +53,15 @@ func tryExtractPentacamLocal(
 		return false
 	}
 
+	if identity, identityErr := pentacam.ExtractIdentity(ctx, file.Data); identityErr == nil {
+		mergeLocalPatientIdentity(
+			analysis,
+			file.Metadata.Filename,
+			identity.FullName,
+			identity.BirthDateRaw,
+		)
+	}
+
 	mergeLocalPentacamExam(
 		analysis,
 		eye,
@@ -67,6 +77,45 @@ func tryExtractPentacamLocal(
 	)
 
 	return true
+}
+
+func mergeLocalPatientIdentity(
+	analysis map[string]any,
+	source,
+	fullName,
+	birthDateRaw string,
+) {
+	patient, _ := analysis["patient"].(map[string]any)
+	if patient == nil {
+		patient = map[string]any{}
+		analysis["patient"] = patient
+	}
+
+	if current, _ := patient["full_name"].(string); strings.TrimSpace(current) == "" {
+		patient["full_name"] = fullName
+	}
+	if _, ok := patientfeature.CanonicalBirthDate(analysis); !ok {
+		patient["birth_date"] = birthDateRaw
+		if birthDate, valid := patientfeature.CanonicalBirthDate(analysis); valid {
+			patient["birth_date"] = birthDate
+		}
+	}
+
+	verification, _ := analysis["verificacao_identidade"].([]any)
+	for _, raw := range verification {
+		entry, _ := raw.(map[string]any)
+		if fmt.Sprint(entry["source"]) == source {
+			return
+		}
+	}
+
+	analysis["verificacao_identidade"] = append(verification, map[string]any{
+		"source":          source,
+		"nome_lido":       fullName,
+		"nascimento_lido": birthDateRaw,
+		"confidence":      "deterministic_template",
+		"method":          "local_ocr_tesseract",
+	})
 }
 
 func mergeLocalPentacamExam(

@@ -37,6 +37,7 @@ import BenchmarkOcrPage from './components/benchmark/BenchmarkOcrPage'
 import SavedExamsPage from './components/storage/SavedExamsPage'
 import ProtocolPage from './components/protocol/ProtocolPage'
 import { normalizeSavedAnalysis, type IntakeAnalysis } from './contracts/patient-analysis'
+import { formatBirthDate } from './utils/date'
 
 type Theme = 'light' | 'dark'
 type CaseKind = 'demo' | 'real'
@@ -57,13 +58,6 @@ interface StoredCase {
 }
 
 type ReportData = typeof patientData
-
-function readableBirthDate(value: unknown) {
-  if (typeof value === 'object' && value !== null && 'normalized' in value) {
-    return String((value as { normalized?: unknown }).normalized ?? 'não informado')
-  }
-  return typeof value === 'string' ? value : 'não informado'
-}
 
 function formatNumber(value: unknown, options?: Intl.NumberFormatOptions) {
   return typeof value === 'number' && Number.isFinite(value) ? value.toLocaleString('pt-BR', options) : 'não informado'
@@ -97,7 +91,7 @@ function normalizeSavedReport(analysis: IntakeAnalysis): ReportData {
 
   return {
     ...raw,
-    patient: { ...raw.patient, birth_date: readableBirthDate(raw.patient?.birth_date) },
+    patient: { ...raw.patient, birth_date: formatBirthDate(raw.patient?.birth_date) },
   } as ReportData
 }
 
@@ -1806,7 +1800,7 @@ function App() {
             </div>
             <p className="mb-0 mt-1.5 max-w-[690px] text-sm leading-relaxed text-text-secondary">
               {reportData
-                ? `Nascimento: ${isRealCase ? '12/05/1967' : readableBirthDate(reportData.patient.birth_date)} · Dados clínicos importados`
+                ? `Nascimento: ${isRealCase ? '12 de maio de 1967' : formatBirthDate(reportData.patient.birth_date)} · Dados clínicos importados`
                 : 'Confira documentos, dados extraídos, cálculos e a justificativa da recomendação preliminar.'}
             </p>
           </div>

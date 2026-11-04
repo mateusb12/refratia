@@ -7,6 +7,7 @@ import IntakeFileClassification from './IntakeFileClassification'
 import IntakeProcessingProgress from './IntakeProcessingProgress'
 import { IntakeAnalysisSummary, IntakeCompletenessNotice, IntakeDocumentsDebug, PatientChangePreview } from './IntakePreview'
 import { useIntakeWorkflow } from './useIntakeWorkflow'
+import { formatBirthDate } from '../../utils/date'
 
 interface SavedCase {
   caseId: string
@@ -18,11 +19,6 @@ function formatCaseSavedTime(caseId: string) {
   if (!match) return null
   const localHour = (Number(match[2]) + 21) % 24
   return `${String(localHour).padStart(2, '0')}h${match[3]}`
-}
-
-function readableBirthDate(value: unknown) {
-  if (typeof value === 'object' && value !== null && 'normalized' in value) return String((value as { normalized?: unknown }).normalized ?? 'não informado')
-  return typeof value === 'string' ? value : 'não informado'
 }
 
 const steps = [
@@ -402,7 +398,7 @@ export default function NewAnalysisPage({
                               ?? 'Paciente não identificado'}
                         </p>
                         <p className="mb-0 mt-1 text-xs text-text-secondary">
-                          {readableBirthDate(intakePreview.analysis.patient?.birth_date)}
+                          {formatBirthDate(intakePreview.analysis.patient?.birth_date)}
                           {' · '}
                           {Object.keys(intakePreview.analysis.exams ?? {}).length} tipo(s) de exame
                           {intakePreview.patientMatch.status === 'existing'

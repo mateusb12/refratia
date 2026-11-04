@@ -2,11 +2,7 @@ import clsx from 'clsx'
 import { assessExamContract } from '../../contracts/exam-contracts'
 import { type IntakeAnalysis, type IntakePreview } from '../../contracts/patient-analysis'
 import type { ReactNode } from 'react'
-
-function readableBirthDate(value: unknown) {
-  if (typeof value === 'object' && value !== null && 'normalized' in value) return String((value as { normalized?: unknown }).normalized ?? 'não informado')
-  return typeof value === 'string' ? value : 'não informado'
-}
+import { formatBirthDate } from '../../utils/date'
 
 function formatContractValue(value: unknown) {
   if (value === null || value === undefined || value === '') return 'não informado'
@@ -74,7 +70,7 @@ export function IntakeAnalysisSummary({ analysis }: { analysis: IntakeAnalysis }
           <span className="text-xs font-bold uppercase tracking-[0.12em] text-text-muted">Paciente</span>
           <strong className="mt-2 block text-base">{analysis.patient?.full_name || 'Não identificado'}</strong>
           <span className="mt-1 block text-sm text-text-secondary">
-            Nascimento: {readableBirthDate(analysis.patient?.birth_date)}
+            Nascimento: {formatBirthDate(analysis.patient?.birth_date)}
           </span>
         </div>
         <div className="rounded-xl border border-border bg-surface p-4">
