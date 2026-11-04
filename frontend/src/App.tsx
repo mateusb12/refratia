@@ -588,8 +588,6 @@ const extractedData: ExtractedDatum[] = [
   },
 ]
 
-const realPatientName = 'Gerinaldo Alfregildo'
-const showDemoCases = import.meta.env.VITE_SHOW_DEMO_CASES !== 'false'
 const endothelialCutoff = 2000
 const toricCutoff = 0.75
 
@@ -736,12 +734,7 @@ interface ReportCase {
   caseId?: string
 }
 
-const recentCases: ReportCase[] = showDemoCases
-  ? [
-      { initials: 'RA', patient: realPatientName, report: 'Gerado', review: 'Pendente', tone: 'warning' as const, real: true },
-      { initials: 'MS', patient: 'Maria S.', report: 'Parcial', review: 'Pendente', tone: 'warning' as const, real: false },
-    ]
-  : []
+const recentCases: ReportCase[] = []
 
 function getInitialTheme(): Theme {
   const storedTheme = localStorage.getItem('refratia-theme')
@@ -2332,14 +2325,6 @@ function App() {
     }
   }, [intakeFiles, intakeClassificationComplete])
 
-  function loadCase(kind: CaseKind) {
-    setSelectedCase(kind)
-    setProcessingStep(kind === 'real' ? steps.length : 1)
-    setIsReviewed(false)
-    setExpandedDocument(null)
-    setTraceData(null)
-  }
-
   function hideDemoNavigation() {
     setIsDemoNavigationHidden(true)
     if (demoNavigationTimer.current !== null) window.clearTimeout(demoNavigationTimer.current)
@@ -2830,7 +2815,7 @@ function App() {
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="m-0 font-display text-xl">
-                {isRealCase ? realPatientName : reportData?.patient.full_name ?? 'Revise evidências antes da conclusão clínica'}
+                {isRealCase ? patientData.patient.full_name : reportData?.patient.full_name ?? 'Revise evidências antes da conclusão clínica'}
               </h2>
               {reportData && <StatusBadge tone="warning">{isRealCase ? 'CASO REAL' : 'CASO SALVO'}</StatusBadge>}
             </div>
@@ -2926,20 +2911,16 @@ function App() {
         ].map((item) => (
           <button
             key={item.patient}
-            disabled={!item.real && item.patient !== 'Maria S.' && !item.saved}
+            disabled={!item.real && !item.saved}
             className={clsx(
               'grid w-full grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-3 rounded-xl border border-border bg-transparent px-3 py-3 text-left max-[580px]:grid-cols-[auto_minmax(0,1fr)]',
               item.real && 'rounded-xl border border-warning/40 bg-warning-soft',
               item.saved && 'rounded-xl border border-success/40 bg-success-soft',
-              item.real ? 'hover:border-warning' : (item.saved || item.patient === 'Maria S.') && 'hover:border-primary',
+              item.real ? 'hover:border-warning' : item.saved && 'hover:border-primary',
             )}
             onClick={() => {
               if (item.real) openReport(item.caseId ?? '1')
               if (item.saved && item.caseId) void openSavedCase(item.caseId)
-              if (item.patient === 'Maria S.') {
-                setActiveSection('Nova análise')
-                loadCase('demo')
-              }
             }}
             type="button"
           >
@@ -3441,24 +3422,6 @@ function App() {
                       <StatusBadge tone="success">Abrir relatório</StatusBadge>
                     </button>
                   ))}
-                  {showDemoCases && (
-                    <button
-                      aria-pressed={selectedCase === 'demo'}
-                      className={clsx(
-                        'grid grid-cols-[auto_minmax(0,1fr)] items-center rounded-xl border bg-surface-muted p-[18px] text-left hover:border-primary hover:bg-primary-soft/80',
-                        selectedCase === 'demo' ? 'border-primary ring-2 ring-primary/15' : 'border-border-strong',
-                      )}
-                      onClick={() => loadCase('demo')}
-                      type="button"
-                    >
-                      <span className="grid h-[45px] w-[45px] place-items-center rounded-xl bg-primary-soft text-primary"><UploadCloud size={25} /></span>
-                      <span className="mx-3.5 min-w-0">
-                        <strong className="block truncate text-sm">Maria S.</strong>
-                        <small className="mt-1 block text-xs leading-relaxed text-text-muted">Caso fictício completo</small>
-                      </span>
-                    </button>
-                  )}
-
                 </div>
               </section>
             </>
