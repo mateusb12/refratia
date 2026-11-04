@@ -37,7 +37,7 @@ import BenchmarkOcrPage from './components/benchmark/BenchmarkOcrPage'
 import SavedExamsPage from './components/storage/SavedExamsPage'
 import ProtocolPage from './components/protocol/ProtocolPage'
 import { normalizeSavedAnalysis, type IntakeAnalysis } from './contracts/patient-analysis'
-import { formatBirthDate } from './utils/date'
+import { calculateAge, formatBirthDate, formatDateLongPtBR } from './utils/date'
 
 type Theme = 'light' | 'dark'
 type CaseKind = 'demo' | 'real'
@@ -93,6 +93,67 @@ function normalizeSavedReport(analysis: IntakeAnalysis): ReportData {
     ...raw,
     patient: { ...raw.patient, birth_date: formatBirthDate(raw.patient?.birth_date) },
   } as ReportData
+}
+
+function formatRefractionValue(value: unknown) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 'não informado'
+  const formatted = value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  return value > 0 ? `+${formatted}` : formatted
+}
+
+function reportHeaderSummary(data: ReportData) {
+  const raw = data as any
+  const patient = raw.patient ?? {}
+  const verification = Array.isArray(raw.verificacao_identidade) ? raw.verificacao_identidade : []
+  const timestamps = verification
+    .map((entry: any) => ({ source: String(entry?.source ?? ''), date: formatDateLongPtBR(entry?.timestamp_lido) }))
+    .filter((entry: { source: string; date: string }) => entry.date !== 'não informado')
+  const referenceDate = verification.find((entry: any) => entry?.timestamp_lido)?.timestamp_lido ?? raw.generated_on
+  const age = calculateAge(patient.birth_date, referenceDate)
+  const flow = age === null ? 'não informado' : age >= 55 ? 'Fluxo C' : age >= 40 ? 'Fluxo B' : 'Fluxo A'
+  const refraction = raw.exams?.refractometry?.eyes ?? {}
+  const formatEyeRefraction = (eye: string) => {
+    const value = refraction[eye]
+    if (!value) return `${eye}: não informado`
+    return `${eye} ${formatRefractionValue(value.sphere_d)} ${formatRefractionValue(value.cylinder_d)} × ${value.axis_deg ?? '—'}°`
+  }
+  const identityGaps = raw.extraction_notes?.fallback_gaps ?? []
+  const identity = identityGaps.includes('patient_identity')
+    ? 'Revisar identidade'
+    : verification.length > 0 ? `Confirmada por ${verification.length} documento(s)` : 'Sem evidência documental'
+  const uniqueDates = [...new Set(timestamps.map((entry: { source: string; date: string }) => `${entry.source.includes('PENTACAM') ? 'Pentacam' : 'Documento'}: ${entry.date}`))]
+
+  return {
+    age: age === null ? 'não informado' : `${age} anos`,
+    flow,
+    dates: uniqueDates.length > 0
+      ? uniqueDates.join(' · ')
+      : `Análise: ${formatDateLongPtBR(raw.generated_on)}`,
+    refraction: `${formatEyeRefraction('OD')} · ${formatEyeRefraction('OS')}`,
+    identity,
+  }
+}
+
+function ReportHeaderSummary({ data }: { data: ReportData }) {
+  const summary = reportHeaderSummary(data)
+  const rows = [
+    ['Idade', summary.age],
+    ['Fluxo', summary.flow],
+    ['Datas dos exames', summary.dates],
+    ['Refração usada', summary.refraction],
+    ['Identidade', summary.identity],
+  ]
+
+  return (
+    <div className="mt-4 grid w-full max-w-[920px] grid-cols-2 gap-x-10 gap-y-3 text-sm leading-relaxed text-text-secondary max-[580px]:grid-cols-1">
+      {rows.map(([label, value]) => (
+        <div className="min-w-0" key={label}>
+          <span className="block text-xs font-bold uppercase tracking-[0.08em] text-text-muted">{label}</span>
+          <span className="mt-0.5 block break-words text-sm font-medium text-text-primary" title={value}>{value}</span>
+        </div>
+      ))}
+    </div>
+  )
 }
 
 const eyeLabel = (eye: Eye) => (eye === 'OS' ? 'OE' : eye)
@@ -1784,7 +1845,7 @@ function App() {
         'mt-5 flex items-center justify-between gap-6 rounded-2xl border p-6 max-[820px]:flex-col max-[820px]:items-start max-[580px]:p-4',
         reportData ? 'border-warning/50 bg-warning-soft' : 'hero-bg border-primary-border',
       )}>
-        <div className="flex items-start gap-4">
+        <div className="flex min-w-0 flex-1 items-start gap-4">
           <span className={clsx(
             'grid h-10 w-10 flex-none place-items-center rounded-xl bg-surface shadow-sm',
             reportData ? 'text-warning' : 'text-primary',
@@ -1800,9 +1861,10 @@ function App() {
             </div>
             <p className="mb-0 mt-1.5 max-w-[690px] text-sm leading-relaxed text-text-secondary">
               {reportData
-                ? `Nascimento: ${isRealCase ? '12 de maio de 1967' : formatBirthDate(reportData.patient.birth_date)} · Dados clínicos importados`
+                ? `Nascimento: ${isRealCase ? '12 de maio de 1967' : formatBirthDate(reportData.patient.birth_date)}`
                 : 'Confira documentos, dados extraídos, cálculos e a justificativa da recomendação preliminar.'}
             </p>
+            {reportData && <ReportHeaderSummary data={reportData} />}
           </div>
         </div>
         {storedCase && (

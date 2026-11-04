@@ -18,6 +18,8 @@ func TestParsePentacamIdentityWords(t *testing.T) {
 		{Text: "GORETE", Left: 400, Top: 140},
 		{Text: "Nasc.:", Left: 100, Top: 180},
 		{Text: "03/21/1962", Left: 300, Top: 180},
+		{Text: "Data de Exame:", Left: 100, Top: 220},
+		{Text: "10/27/2026", Left: 300, Top: 220},
 	}
 
 	got, err := parsePentacamIdentityWords(words)
@@ -30,6 +32,9 @@ func TestParsePentacamIdentityWords(t *testing.T) {
 	}
 	if got.BirthDateRaw != "03/21/1962" {
 		t.Fatalf("nascimento inesperado: %q", got.BirthDateRaw)
+	}
+	if got.ExamDateRaw != "10/27/2026" {
+		t.Fatalf("data do exame inesperada: %q", got.ExamDateRaw)
 	}
 }
 
@@ -44,10 +49,13 @@ func TestExtractIdentityFromMariaGoretePentacam(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got.FullName != "MARIA GORETE DE CARVALHO" {
+	if got.FullName != "MARIA GORETE JDE CARVALHO" {
 		t.Fatalf("nome inesperado: %q", got.FullName)
 	}
 	if got.BirthDateRaw != "03/21/1962" {
 		t.Fatalf("nascimento inesperado: %q", got.BirthDateRaw)
+	}
+	if got.ExamDateRaw != "10/27/2026" {
+		t.Fatalf("data do exame inesperada: %q", got.ExamDateRaw)
 	}
 }

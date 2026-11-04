@@ -13,6 +13,7 @@ import (
 type Identity struct {
 	FullName     string
 	BirthDateRaw string
+	ExamDateRaw  string
 }
 
 var pentacamBirthDatePattern = regexp.MustCompile(`\b\d{1,2}/\d{1,2}/\d{4}\b`)
@@ -26,7 +27,7 @@ func ExtractIdentity(ctx context.Context, data []byte) (Identity, error) {
 		return Identity{}, err
 	}
 
-	tsv, err := ocr.RunTesseractTSV(ctx, image)
+	tsv, err := ocr.RunTesseractTSVWithPSM(ctx, image, 11)
 	if err != nil {
 		return Identity{}, err
 	}
@@ -45,11 +46,12 @@ func parsePentacamIdentityWords(words []ocr.Word) (Identity, error) {
 	firstName := valueAfterLabel(rows, `(?i)\bnome\b`)
 	lastName := valueAfterLabel(rows, `(?i)sobrenome`)
 	birthDate := ""
+	examDate := dateAfterLabel(rows, `(?i)data\s+de\s+exame`)
 
 	for _, row := range rows {
-		if match := pentacamBirthDatePattern.FindString(ocr.RowText(row)); match != "" {
-			birthDate = match
-			break
+		text := ocr.RowText(row)
+		if birthDate == "" {
+			birthDate = pentacamBirthDatePattern.FindString(text)
 		}
 	}
 
@@ -61,7 +63,27 @@ func parsePentacamIdentityWords(words []ocr.Word) (Identity, error) {
 	return Identity{
 		FullName:     fullName,
 		BirthDateRaw: birthDate,
+		ExamDateRaw:  examDate,
 	}, nil
+}
+
+func dateAfterLabel(rows []ocr.Row, labelPattern string) string {
+	label := regexp.MustCompile(labelPattern)
+	for index, row := range rows {
+		text := ocr.RowText(row)
+		if !label.MatchString(text) {
+			continue
+		}
+		if date := pentacamBirthDatePattern.FindString(text); date != "" {
+			return date
+		}
+		for offset := 0; index+offset < len(rows) && offset <= 2; offset++ {
+			if date := pentacamBirthDatePattern.FindString(ocr.RowText(rows[index+offset])); date != "" {
+				return date
+			}
+		}
+	}
+	return ""
 }
 
 func valueAfterLabel(rows []ocr.Row, labelPattern string) string {

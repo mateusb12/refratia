@@ -59,6 +59,7 @@ func tryExtractPentacamLocal(
 			file.Metadata.Filename,
 			identity.FullName,
 			identity.BirthDateRaw,
+			identity.ExamDateRaw,
 		)
 	}
 
@@ -84,6 +85,7 @@ func mergeLocalPatientIdentity(
 	source,
 	fullName,
 	birthDateRaw string,
+	examDateRaw string,
 ) {
 	patient, _ := analysis["patient"].(map[string]any)
 	if patient == nil {
@@ -113,6 +115,7 @@ func mergeLocalPatientIdentity(
 		"source":          source,
 		"nome_lido":       fullName,
 		"nascimento_lido": birthDateRaw,
+		"timestamp_lido":  examDateRaw,
 		"confidence":      "deterministic_template",
 		"method":          "local_ocr_tesseract",
 	})

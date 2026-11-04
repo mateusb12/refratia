@@ -57,3 +57,57 @@ export function formatBirthDate(value: unknown) {
   if (day < 1 || month < 1 || month > 12 || year < 1000) return 'não informado'
   return `${day} de ${portugueseMonthNames[month - 1].toLowerCase()} de ${year}`
 }
+
+export function formatDatePtBR(value: unknown) {
+  const raw = typeof value === 'string' ? value.trim() : ''
+  const isoMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (isoMatch) return `${isoMatch[3]}/${isoMatch[2]}/${isoMatch[1]}`
+
+  const slashMatch = raw.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/)
+  if (!slashMatch) return 'não informado'
+
+  const first = Number(slashMatch[1])
+  const second = Number(slashMatch[2])
+  const year = slashMatch[3]
+  const month = second > 12 ? first : second
+  const day = second > 12 ? second : first
+
+  return `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${year}`
+}
+
+export function formatDateLongPtBR(value: unknown) {
+  const raw = typeof value === 'string' ? value.trim() : ''
+  const date = raw.match(/\d{4}-\d{2}-\d{2}|\d{1,2}[/-]\d{1,2}[/-]\d{4}/)?.[0]
+  return date ? formatBirthDate(date) : 'não informado'
+}
+
+export function calculateAge(birthDate: unknown, referenceDate: unknown) {
+  const birth = parseDateParts(birthDate)
+  const reference = parseDateParts(referenceDate)
+  if (!birth || !reference) return null
+
+  let age = reference.year - birth.year
+  if (reference.month < birth.month || (reference.month === birth.month && reference.day < birth.day)) age -= 1
+  return age >= 0 ? age : null
+}
+
+function parseDateParts(value: unknown) {
+  const raw = typeof value === 'string' ? value.trim() : ''
+	const longMatch = raw.match(/^(\d{1,2}) de ([a-zç]+) de (\d{4})$/i)
+	if (longMatch) {
+		const month = portugueseMonthNames.findIndex((name) => name.toLowerCase() === longMatch[2].toLowerCase()) + 1
+		if (month > 0) return { year: Number(longMatch[3]), month, day: Number(longMatch[1]) }
+	}
+
+  const isoMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (isoMatch) return { year: Number(isoMatch[1]), month: Number(isoMatch[2]), day: Number(isoMatch[3]) }
+
+  const slashMatch = raw.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/)
+  if (!slashMatch) return null
+
+  const first = Number(slashMatch[1])
+  const second = Number(slashMatch[2])
+  return second > 12
+    ? { year: Number(slashMatch[3]), month: first, day: second }
+    : { year: Number(slashMatch[3]), month: second, day: first }
+}
