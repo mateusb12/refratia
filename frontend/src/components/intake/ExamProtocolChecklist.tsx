@@ -40,6 +40,15 @@ const requiredExamSlots: RequiredExamSlot[] = requiredExams.flatMap((exam) => (
   (['OD', 'OS'] as const).map((eye) => ({ ...exam, eye }))
 ))
 
+function getDisplayedRequiredSlots(parsed: ParsedExamFile[]): RequiredExamSlot[] {
+  return requiredExams.flatMap((exam) => {
+    const hasAO = parsed.some((file) => file.type === exam.key && file.eye === 'AO')
+    return hasAO
+      ? [{ ...exam, eye: 'AO' as Eye }]
+      : (['OD', 'OS'] as const).map((eye): RequiredExamSlot => ({ ...exam, eye }))
+  })
+}
+
 const optionalExams: ExamDefinition[] = [
   {
     key: 'RETINA',
@@ -77,6 +86,12 @@ function fileIcon(file: File) {
   const extension = file.name.split('.').pop()?.toLowerCase()
   const icon = extension === 'pdf' ? 'pdf.png' : extension === 'png' ? 'png.png' : 'jpeg.png'
   return `${import.meta.env.BASE_URL}${icon}`
+}
+
+function eyeLabel(eye: Eye) {
+  if (eye === 'AO') return 'Ambos os olhos'
+  if (eye === 'OD') return 'Olho direito'
+  return 'Olho esquerdo'
 }
 
 function getExamStatus(
@@ -166,7 +181,7 @@ function RequiredExamSlotRow({
           'mt-0.5 block text-xs',
           received ? 'text-success' : 'text-text-muted',
         ].join(' ')}>
-          {received ? 'Arquivo recebido' : 'Falta arquivo'}
+          {received ? eyeLabel(slot.eye) : 'Falta arquivo'}
         </span>
         {matchingFiles.map(({ file }) => (
           <span
@@ -278,6 +293,7 @@ export default function ExamProtocolChecklist({
 
   const missing =
     requiredExamSlots.length - received
+  const displayedRequiredSlots = getDisplayedRequiredSlots(parsed)
 
   return (
     <div className="mt-4 rounded-xl border border-border bg-surface-muted p-4">
@@ -326,7 +342,7 @@ export default function ExamProtocolChecklist({
       </div>
 
       <div className="mt-4 grid gap-2 sm:grid-cols-2">
-        {requiredExamSlots.map((slot) => (
+        {displayedRequiredSlots.map((slot) => (
           <RequiredExamSlotRow
             key={`${slot.key}-${slot.eye}`}
             parsed={parsed}

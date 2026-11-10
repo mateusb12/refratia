@@ -141,7 +141,7 @@ func CanonicalClassificationFromFilename(
 		}
 	}
 
-	spaced := regexp.MustCompile(`(?i)^([[:alpha:]_]+)[[:space:]]+(OD|OE|OS|AO)(?:[[:space:]]|$)`).FindStringSubmatch(
+	spaced := regexp.MustCompile(`(?i)(?:^|[[:space:]_-])((?:PENTACAM|EYESUITE|BIOMETRIA|AUTO|RETINA|OCT|MICROSCOPIA(?:[_[:space:]]+ESPECULAR)?))(?:[[:space:]_-]|$).*?(?:^|[[:space:]_-])(OD|OE|OS|AO)(?:[[:space:]_-]|$)`).FindStringSubmatch(
 		strings.TrimSuffix(filename, fileExtension(filename)),
 	)
 	if len(spaced) != 3 {

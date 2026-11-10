@@ -159,6 +159,23 @@ func TestClassificationFromNewFilenameFormat(t *testing.T) {
 	}
 }
 
+func TestClassificationFromFlexibleFilenameFormat(t *testing.T) {
+	tests := []struct {
+		name, examType, eye string
+	}{
+		{"PENTACAM CRESO AVERSA OD .pdf", "pentacam_corneal_tomography", "OD"},
+		{"PENTACAM CRESO AVERSA OS .pdf", "pentacam_corneal_tomography", "OS"},
+		{"BIOMETRIA SKRT AO.pdf", "iol_calculation", "AO"},
+	}
+
+	for _, test := range tests {
+		examType, eye, ok := CanonicalClassificationFromFilename(test.name)
+		if !ok || examType != test.examType || eye != test.eye {
+			t.Fatalf("%q classified as %q/%q/%v", test.name, examType, eye, ok)
+		}
+	}
+}
+
 func TestPrefilterPDFCandidatesSuggestsPentacamForNinePages(
 	t *testing.T,
 ) {
