@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -9,11 +10,16 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
+
+	"refratia/backend/database"
 )
 
 const (
 	maxAnalysisSize = 5 << 20
 )
+
+var appDatabase *database.DB
 
 var allowedTypes = map[string]bool{
 	"application/pdf":    true,
@@ -26,6 +32,21 @@ var allowedTypes = map[string]bool{
 }
 
 func main() {
+	databaseContext, cancelDatabaseContext := context.WithTimeout(
+		context.Background(),
+		20*time.Second,
+	)
+	defer cancelDatabaseContext()
+
+	var databaseOpenError error
+	appDatabase, databaseOpenError = database.Open(databaseContext)
+	if databaseOpenError != nil {
+		panic(databaseOpenError)
+	}
+	if databaseMigrationError := appDatabase.AutoMigrate(&database.Exam{}); databaseMigrationError != nil {
+		panic(fmt.Errorf("migrate postgres schema: %w", databaseMigrationError))
+	}
+
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "3000"
@@ -37,6 +58,7 @@ func main() {
 	http.HandleFunc("/api/exams/download", downloadSavedExam)
 	http.HandleFunc("/api/exams", routeSavedExams)
 	http.HandleFunc("/api/exams/upload-url", prepareExamUpload)
+	http.HandleFunc("/api/exams/confirm", confirmSavedExam)
 	http.HandleFunc(
 		"/api/file-checkpoints/check",
 		checkFileCheckpoints,

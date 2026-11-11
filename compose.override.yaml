@@ -1,4 +1,43 @@
 services:
+  postgres-tunnel:
+    image: alpine:3.20
+    restart: unless-stopped
+    environment:
+      HOME: /home/mateus
+      CONTABO_POSTGRES_CONTAINER: ${CONTABO_POSTGRES_CONTAINER:-bxui9zxeulehv0d9ekmpnhbo}
+    volumes:
+      - ${HOME}/.ssh:/home/mateus/.ssh:ro
+    ports:
+      - "127.0.0.1:${REFRATIA_LOCAL_POSTGRES_TUNNEL_PORT:-15433}:15432"
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        apk add --no-cache netcat-openbsd openssh-client
+        mkdir -p /tmp/ssh
+        cp -R /home/mateus/.ssh/. /tmp/ssh/
+        find /tmp/ssh -type f -exec sed -i \
+          's#/home/mateus/.ssh#/tmp/ssh#g; s#~/.ssh/#/tmp/ssh/#g' {} +
+        chown -R root:root /tmp/ssh
+        chmod 700 /tmp/ssh
+        chmod 600 /tmp/ssh/config /tmp/ssh/known_hosts /tmp/ssh/* 2>/dev/null || true
+        REMOTE_IP="$$(ssh -F /tmp/ssh/config -o UserKnownHostsFile=/tmp/ssh/known_hosts \
+          -o BatchMode=yes -o ConnectTimeout=10 contabo \
+          "docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' '$${CONTABO_POSTGRES_CONTAINER:-bxui9zxeulehv0d9ekmpnhbo}'")"
+        test -n "$${REMOTE_IP}"
+        exec ssh -F /tmp/ssh/config -o UserKnownHostsFile=/tmp/ssh/known_hosts \
+          -o ExitOnForwardFailure=yes \
+          -o ServerAliveInterval=60 \
+          -o ServerAliveCountMax=3 \
+          -N \
+          -L "0.0.0.0:15432:$${REMOTE_IP}:5432" \
+          contabo
+    healthcheck:
+      test: ["CMD", "nc", "-z", "127.0.0.1", "15432"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+
   frontend:
     build:
       dockerfile: frontend/Dockerfile.dev
@@ -21,6 +60,13 @@ services:
       - ./backend:/src
     working_dir: /src
     command: ["/usr/local/bin/refratia-dev-server"]
+    depends_on:
+      postgres-tunnel:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: ""
+      POSTGRES_HOST: postgres-tunnel
+      POSTGRES_PORT: 15432
 
 volumes:
   frontend_node_modules:

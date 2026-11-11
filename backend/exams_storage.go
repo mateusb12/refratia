@@ -956,6 +956,15 @@ func removeSavedExam(
 		return
 	}
 
+	if deleteMetadataError := deleteExamRecord(request.Path, bucket); deleteMetadataError != nil {
+		writeError(
+			w,
+			http.StatusInternalServerError,
+			"arquivo excluído, mas não foi possível excluir seus metadados",
+		)
+		return
+	}
+
 	w.Header().Set(
 		"Content-Type",
 		"application/json",

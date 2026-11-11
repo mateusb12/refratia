@@ -161,6 +161,32 @@ export default function SavedExamsPage({
         )
       }
 
+      const confirmation = await fetch(
+        `${apiUrl}/api/exams/confirm`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${mutationToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            caseId: uploadCaseId,
+            path: result.path,
+            filename: file.name,
+            contentType,
+            size: file.size,
+          }),
+        },
+      )
+
+      if (!confirmation.ok) {
+        const confirmationResult = await confirmation.json().catch(() => ({}))
+        throw new Error(
+          confirmationResult.error ??
+            'O arquivo foi enviado, mas seus metadados não foram salvos.',
+        )
+      }
+
       setUploadMessage('Arquivo salvo no Tigris.')
 
       await loadExams()
