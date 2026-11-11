@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   Check,
   ChevronDown,
@@ -44,6 +44,8 @@ interface BenchmarkTask {
   taskLabel: string
   taskStatus: 'running' | 'completed' | 'failed'
   taskPercent: number
+  startedAt: number
+  elapsedMs?: number
 }
 
 const benchmarkSteps = [
@@ -99,6 +101,8 @@ export default function BenchmarkOcrPage() {
   const [progress, setProgress] = useState(0)
   const [progressMessage, setProgressMessage] = useState('')
   const [tasks, setTasks] = useState<Record<string, BenchmarkTask>>({})
+  const [taskClockMs, setTaskClockMs] = useState(() => Date.now())
+  const [runStartedAt, setRunStartedAt] = useState<number | undefined>()
 
   const [examType, setExamType] = useState('')
   const [eye, setEye] = useState('')
@@ -112,10 +116,22 @@ export default function BenchmarkOcrPage() {
   const [error, setError] = useState('')
   const [showExamDetails, setShowExamDetails] = useState(false)
 
+  useEffect(() => {
+    if (!busy) return
+
+    const timer = window.setInterval(() => {
+      setTaskClockMs(Date.now())
+    }, 250)
+
+    return () => window.clearInterval(timer)
+  }, [busy])
+
   function resetRun() {
     setProgress(0)
     setProgressMessage('')
     setTasks({})
+    setTaskClockMs(Date.now())
+    setRunStartedAt(undefined)
     setFields([])
     setExtracted(0)
     setTotal(0)
@@ -172,6 +188,7 @@ export default function BenchmarkOcrPage() {
     setEye(meta.eye)
 
     setBusy(true)
+    setRunStartedAt(Date.now())
     setProgress(1)
     setProgressMessage('Enviando arquivo')
 
@@ -235,6 +252,8 @@ export default function BenchmarkOcrPage() {
           event.taskLabel &&
           event.taskStatus
         ) {
+          const receivedAt = Date.now()
+
           setTasks((current) => ({
             ...current,
             [event.taskId!]: {
@@ -242,6 +261,16 @@ export default function BenchmarkOcrPage() {
               taskLabel: event.taskLabel!,
               taskStatus: event.taskStatus!,
               taskPercent: event.taskPercent ?? 0,
+              startedAt:
+                current[event.taskId!]?.startedAt ?? receivedAt,
+              elapsedMs:
+                event.taskStatus === 'running'
+                  ? current[event.taskId!]?.elapsedMs
+                  : Math.max(
+                      0,
+                      receivedAt -
+                        (current[event.taskId!]?.startedAt ?? receivedAt),
+                    ),
             },
           }))
           return
@@ -332,6 +361,11 @@ export default function BenchmarkOcrPage() {
       : 0
 
   const benchmarkTasks = Object.values(tasks)
+  const overallElapsedMs =
+    elapsedMs ??
+    (busy && runStartedAt
+      ? Math.max(0, taskClockMs - runStartedAt)
+      : undefined)
   const runningTaskCount = benchmarkTasks.filter(
     (task) => task.taskStatus === 'running',
   ).length
@@ -507,14 +541,18 @@ export default function BenchmarkOcrPage() {
                   size={20}
                 />
 
-                <div>
-                  <strong className="block text-sm text-text-primary">
+                <div className="min-w-0 flex-1">
+                  <strong className="block truncate text-sm text-text-primary">
                     {examType}
                     {eye ? ` ${eye}` : ''}
                   </strong>
 
                   <span className="text-xs text-text-muted">
                     {progressMessage}
+                  </span>
+
+                  <span className="mt-1 block font-mono text-[11px] text-primary">
+                    Tempo total: {duration(overallElapsedMs)}
                   </span>
                 </div>
               </div>
@@ -609,7 +647,14 @@ export default function BenchmarkOcrPage() {
                 </div>
 
                 <div className="mt-3 max-h-80 space-y-2 overflow-y-auto pr-1">
-                  {benchmarkTasks.map((task) => (
+                  {benchmarkTasks.map((task) => {
+                    const taskElapsedMs =
+                      task.elapsedMs ??
+                      (task.taskStatus === 'running'
+                        ? Math.max(0, taskClockMs - task.startedAt)
+                        : undefined)
+
+                    return (
                     <div
                       className="flex items-center gap-3 rounded-lg border border-border bg-surface px-3 py-2.5"
                       key={task.taskId}
@@ -633,22 +678,31 @@ export default function BenchmarkOcrPage() {
                       </span>
 
                       <span
-                        className={`font-mono text-[11px] ${
-                          task.taskStatus === 'completed'
-                            ? 'text-success'
-                            : task.taskStatus === 'failed'
-                              ? 'text-danger'
-                              : 'text-warning'
-                        }`}
+                        className="flex flex-none items-center gap-2 font-mono text-[11px]"
                       >
+                        <span className="text-text-muted">
+                          {duration(taskElapsedMs)}
+                        </span>
+
+                        <span
+                          className={
+                            task.taskStatus === 'completed'
+                              ? 'text-success'
+                              : task.taskStatus === 'failed'
+                                ? 'text-danger'
+                                : 'text-warning'
+                          }
+                        >
                         {task.taskStatus === 'completed'
                           ? 'Concluído'
                           : task.taskStatus === 'failed'
                             ? 'Falhou'
                             : `${task.taskPercent}%`}
+                        </span>
                       </span>
                     </div>
-                  ))}
+                    )
+                  })}
                 </div>
               </div>
             )}
