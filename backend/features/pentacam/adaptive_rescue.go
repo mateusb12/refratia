@@ -37,6 +37,17 @@ func readPentacamAdaptiveNumber(
 	if err != nil {
 		return 0, false
 	}
+	return readPentacamAdaptiveNumberFromPage(ctx, page, spec)
+}
+
+func readPentacamAdaptiveNumberFromPage(
+	ctx context.Context,
+	page []byte,
+	spec pentacamAdaptiveSpec,
+) (float64, bool) {
+	if len(page) == 0 {
+		return 0, false
+	}
 
 	type evidence struct {
 		thresholds map[uint8]bool
@@ -162,6 +173,28 @@ func readPentacamK1Adaptive(
 	)
 }
 
+func readPentacamK1AdaptiveFromPage(
+	ctx context.Context,
+	page []byte,
+) (float64, bool) {
+	return readPentacamAdaptiveNumberFromPage(
+		ctx,
+		page,
+		pentacamAdaptiveSpec{
+			Page:           4,
+			RequireDecimal: true,
+			MinValue:       20,
+			MaxValue:       80,
+			Crops: []pentacamAdaptiveCrop{
+				{X: 540, Y: 1275, W: 150, H: 60},
+				{X: 525, Y: 1265, W: 175, H: 75},
+				{X: 550, Y: 1265, W: 160, H: 75},
+				{X: 515, Y: 1255, W: 200, H: 90},
+			},
+		},
+	)
+}
+
 func readPentacamIHDFromRenderedPage(
 	ctx context.Context,
 	page []byte,
@@ -193,6 +226,16 @@ func readPentacamThinnestPachymetryFromDedicatedRender(
 ) (float64, bool) {
 	page, err := pdfutil.RenderPageAtDPI(ctx, pdf, pageNumber, 300)
 	if err != nil {
+		return 0, false
+	}
+	return readPentacamThinnestPachymetryFromRenderedPage(ctx, page)
+}
+
+func readPentacamThinnestPachymetryFromRenderedPage(
+	ctx context.Context,
+	page []byte,
+) (float64, bool) {
+	if len(page) == 0 {
 		return 0, false
 	}
 
@@ -232,6 +275,16 @@ func readPentacamBADDFromDedicatedRender(
 ) (float64, bool) {
 	page, err := pdfutil.RenderPageAtDPI(ctx, pdf, pageNumber, 300)
 	if err != nil {
+		return 0, false
+	}
+	return readPentacamBADDFromRenderedPage(ctx, page)
+}
+
+func readPentacamBADDFromRenderedPage(
+	ctx context.Context,
+	page []byte,
+) (float64, bool) {
+	if len(page) == 0 {
 		return 0, false
 	}
 
@@ -292,6 +345,36 @@ func readPentacamACDFromRenderedPage(
 	return 0, false
 }
 
+func readPentacamACDFromPage(
+	ctx context.Context,
+	page []byte,
+) (float64, bool) {
+	if len(page) == 0 {
+		return 0, false
+	}
+
+	texts, err := extractOCRTextsFromRegion(
+		ctx,
+		page,
+		pentacamOCRRegion{X: 2000, Y: 2350, W: 600, H: 300},
+	)
+	if err != nil {
+		return 0, false
+	}
+
+	for _, text := range texts {
+		if value, ok := parsePentacamFieldNumber(
+			text,
+			`\bprof\W*cam\W*ant\W*int\b`,
+			true,
+		); ok && value >= 1 && value <= 10 {
+			return value, true
+		}
+	}
+
+	return 0, false
+}
+
 func readPentacamACDAdaptive(
 	ctx context.Context,
 	pdf []byte,
@@ -306,6 +389,28 @@ func readPentacamACDAdaptive(
 		pdf,
 		pentacamAdaptiveSpec{
 			Page:           pageNumber,
+			RequireDecimal: true,
+			MinValue:       1,
+			MaxValue:       10,
+			Crops: []pentacamAdaptiveCrop{
+				{X: 2290, Y: 2460, W: 135, H: 55},
+				{X: 2298, Y: 2466, W: 120, H: 46},
+				{X: 2285, Y: 2456, W: 145, H: 62},
+				{X: 2300, Y: 2463, W: 115, H: 50},
+			},
+		},
+	)
+}
+
+func readPentacamACDAdaptiveFromPage(
+	ctx context.Context,
+	page []byte,
+) (float64, bool) {
+	return readPentacamAdaptiveNumberFromPage(
+		ctx,
+		page,
+		pentacamAdaptiveSpec{
+			Page:           10,
 			RequireDecimal: true,
 			MinValue:       1,
 			MaxValue:       10,

@@ -328,16 +328,16 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 	fillPentacamFocusedCells(executionContext, pages, values, layout)
 
 	if _, hasThinnestPachymetry := values["thinnest_um"]; !hasThinnestPachymetry {
-		if value, ok := readPentacamThinnestPachymetryFromDedicatedRender(executionContext, data, layout.pachymetry); ok {
+		if value, ok := readPentacamThinnestPachymetryFromRenderedPage(executionContext, pages[layout.pachymetry]); ok {
 			values["thinnest_um"] = value
 		}
 	}
 
-	if value, ok := readPentacamBADDFromDedicatedRender(executionContext, data, layout.badd); ok {
+	if value, ok := readPentacamBADDFromRenderedPage(executionContext, pages[layout.badd]); ok {
 		values["bad_d"] = value
 	}
 
-	if value, ok := readPentacamACDFromRenderedPage(executionContext, pages[layout.acd]); ok {
+	if value, ok := readPentacamACDFromPage(executionContext, pages[layout.acd]); ok {
 		values["acd_internal_mm"] = value
 	}
 
@@ -360,7 +360,7 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 	)
 
 	if current, hasBadDValue := values["bad_d"]; !hasBadDValue || current == nil {
-		if value, ok := readPentacamBADDDeterministic(executionContext, data, layout.badd); ok {
+		if value, ok := readPentacamBADDDeterministicFromPage(executionContext, pages[layout.badd]); ok {
 			values["bad_d"] = value
 		}
 	}
@@ -375,7 +375,7 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 	)
 
 	if current, hasK1Value := values["k1_d"]; !hasK1Value || current == nil {
-		if value, ok := readPentacamK1Deterministic(executionContext, data); ok {
+		if value, ok := readPentacamK1DeterministicFromPage(executionContext, pages[layout.anteriorCornea]); ok {
 			values["k1_d"] = value
 		}
 	}
@@ -390,7 +390,7 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 	// Rescue determinístico tolerante a pequenas variações de layout.
 	// Executa somente quando o caminho local principal ainda deixou gap.
 	if current, hasK1Value := values["k1_d"]; !hasK1Value || current == nil {
-		if value, ok := readPentacamK1Adaptive(executionContext, data); ok {
+		if value, ok := readPentacamK1AdaptiveFromPage(executionContext, pages[layout.anteriorCornea]); ok {
 			values["k1_d"] = value
 		}
 	}
@@ -403,7 +403,7 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 	)
 
 	if current, hasInternalChamberDepthValue := values["acd_internal_mm"]; !hasInternalChamberDepthValue || current == nil {
-		if value, ok := readPentacamACDAdaptive(executionContext, data, layout.acd); ok {
+		if value, ok := readPentacamACDAdaptiveFromPage(executionContext, pages[layout.acd]); ok {
 			values["acd_internal_mm"] = value
 		}
 	}

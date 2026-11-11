@@ -14,6 +14,16 @@ func readPentacamK1Deterministic(
 	if err != nil {
 		return 0, false
 	}
+	return readPentacamK1DeterministicFromPage(ctx, page)
+}
+
+func readPentacamK1DeterministicFromPage(
+	ctx context.Context,
+	page []byte,
+) (float64, bool) {
+	if len(page) == 0 {
+		return 0, false
+	}
 
 	ocrRegions := []pentacamOCRRegion{
 		{X: 535, Y: 1270, W: 180, H: 70},

@@ -23,6 +23,16 @@ func readPentacamBADDDeterministic(
 	if err != nil {
 		return 0, false
 	}
+	return readPentacamBADDDeterministicFromPage(ctx, page)
+}
+
+func readPentacamBADDDeterministicFromPage(
+	ctx context.Context,
+	page []byte,
+) (float64, bool) {
+	if len(page) == 0 {
+		return 0, false
+	}
 
 	cell, err := extractOCRRegionPNG(
 		page,
