@@ -86,6 +86,15 @@ func confirmSavedExam(w http.ResponseWriter, r *http.Request) {
 	if contentType == "" {
 		contentType = aws.ToString(head.ContentType)
 	}
+	patient, patientError := upsertPatientFromAnalysis(metadata.analysis)
+	if patientError != nil {
+		_, _ = client.DeleteObject(r.Context(), &s3.DeleteObjectInput{
+			Bucket: aws.String(bucket),
+			Key:    aws.String(request.Path),
+		})
+		writeError(w, http.StatusInternalServerError, "não foi possível salvar o paciente; arquivo revertido")
+		return
+	}
 
 	record := database.Exam{
 		CaseID:      request.CaseID,
@@ -98,6 +107,9 @@ func confirmSavedExam(w http.ResponseWriter, r *http.Request) {
 		ObjectKey:   request.Path,
 		Size:        size,
 		Referenced:  metadata.referenced,
+	}
+	if patient != nil {
+		record.PatientID = &patient.ID
 	}
 	if err := appDatabase.Gorm.Create(&record).Error; err != nil {
 		_, _ = client.DeleteObject(r.Context(), &s3.DeleteObjectInput{
@@ -123,6 +135,7 @@ type manifestExamMetadata struct {
 	examType    string
 	eye         string
 	referenced  bool
+	analysis    map[string]any
 }
 
 func examMetadataFromManifest(
@@ -137,6 +150,7 @@ func examMetadataFromManifest(
 	if err != nil {
 		return result
 	}
+	result.analysis = analysis
 	if patient, ok := analysis["patient"].(map[string]any); ok {
 		result.patientName = readExamMetadata(patient, "full_name")
 	}

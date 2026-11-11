@@ -636,6 +636,11 @@ func confirmIntakeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	cleanupObjects(r.Context(), client, orphanedCopies)
 
+	if _, patientError := upsertPatientFromAnalysis(finalAnalysis); patientError != nil {
+		writeError(w, http.StatusInternalServerError, "não foi possível salvar o paciente")
+		return
+	}
+
 	// O receipt precisa existir antes de consumirmos o draft.
 	// Se sua gravação falhar, o case já pode ter sido atualizado, mas o draft
 	// permanece disponível para um retry idempotente da mesma confirmação.
