@@ -146,8 +146,21 @@ func parseCellDensityDetailed(
 					"cells/m",
 				)
 
+		// Docker's Tesseract can merge and corrupt the label into text such as
+		// "cllbemsity" and the unit into "cel [s/m?". Keep this fallback
+		// narrow: require both a cell-like token and the distinctive tail of
+		// "density", plus unit evidence, so unrelated cell counts remain out.
+		hasDockerOCRDensityEvidence :=
+			(strings.Contains(line, "cell") ||
+				strings.Contains(line, "cll") ||
+				strings.Contains(line, "cel")) &&
+				strings.Contains(line, "emsity") &&
+				(strings.Contains(line, "s/m") ||
+					strings.Contains(line, "cells"))
+
 		if !hasExactLabel &&
-			!hasDensityUnitEvidence {
+			!hasDensityUnitEvidence &&
+			!hasDockerOCRDensityEvidence {
 			continue
 		}
 
@@ -203,7 +216,7 @@ func parseCellDensityDetailed(
 		//
 		// Usamos SOMENTE a linha atual para não capturar
 		// números de Average Area, SD etc. das linhas abaixo.
-		if hasDensityUnitEvidence {
+		if hasDensityUnitEvidence || hasDockerOCRDensityEvidence {
 			matches :=
 				regexp.MustCompile(
 					`[1-9][0-9]{2,4}`,

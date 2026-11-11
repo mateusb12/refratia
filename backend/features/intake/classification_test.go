@@ -51,6 +51,21 @@ func TestParseClassificationsAcceptsRefractometry(
 	}
 }
 
+func TestParseClassificationsForcesSpecularMicroscopyToAO(t *testing.T) {
+	classifications, err := ParseClassifications([]string{
+		`[{"sha256":"micro-file","examType":"specular_microscopy","eye":"OD"}]`,
+	})
+
+	if err != nil {
+		t.Fatalf("unexpected microscopy classification error: %v", err)
+	}
+
+	classification := classifications["micro-file"]
+	if classification.ExamType != "MICROSCOPIA_ESPECULAR" || classification.Eye != "AO" {
+		t.Fatalf("specular microscopy was not forced to AO: %+v", classification)
+	}
+}
+
 func TestParseClassificationsRejectsUnknownExamType(
 	t *testing.T,
 ) {
@@ -166,6 +181,7 @@ func TestClassificationFromFlexibleFilenameFormat(t *testing.T) {
 		{"PENTACAM CRESO AVERSA OD .pdf", "pentacam_corneal_tomography", "OD"},
 		{"PENTACAM CRESO AVERSA OS .pdf", "pentacam_corneal_tomography", "OS"},
 		{"BIOMETRIA SKRT AO.pdf", "iol_calculation", "AO"},
+		{"MICROSCOPIA ESPECULAR.jpeg", "specular_microscopy", "AO"},
 	}
 
 	for _, test := range tests {

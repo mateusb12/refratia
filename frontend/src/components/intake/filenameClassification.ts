@@ -36,10 +36,12 @@ export function classifyFilename(name: string): FilenameClassification | null {
     : searchable.match(/(?:^|\s)(OD|OE|OS|AO)(?=\s|$)/)?.[1]
   const examType = examLabel ? examTypes[examLabel] : undefined
 
-  if (!examType || !eyeLabel) return null
+  if (!examType || (!eyeLabel && examType !== 'specular_microscopy')) return null
 
   return {
     examType,
-    eye: eyeLabel === 'OE' ? 'OS' : eyeLabel as 'OD' | 'OS' | 'AO',
+    eye: examType === 'specular_microscopy'
+      ? 'AO'
+      : eyeLabel === 'OE' ? 'OS' : eyeLabel as 'OD' | 'OS' | 'AO',
   }
 }

@@ -107,6 +107,8 @@ func InspectFile(
 		// Falha de OCR no prefiltro não deve impedir upload.
 		// Nesse caso o usuário simplesmente classifica manualmente.
 		if detectErr == nil && detected {
+			item.RecognizedExamType = "specular_microscopy"
+			item.RecognizedEye = "AO"
 			item.Candidates =
 				append(
 					item.Candidates,
@@ -141,18 +143,26 @@ func CanonicalClassificationFromFilename(
 		}
 	}
 
-	spaced := regexp.MustCompile(`(?i)(?:^|[[:space:]_-])((?:PENTACAM|EYESUITE|BIOMETRIA|AUTO|RETINA|OCT|MICROSCOPIA(?:[_[:space:]]+ESPECULAR)?))(?:[[:space:]_-]|$).*?(?:^|[[:space:]_-])(OD|OE|OS|AO)(?:[[:space:]_-]|$)`).FindStringSubmatch(
-		strings.TrimSuffix(filename, fileExtension(filename)),
-	)
-	if len(spaced) != 3 {
+	stem := strings.TrimSuffix(filename, fileExtension(filename))
+	examMatch := regexp.MustCompile(`(?i)(^|[[:space:]_-])(PENTACAM|EYESUITE|BIOMETRIA|AUTO|RETINA|OCT|MICROSCOPIA([_[:space:]]+ESPECULAR)?)([[:space:]_-]|$)`).FindStringSubmatch(stem)
+	if len(examMatch) != 5 {
 		return "", "", false
 	}
 
-	examType, ok := examTypeFromFilenameLabel(spaced[1])
+	examType, ok := examTypeFromFilenameLabel(examMatch[2])
 	if !ok {
 		return "", "", false
 	}
-	eye, ok := normalizeFilenameEye(spaced[2])
+
+	if examType == "specular_microscopy" {
+		return examType, "AO", true
+	}
+
+	eyeMatch := regexp.MustCompile(`(?i)(^|[[:space:]_-])(OD|OE|OS|AO)([[:space:]_-]|$)`).FindStringSubmatch(stem)
+	if len(eyeMatch) != 4 {
+		return "", "", false
+	}
+	eye, ok := normalizeFilenameEye(eyeMatch[2])
 	return examType, eye, ok
 }
 
@@ -165,7 +175,7 @@ func examTypeFromFilenameLabel(label string) (string, bool) {
 			return "refractometry", true
 		}
 		return "iol_calculation", true
-	case "MICROSCOPIA_ESPECULAR", "MICROSCOPIA":
+	case "MICROSCOPIA_ESPECULAR", "MICROSCOPIA ESPECULAR", "MICROSCOPIA":
 		return "specular_microscopy", true
 	case "RETINA":
 		return "fundus_retinography", true
@@ -242,7 +252,9 @@ func ParseClassifications(
 					),
 				)
 
-			if !validEye(eye) {
+			if examType == "MICROSCOPIA_ESPECULAR" {
+				eye = "AO"
+			} else if !validEye(eye) {
 				return nil,
 					fmt.Errorf(
 						"eye inválido: %q",

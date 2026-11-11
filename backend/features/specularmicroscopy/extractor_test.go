@@ -1,6 +1,25 @@
 package specularmicroscopy
 
-import "testing"
+import (
+	"context"
+	"os"
+	"testing"
+)
+
+func TestExtractCresoAversaFixture(t *testing.T) {
+	data, err := os.ReadFile("../../../frontend/data/creso-aversa/MICROSCOPIA ESPECULAR.jpeg")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := Extract(context.Background(), data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Evidence) != 2 {
+		t.Fatalf("expected both eyes, got %d evidence items", len(result.Evidence))
+	}
+}
 
 func TestParseOCRPanelsExtractsDensityAndMapsPrintedLaterality(t *testing.T) {
 	exam, evidence, err := ParseOCRPanels([]OCRPanel{
@@ -135,6 +154,21 @@ func TestParseCellDensityAcceptsRealNIDEKDistortion(
 			contextText,
 			ok,
 		)
+	}
+}
+
+func TestParseCellDensityAcceptsDockerTesseractDistortion(t *testing.T) {
+	for _, input := range []struct {
+		text  string
+		value float64
+	}{
+		{"| ectee [Cllbemsity (0) cel [s/m? 2868", 2868},
+		{"ecoge |Cllbemsity (0] cel [s/m? 2779", 2779},
+	} {
+		value, _, ok := parseCellDensity(input.text)
+		if !ok || value != input.value {
+			t.Fatalf("expected %v from Docker OCR distortion; value=%v ok=%v", input.value, value, ok)
+		}
 	}
 }
 

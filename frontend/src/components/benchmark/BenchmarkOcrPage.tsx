@@ -9,6 +9,7 @@ import {
   X,
 } from 'lucide-react'
 import { examContracts } from '../../contracts/exam-contracts'
+import { classifyFilename } from '../intake/filenameClassification'
 
 const API_URL = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '')
 
@@ -72,36 +73,21 @@ function duration(ms?: number) {
 }
 
 function filenameMetadata(name: string) {
-  const stem = name.replace(/\.[^.]+$/, '')
-  const parts = stem.split('__')
-
-  if (parts.length >= 3) {
-    return {
-      type: parts[0].toUpperCase(),
-      eye: parts[1].toUpperCase(),
-    }
-  }
-
-  const spaced = stem.toUpperCase().match(
-    /^(AUTO|BIOMETRIA|PENTACAM|RETINA|OCT|EYESUITE|MICROSCOPIA(?:\s+ESPECULAR)?)[\s_-]+(OD|OE|OS|AO)(?:\s|$)/,
-  )
-
-  if (!spaced) return null
+  const classification = classifyFilename(name)
+  if (!classification) return null
 
   const typeMap: Record<string, string> = {
-    AUTO: 'AUTO',
-    BIOMETRIA: 'EYESUITE',
-    PENTACAM: 'PENTACAM',
-    RETINA: 'RETINA',
-    OCT: 'OCT',
-    EYESUITE: 'EYESUITE',
-    MICROSCOPIA: 'MICROSCOPIA_ESPECULAR',
-    'MICROSCOPIA ESPECULAR': 'MICROSCOPIA_ESPECULAR',
+    pentacam_corneal_tomography: 'PENTACAM',
+    iol_calculation: 'EYESUITE',
+    refractometry: 'AUTO',
+    fundus_retinography: 'RETINA',
+    oct_retina: 'OCT',
+    specular_microscopy: 'MICROSCOPIA_ESPECULAR',
   }
 
   return {
-    type: typeMap[spaced[1]] ?? spaced[1],
-    eye: spaced[2] === 'OE' ? 'OS' : spaced[2],
+    type: typeMap[classification.examType],
+    eye: classification.eye,
   }
 }
 
