@@ -22,7 +22,7 @@ interface BenchmarkField {
 }
 
 interface BenchmarkEvent {
-  type: 'progress' | 'task_progress' | 'result' | 'error'
+  type: 'progress' | 'task_progress' | 'fields' | 'result' | 'error'
   percent?: number
   message?: string
   examType?: string
@@ -302,6 +302,26 @@ export default function BenchmarkOcrPage() {
           setEye(event.eye)
         }
 
+        if (event.type === 'fields') {
+          setFields((current) => {
+            const merged = new Map(
+              current.map((field) => [field.key, field]),
+            )
+
+            for (const field of event.fields ?? []) {
+              merged.set(field.key, field)
+            }
+
+            return Array.from(merged.values())
+          })
+          setExtracted((current) =>
+            Math.max(current, event.extracted ?? 0),
+          )
+          setTotal((current) => Math.max(current, event.total ?? 0))
+          setSupported(event.supported ?? true)
+          return
+        }
+
         if (event.type === 'error') {
           throw new Error(
             event.error ||
@@ -384,10 +404,10 @@ export default function BenchmarkOcrPage() {
       return
     }
 
-    if (estimatedRemainingMs == null) return
+    if (estimatedRemainingMs == null || estimatedRemainingMs <= 0) return
 
     setEtaMs((current) =>
-      current == null
+      current == null || current <= 0
         ? estimatedRemainingMs
         : Math.min(current, estimatedRemainingMs),
     )
@@ -740,12 +760,12 @@ export default function BenchmarkOcrPage() {
               </div>
             )}
 
-            {completed && supported && (
+            {((completed && supported) || (busy && fields.length > 0)) && (
               <>
                 <div className="mt-6 grid gap-3 sm:grid-cols-3">
                   <div className="rounded-xl border border-border bg-surface-muted p-4">
                     <span className="text-xs font-semibold text-text-muted">
-                      Campos extraídos
+                      {busy ? 'Campos identificados' : 'Campos extraídos'}
                     </span>
 
                     <strong className="mt-2 block font-display text-2xl text-text-primary">
@@ -759,7 +779,7 @@ export default function BenchmarkOcrPage() {
                     </span>
 
                     <strong className="mt-2 block font-display text-2xl text-text-primary">
-                      {coverage}%
+                      {coverage}%{busy ? ' até agora' : ''}
                     </strong>
                   </div>
 
@@ -769,7 +789,7 @@ export default function BenchmarkOcrPage() {
                     </span>
 
                     <strong className="mt-2 block font-display text-2xl text-text-primary">
-                      {duration(elapsedMs)}
+                      {duration(elapsedMs ?? overallElapsedMs)}
                     </strong>
                   </div>
                 </div>

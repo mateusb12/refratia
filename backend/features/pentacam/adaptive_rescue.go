@@ -239,33 +239,68 @@ func readPentacamThinnestPachymetryFromRenderedPage(
 		return 0, false
 	}
 
-	texts, err := extractOCRTextsFromRegion(
-		ctx,
-		page,
-		pentacamOCRRegion{X: 1550, Y: 1400, W: 700, H: 350},
-	)
-	if err != nil {
-		return 0, false
+	regions := []pentacamOCRRegion{
+		{X: 1550, Y: 1400, W: 700, H: 350},
+		{X: 1760, Y: 1460, W: 380, H: 180},
+		{X: 1800, Y: 1500, W: 300, H: 120},
+		{X: 1780, Y: 1460, W: 360, H: 220},
 	}
-
 	labelPattern := regexp.MustCompile(`(?is)(?:\bthinnest\W+pachy\b|\bponto\W+(?:mais\W+)?fino\b)(.{0,32})`)
 	numberPattern := regexp.MustCompile(`[0-9]+(?:\.[0-9]+)?`)
+	candidates := map[float64]int{}
 
-	for _, text := range texts {
-		match := labelPattern.FindStringSubmatch(text)
-		if len(match) != 2 {
+	for _, region := range regions {
+		texts, err := extractOCRTextsFromRegion(ctx, page, region)
+		if err != nil {
 			continue
 		}
 
-		for _, numberText := range numberPattern.FindAllString(match[1], -1) {
-			value, parseErr := strconv.ParseFloat(numberText, 64)
-			if parseErr == nil && value >= 300 && value <= 1000 {
-				return value, true
+		for _, text := range texts {
+			matches := labelPattern.FindStringSubmatch(text)
+			if len(matches) == 2 {
+				text = matches[1]
+			}
+
+			for _, numberText := range numberPattern.FindAllString(text, -1) {
+				value, parseErr := strconv.ParseFloat(numberText, 64)
+				if parseErr == nil && value >= 300 && value <= 1000 {
+					candidates[value]++
+				}
 			}
 		}
 	}
 
-	return 0, false
+	var winner float64
+	bestCount := 0
+	for value, count := range candidates {
+		if count > bestCount {
+			winner = value
+			bestCount = count
+		}
+	}
+
+	return winner, bestCount >= 2
+}
+
+func readPentacamThinnestPachymetryAdaptiveFromPage(
+	ctx context.Context,
+	page []byte,
+) (float64, bool) {
+	return readPentacamAdaptiveNumberFromPage(
+		ctx,
+		page,
+		pentacamAdaptiveSpec{
+			RequireDecimal: false,
+			MinValue:       300,
+			MaxValue:       1000,
+			Crops: []pentacamAdaptiveCrop{
+				{X: 1800, Y: 1490, W: 280, H: 110},
+				{X: 1820, Y: 1510, W: 240, H: 90},
+				{X: 1780, Y: 1470, W: 320, H: 140},
+				{X: 1840, Y: 1530, W: 220, H: 80},
+			},
+		},
+	)
 }
 
 func readPentacamBADDFromDedicatedRender(

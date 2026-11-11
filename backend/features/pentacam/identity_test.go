@@ -38,6 +38,32 @@ func TestParsePentacamIdentityWords(t *testing.T) {
 	}
 }
 
+func TestParsePentacamIdentityWordsDoesNotUseExamDateAsBirthDate(t *testing.T) {
+	words := []ocr.Word{
+		{Text: "Data", Left: 100, Top: 100},
+		{Text: "de", Left: 150, Top: 100},
+		{Text: "Exame:", Left: 180, Top: 100},
+		{Text: "11/04/2026", Left: 300, Top: 100},
+		{Text: "Nasc.:", Left: 100, Top: 140},
+		{Text: "12/14/1979", Left: 300, Top: 140},
+		{Text: "Sobrenome:", Left: 100, Top: 180},
+		{Text: "AVERSA MARTINELLI", Left: 300, Top: 180},
+		{Text: "Nome:", Left: 100, Top: 220},
+		{Text: "CRESO", Left: 300, Top: 220},
+	}
+
+	got, err := parsePentacamIdentityWords(words)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.BirthDateRaw != "12/14/1979" {
+		t.Fatalf("nascimento inesperado: %q", got.BirthDateRaw)
+	}
+	if got.ExamDateRaw != "11/04/2026" {
+		t.Fatalf("data do exame inesperada: %q", got.ExamDateRaw)
+	}
+}
+
 func TestExtractIdentityFromMariaGoretePentacam(t *testing.T) {
 	data, err := os.ReadFile("../../../frontend/data/maria-gorete/PENTACAM OD MARIA GORETE.pdf")
 	if err != nil {
@@ -71,7 +97,7 @@ func TestExtractIdentityFromCresoAversaPentacam(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got.FullName == "" || got.BirthDateRaw != "12/14/1979" || got.ExamDateRaw != "11/04/2026" {
+	if got.FullName != "CRESO AVERSA MARTINELLI" || got.BirthDateRaw != "12/14/1979" || got.ExamDateRaw != "11/04/2026" {
 		t.Fatalf("identidade inesperada: %#v", got)
 	}
 }

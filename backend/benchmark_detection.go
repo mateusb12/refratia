@@ -777,6 +777,23 @@ func benchmarkExtractFieldsHandler(
 			},
 		)
 
+		// Identity is available before the expensive page-by-page Pentacam
+		// extraction. Stream it separately so the benchmark can show the
+		// patient's identity while the remaining fields are still processing.
+		identity, _ := pentacam.ExtractIdentity(ctx, file.Data)
+		identityFields, identityExtracted := benchmarkIdentityFields(identity)
+		emit(
+			benchmarkFieldsEvent{
+				Type:      "fields",
+				ExamType:  meta.ExamType,
+				Eye:       meta.Eye,
+				Fields:    identityFields,
+				Extracted: identityExtracted,
+				Total:     len(pentacamBenchmarkFields) + len(identityFields),
+				Supported: true,
+			},
+		)
+
 		exam, extractErr := pentacam.ExtractPDF(
 			progress.WithRange(ctx, 7, 96),
 			file.Data,
@@ -793,8 +810,6 @@ func benchmarkExtractFieldsHandler(
 		}
 
 		fields, extracted := benchmarkPentacamResult(exam)
-		identity, _ := pentacam.ExtractIdentity(ctx, file.Data)
-		identityFields, identityExtracted := benchmarkIdentityFields(identity)
 		appendBenchmarkFields(&fields, &extracted, identityFields, identityExtracted)
 
 		emit(

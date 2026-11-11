@@ -31,6 +31,10 @@ func fillPentacamFocusedCells(
 ) {
 	specs := []pentacamCellSpec{
 		{"k1_d", 4, pentacamOCRRegion{535, 1270, 180, 70}, true, 20, 70},
+		// The Anéis Corneanos page repeats the labeled K1 value at a stable
+		// location. It prevents the anterior-cornea map from selecting the
+		// nearby 43.3 map annotation as K1.
+		{"k1_d", layout.z31, pentacamOCRRegion{500, 1800, 300, 140}, true, 20, 70},
 		{"k2_d", 4, pentacamOCRRegion{535, 1335, 180, 70}, true, 20, 70},
 		{"km_d", 4, pentacamOCRRegion{535, 1385, 155, 85}, true, 20, 70},
 		{"astigmatism_d", 4, pentacamOCRRegion{535, 1455, 180, 70}, true, 0, 15},
@@ -57,7 +61,11 @@ func fillPentacamFocusedCells(
 	}
 
 	for _, spec := range specs {
-		if _, hasExtractedDocumentValue := values[spec.Key]; hasExtractedDocumentValue {
+		_, hasExtractedDocumentValue := values[spec.Key]
+		focusedValueShouldOverride := spec.Key == "k1_d" ||
+			spec.Key == "thinnest_um" || spec.Key == "iha" ||
+			spec.Key == "z40_6mm_um" || spec.Key == "z31_5mm_um"
+		if hasExtractedDocumentValue && !focusedValueShouldOverride {
 			continue
 		}
 
@@ -136,6 +144,17 @@ func pentacamReadNumericCell(
 					compactValue, parseErr := strconv.ParseFloat(compact[1], 64)
 					value = compactValue / 10
 					ok = parseErr == nil && value >= spec.Min && value <= spec.Max
+				}
+			}
+
+			// Z40 is a small isolated decimal cell. Some OCR runtimes
+			// return 0173 instead of 0.173 after removing the decimal.
+			if !ok && spec.Key == "z40_6mm_um" {
+				digits := regexp.MustCompile(`^\s*0?([0-9]{3})\s*$`).FindStringSubmatch(text)
+				if len(digits) == 2 {
+					compactValue, parseErr := strconv.ParseFloat("0."+digits[1], 64)
+					ok = parseErr == nil && compactValue >= spec.Min && compactValue <= spec.Max
+					value = compactValue
 				}
 			}
 

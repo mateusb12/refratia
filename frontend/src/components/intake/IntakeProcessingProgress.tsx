@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import IntakeFileProgressItem from './IntakeFileProgressItem'
 
 import type {
@@ -26,12 +27,33 @@ export default function IntakeProcessingProgress({
   overallFilename,
   elapsedSeconds,
 }: IntakeProcessingProgressProps) {
+  const [etaSeconds, setEtaSeconds] = useState<number | undefined>()
+
+  useEffect(() => {
+    if (overallProgress <= 0 || overallProgress >= 100 || elapsedSeconds <= 0) return
+
+    const estimate = Math.max(
+      1,
+      Math.ceil((elapsedSeconds * (100 - overallProgress)) / overallProgress),
+    )
+
+    setEtaSeconds((current) =>
+      current == null || current <= 0
+        ? estimate
+        : Math.min(current, estimate),
+    )
+  }, [elapsedSeconds, overallProgress])
+
   const elapsedLabel =
     `${String(
       Math.floor(elapsedSeconds / 60),
     ).padStart(2, '0')}:${String(
       elapsedSeconds % 60,
     ).padStart(2, '0')}`
+
+  const etaLabel = etaSeconds == null
+    ? 'calculando…'
+    : `${String(Math.floor(etaSeconds / 60)).padStart(2, '0')}:${String(etaSeconds % 60).padStart(2, '0')}`
 
   const finished =
     files.filter((file) => {
@@ -86,8 +108,14 @@ export default function IntakeProcessingProgress({
               'OCR local'}
           </span>
 
-          <span className="ml-auto flex-none font-mono text-text-muted">
-            {elapsedLabel}
+          <span className="ml-auto flex-none text-right font-mono text-[11px]">
+            <span className="block text-text-muted">
+              Tempo total: {elapsedLabel}
+            </span>
+
+            <span className="block text-primary">
+              ETA: {etaLabel}
+            </span>
           </span>
         </div>
 

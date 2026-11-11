@@ -25,6 +25,18 @@ func TestPentacamFocusedTKCDash(t *testing.T) {
 	}
 }
 
+func TestParsePentacamZ31RecoversOCRWithoutDecimal(t *testing.T) {
+	for _, text := range []string{
+		"Z31 (Coma): fo. 090 um (207°)",
+		"-, 231 (Comal: fo. 090 pm (207°)",
+	} {
+		got, ok := parsePentacamZ31(text)
+		if !ok || got != 0.09 {
+			t.Fatalf("Z31 inesperado para %q: %v %v", text, got, ok)
+		}
+	}
+}
+
 func TestExtractPDFMariaGoreteODRecoversVisibleFields(t *testing.T) {
 	fixturePath := os.Getenv("PENTACAM_FIXTURE")
 	if fixturePath == "" {
@@ -114,18 +126,33 @@ func TestExtractPDFCresoAversaRecoversCriticalFieldsForBothEyes(t *testing.T) {
 		{
 			filename: "../../../frontend/data/creso-aversa/PENTACAM CRESO AVERSA OD .pdf",
 			expected: map[string]float64{
-				"pachymetry.thinnest_um":     540,
-				"topometric_indices_8mm.ihd": 0.008,
-				"topometric_indices_8mm.ki":  1.04,
+				"anterior_cornea.k1_d":                                43.9,
+				"anterior_cornea.k2_d":                                45.1,
+				"anterior_cornea.km_d":                                44.5,
+				"anterior_cornea.astigmatism_d":                       1.2,
+				"pachymetry.thinnest_um":                              540,
+				"belin_ambrosio.d":                                    1.22,
+				"belin_ambrosio.art_max":                              419,
+				"topometric_indices_8mm.isv":                          15,
+				"topometric_indices_8mm.iva":                          0.12,
+				"topometric_indices_8mm.iha":                          5.5,
+				"topometric_indices_8mm.ihd":                          0.008,
+				"topometric_indices_8mm.ki":                           1.04,
+				"topometric_indices_8mm.cki":                          1.01,
+				"corneal_rings.zernike.5mm.z31_coma":                  0.09,
+				"anterior_segment.internal_anterior_chamber_depth_mm": 3.23,
+				"cataract_preop.total_corneal_z40_6mm_um":             0.249,
 			},
 		},
 		{
 			filename: "../../../frontend/data/creso-aversa/PENTACAM CRESO AVERSA OS .pdf",
 			expected: map[string]float64{
-				"pachymetry.thinnest_um":     537,
-				"topometric_indices_8mm.iha": 7.9,
-				"topometric_indices_8mm.ihd": 0.012,
-				"topometric_indices_8mm.ki":  1.04,
+				"belin_ambrosio.d":                        0.98,
+				"belin_ambrosio.art_max":                  444,
+				"pachymetry.thinnest_um":                  537,
+				"topometric_indices_8mm.iha":              7.9,
+				"topometric_indices_8mm.ihd":              0.012,
+				"topometric_indices_8mm.ki":               1.04,
 				"cataract_preop.total_corneal_z40_6mm_um": 0.173,
 			},
 		},
@@ -152,6 +179,20 @@ func TestExtractPDFCresoAversaRecoversCriticalFieldsForBothEyes(t *testing.T) {
 			actual := numberAtPath(exam, parts)
 			if actual != expected {
 				t.Errorf("%s: expected %s=%v, got %v", testCase.filename, path, expected, actual)
+			}
+		}
+
+		if testCase.filename == "../../../frontend/data/creso-aversa/PENTACAM CRESO AVERSA OD .pdf" {
+			topometric := exam["topometric_indices_8mm"].(map[string]any)
+			if got := topometric["tkc"]; got != "—" {
+				t.Errorf("%s: expected topometric_indices_8mm.tkc=—, got %#v", testCase.filename, got)
+			}
+		}
+
+		if testCase.filename == "../../../frontend/data/creso-aversa/PENTACAM CRESO AVERSA OS .pdf" {
+			topometric := exam["topometric_indices_8mm"].(map[string]any)
+			if got := topometric["tkc"]; got != "—" {
+				t.Errorf("%s: expected topometric_indices_8mm.tkc=—, got %#v", testCase.filename, got)
 			}
 		}
 	}

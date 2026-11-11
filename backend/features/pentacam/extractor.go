@@ -179,11 +179,15 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 					break
 				}
 
-				if value, ok := parsePentacamFieldNumber(
+				value, ok := parsePentacamFieldNumber(
 					text,
 					field.Label,
 					field.Decimal,
-				); ok {
+				)
+				if !ok && field.Key == "z31_5mm_um" {
+					value, ok = parsePentacamZ31(text)
+				}
+				if ok {
 					values[field.Key] = value
 				}
 			}
@@ -313,7 +317,7 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 	)
 
 	// Página 12 — Z31 da coluna 5 mm.
-	_ = read(layout.z31, pentacamOCRRegion{X: 970, Y: 1490, W: 290, H: 180}, []pentacamDocumentField{
+	_ = read(layout.z31, pentacamOCRRegion{X: 1000, Y: 1500, W: 200, H: 170}, []pentacamDocumentField{
 		{"z31_5mm_um", `\bz31\W*\(?coma\w*\)?`, true},
 	})
 
@@ -333,8 +337,10 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 		}
 	}
 
-	if value, ok := readPentacamBADDFromRenderedPage(executionContext, pages[layout.badd]); ok {
-		values["bad_d"] = value
+	if _, hasThinnestPachymetry := values["thinnest_um"]; !hasThinnestPachymetry {
+		if value, ok := readPentacamThinnestPachymetryAdaptiveFromPage(executionContext, pages[layout.pachymetry]); ok {
+			values["thinnest_um"] = value
+		}
 	}
 
 	if value, ok := readPentacamACDFromPage(executionContext, pages[layout.acd]); ok {
@@ -359,10 +365,13 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 		"Validando BAD-D deterministicamente",
 	)
 
-	if current, hasBadDValue := values["bad_d"]; !hasBadDValue || current == nil {
-		if value, ok := readPentacamBADDDeterministicFromPage(executionContext, pages[layout.badd]); ok {
-			values["bad_d"] = value
-		}
+	// Prefer the deterministic reader whenever it can prove the decimal
+	// separator and each digit independently. The broad OCR reader can
+	// collapse values such as 0.98 into "5" or pick a nearby annotation.
+	if value, ok := readPentacamBADDDeterministicFromPage(executionContext, pages[layout.badd]); ok {
+		values["bad_d"] = value
+	} else if value, ok := readPentacamBADDFromRenderedPage(executionContext, pages[layout.badd]); ok {
+		values["bad_d"] = value
 	}
 
 	// K1 rescue determinístico:
@@ -455,6 +464,30 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 	}, nil
 }
 
+func parsePentacamZ31(text string) (float64, bool) {
+	text = normalizePentacamText(text)
+	match := regexp.MustCompile(
+		`(?is)\bz31\W*\(?coma\w*\)?[^0-9+\-]{0,32}(0\.\d{3}|\d{3})\b`,
+	).FindStringSubmatch(text)
+	if len(match) != 2 {
+		// The isolated label is sometimes OCR'd as "231". In that case,
+		// use only the three digits immediately followed by the unit so the
+		// angle (207°) cannot be mistaken for the Z31 value.
+		match = regexp.MustCompile(`(?i)\b(\d{3})\s*(?:um|pm|µm)\b`).FindStringSubmatch(text)
+		if len(match) != 2 {
+			return 0, false
+		}
+	}
+
+	token := match[1]
+	if !strings.Contains(token, ".") {
+		token = "0." + token
+	}
+
+	value, err := strconv.ParseFloat(token, 64)
+	return value, err == nil && value >= -5 && value <= 5
+}
+
 func pentacamRenderTask(page int) (string, string) {
 	labels := map[int]string{
 		4:  "Página 4 — Córnea anterior",
@@ -504,9 +537,11 @@ func pentacamFocusedTKC(ocrTexts []string) (string, bool) {
 			return "—", true
 		}
 
-		token := regexp.MustCompile(`[a-z]*\d+[a-z0-9.-]*`).FindString(tail)
-		if token != "" {
-			return strings.ToUpper(token), true
+		// TKC is a categorical keratoconus classification, not a decimal
+		// measurement. Reject nearby numeric OCR such as "4.521".
+		token := regexp.MustCompile(`(?i)\b(?:kc|tkc)?\s*[1-4](?:[a-d])?\b`).FindString(tail)
+		if token != "" && !strings.Contains(token, ".") {
+			return strings.ToUpper(strings.Join(strings.Fields(token), " ")), true
 		}
 	}
 

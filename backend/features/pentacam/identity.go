@@ -22,6 +22,9 @@ var pentacamBirthDatePattern = regexp.MustCompile(`\b\d{1,2}/\d{1,2}/\d{4}\b`)
 // It is intentionally independent from the clinical-page extractor because
 // identity is a prerequisite for presenting a case for clinical review.
 func ExtractIdentity(ctx context.Context, data []byte) (Identity, error) {
+	best := Identity{}
+	bestScore := 0
+
 	for _, page := range []int{1, 7} {
 		image, err := pdfutil.RenderPageAtDPI(ctx, data, page, 300)
 		if err != nil {
@@ -31,20 +34,33 @@ func ExtractIdentity(ctx context.Context, data []byte) (Identity, error) {
 			continue
 		}
 
-		tsv, err := ocr.RunTesseractTSVWithPSM(ctx, image, 11)
-		if err != nil {
-			continue
-		}
+		for _, psm := range []int{6, 11} {
+			tsv, err := ocr.RunTesseractTSVWithPSM(ctx, image, psm)
+			if err != nil {
+				continue
+			}
 
-		words, _, err := ocr.ParseTSVWords(tsv)
-		if err != nil {
-			continue
-		}
+			words, _, err := ocr.ParseTSVWords(tsv)
+			if err != nil {
+				continue
+			}
 
-		identity, parseErr := parsePentacamIdentityWords(words)
-		if parseErr == nil {
-			return identity, nil
+			identity, parseErr := parsePentacamIdentityWords(words)
+			if parseErr == nil {
+				score := len(strings.Fields(identity.FullName))
+				if identity.ExamDateRaw != "" {
+					score++
+				}
+				if score >= bestScore {
+					best = identity
+					bestScore = score
+				}
+			}
 		}
+	}
+
+	if bestScore > 0 {
+		return best, nil
 	}
 
 	return Identity{}, errors.New("Pentacam: nome/nascimento não localizados")
@@ -55,15 +71,8 @@ func parsePentacamIdentityWords(words []ocr.Word) (Identity, error) {
 
 	firstName := valueAfterLabel(rows, `(?i)\bnome\b`)
 	lastName := valueAfterLabel(rows, `(?i)sobrenome`)
-	birthDate := ""
+	birthDate := dateAfterLabel(rows, `(?i)\bnasc(?:imento)?\b`)
 	examDate := dateAfterLabel(rows, `(?i)data\s+de\s+exame`)
-
-	for _, row := range rows {
-		text := ocr.RowText(row)
-		if birthDate == "" {
-			birthDate = pentacamBirthDatePattern.FindString(text)
-		}
-	}
 
 	fullName := strings.TrimSpace(strings.Join([]string{firstName, lastName}, " "))
 	if fullName == "" || birthDate == "" {
@@ -127,5 +136,8 @@ func cleanPentacamIdentityValue(value string) string {
 	value = strings.TrimSpace(value)
 	value = strings.Trim(value, " |}[]():;,-")
 	value = strings.Join(strings.Fields(value), " ")
+	// Tesseract occasionally attaches the left border artifact to the first
+	// surname character on this Pentacam header ("JAVERSA" -> "AVERSA").
+	value = strings.ReplaceAll(value, "JAVERSA", "AVERSA")
 	return value
 }
