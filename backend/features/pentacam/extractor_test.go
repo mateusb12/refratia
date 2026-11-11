@@ -126,6 +126,7 @@ func TestExtractPDFCresoAversaRecoversCriticalFieldsForBothEyes(t *testing.T) {
 				"topometric_indices_8mm.iha": 7.9,
 				"topometric_indices_8mm.ihd": 0.012,
 				"topometric_indices_8mm.ki":  1.04,
+				"cataract_preop.total_corneal_z40_6mm_um": 0.173,
 			},
 		},
 	}

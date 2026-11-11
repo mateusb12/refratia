@@ -103,6 +103,7 @@ export default function BenchmarkOcrPage() {
   const [tasks, setTasks] = useState<Record<string, BenchmarkTask>>({})
   const [taskClockMs, setTaskClockMs] = useState(() => Date.now())
   const [runStartedAt, setRunStartedAt] = useState<number | undefined>()
+  const [etaMs, setEtaMs] = useState<number | undefined>()
 
   const [examType, setExamType] = useState('')
   const [eye, setEye] = useState('')
@@ -132,6 +133,7 @@ export default function BenchmarkOcrPage() {
     setTasks({})
     setTaskClockMs(Date.now())
     setRunStartedAt(undefined)
+    setEtaMs(undefined)
     setFields([])
     setExtracted(0)
     setTotal(0)
@@ -366,6 +368,30 @@ export default function BenchmarkOcrPage() {
     (busy && runStartedAt
       ? Math.max(0, taskClockMs - runStartedAt)
       : undefined)
+  const estimatedRemainingMs =
+    busy && overallElapsedMs != null && progress > 0 && progress < 100
+      ? Math.max(
+          0,
+          Math.round(
+            (overallElapsedMs * (100 - progress)) / progress,
+          ),
+        )
+      : undefined
+
+  useEffect(() => {
+    if (!busy) {
+      setEtaMs(undefined)
+      return
+    }
+
+    if (estimatedRemainingMs == null) return
+
+    setEtaMs((current) =>
+      current == null
+        ? estimatedRemainingMs
+        : Math.min(current, estimatedRemainingMs),
+    )
+  }, [busy, estimatedRemainingMs])
   const runningTaskCount = benchmarkTasks.filter(
     (task) => task.taskStatus === 'running',
   ).length
@@ -553,6 +579,13 @@ export default function BenchmarkOcrPage() {
 
                   <span className="mt-1 block font-mono text-[11px] text-primary">
                     Tempo total: {duration(overallElapsedMs)}
+                  </span>
+
+                  <span className="block font-mono text-[11px] text-primary">
+                    ETA:{' '}
+                    {etaMs != null
+                      ? duration(etaMs)
+                      : 'calculando…'}
                   </span>
                 </div>
               </div>

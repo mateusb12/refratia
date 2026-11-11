@@ -179,9 +179,14 @@ func pentacamReadNumericCell(
 		}
 	}
 
-	// Um único palpite não basta.
-	// O mesmo valor precisa ser reconhecido por pelo menos 2 variantes.
-	if bestVotes < 2 || tie {
+	// Um único palpite normalmente não basta. However, these three cells are
+	// isolated, field-specific crops; on different Leptonica versions the
+	// same printed value can survive only one threshold/PSM combination.
+	// Accept that unambiguous result for those crops instead of losing a
+	// clearly visible value solely because the OCR runtime changed.
+	allowSingleVote := len(values) == 1 && (spec.Key == "thinnest_um" ||
+		spec.Key == "iha" || spec.Key == "z40_6mm_um")
+	if (bestVotes < 2 && !allowSingleVote) || tie {
 		return 0, false
 	}
 

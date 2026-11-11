@@ -59,3 +59,19 @@ func TestExtractIdentityFromMariaGoretePentacam(t *testing.T) {
 		t.Fatalf("data do exame inesperada: %q", got.ExamDateRaw)
 	}
 }
+
+func TestExtractIdentityFromCresoAversaPentacam(t *testing.T) {
+	data, err := os.ReadFile("../../../frontend/data/creso-aversa/PENTACAM CRESO AVERSA OS .pdf")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := ExtractIdentity(context.Background(), data)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got.FullName == "" || got.BirthDateRaw != "12/14/1979" || got.ExamDateRaw != "11/04/2026" {
+		t.Fatalf("identidade inesperada: %#v", got)
+	}
+}

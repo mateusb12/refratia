@@ -22,22 +22,32 @@ var pentacamBirthDatePattern = regexp.MustCompile(`\b\d{1,2}/\d{1,2}/\d{4}\b`)
 // It is intentionally independent from the clinical-page extractor because
 // identity is a prerequisite for presenting a case for clinical review.
 func ExtractIdentity(ctx context.Context, data []byte) (Identity, error) {
-	image, err := pdfutil.RenderPageAtDPI(ctx, data, 1, 300)
-	if err != nil {
-		return Identity{}, err
+	for _, page := range []int{1, 7} {
+		image, err := pdfutil.RenderPageAtDPI(ctx, data, page, 300)
+		if err != nil {
+			if page == 1 {
+				return Identity{}, err
+			}
+			continue
+		}
+
+		tsv, err := ocr.RunTesseractTSVWithPSM(ctx, image, 11)
+		if err != nil {
+			continue
+		}
+
+		words, _, err := ocr.ParseTSVWords(tsv)
+		if err != nil {
+			continue
+		}
+
+		identity, parseErr := parsePentacamIdentityWords(words)
+		if parseErr == nil {
+			return identity, nil
+		}
 	}
 
-	tsv, err := ocr.RunTesseractTSVWithPSM(ctx, image, 11)
-	if err != nil {
-		return Identity{}, err
-	}
-
-	words, _, err := ocr.ParseTSVWords(tsv)
-	if err != nil {
-		return Identity{}, err
-	}
-
-	return parsePentacamIdentityWords(words)
+	return Identity{}, errors.New("Pentacam: nome/nascimento não localizados")
 }
 
 func parsePentacamIdentityWords(words []ocr.Word) (Identity, error) {
