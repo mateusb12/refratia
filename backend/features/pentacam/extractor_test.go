@@ -106,6 +106,56 @@ func TestExtractPDFMariaGoreteOERecoversRequiredFields(t *testing.T) {
 	}
 }
 
+func TestExtractPDFCresoAversaRecoversCriticalFieldsForBothEyes(t *testing.T) {
+	cases := []struct {
+		filename string
+		expected map[string]float64
+	}{
+		{
+			filename: "../../../frontend/data/creso-aversa/PENTACAM CRESO AVERSA OD .pdf",
+			expected: map[string]float64{
+				"pachymetry.thinnest_um":     540,
+				"topometric_indices_8mm.ihd": 0.008,
+				"topometric_indices_8mm.ki":  1.04,
+			},
+		},
+		{
+			filename: "../../../frontend/data/creso-aversa/PENTACAM CRESO AVERSA OS .pdf",
+			expected: map[string]float64{
+				"pachymetry.thinnest_um":     537,
+				"topometric_indices_8mm.iha": 7.9,
+				"topometric_indices_8mm.ihd": 0.012,
+				"topometric_indices_8mm.ki":  1.04,
+			},
+		},
+	}
+
+	for _, testCase := range cases {
+		data, err := os.ReadFile(testCase.filename)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		exam, err := ExtractPDF(context.Background(), data)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		for path, expected := range testCase.expected {
+			parts := strings.Split(path, ".")
+			if !hasNumberAtAnyPath(exam, parts) {
+				t.Errorf("%s: expected %s=%v, got missing", testCase.filename, path, expected)
+				continue
+			}
+
+			actual := numberAtPath(exam, parts)
+			if actual != expected {
+				t.Errorf("%s: expected %s=%v, got %v", testCase.filename, path, expected, actual)
+			}
+		}
+	}
+}
+
 func assertPentacamFieldValue(t *testing.T, exam map[string]any, section, field string, expected float64) {
 	t.Helper()
 
@@ -118,4 +168,17 @@ func assertPentacamFieldValue(t *testing.T, exam map[string]any, section, field 
 	if !ok || actual != expected {
 		t.Fatalf("campo %s.%s esperado %v, recebido %#v", section, field, expected, sectionValues[field])
 	}
+}
+
+func numberAtPath(root map[string]any, path []string) float64 {
+	var current any = root
+	for _, key := range path {
+		values, ok := current.(map[string]any)
+		if !ok {
+			return 0
+		}
+		current = values[key]
+	}
+	value, _ := current.(float64)
+	return value
 }

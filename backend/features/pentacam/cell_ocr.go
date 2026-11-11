@@ -41,12 +41,13 @@ func fillPentacamFocusedCells(
 		// Fixtures reais Rolmey: OD = 44.2 D; OS = 45.5 D.
 		{"kmax_d", layout.topometric, pentacamOCRRegion{335, 2250, 155, 55}, true, 20, 70},
 
-		// Índices ISV/IHA: o OCR da tabela pode confundir o rótulo e
-		// perder o separador decimal quando a célula inteira é lida.
+		// Índices: use células um pouco mais largas para tolerar o OCR do
+		// container sem misturar os valores vizinhos.
 		{"isv", layout.topometric, pentacamOCRRegion{790, 2200, 170, 100}, false, 0, 200},
-		{"iha", layout.topometric, pentacamOCRRegion{1040, 2227, 70, 55}, true, 0, 5},
+		{"iha", layout.topometric, pentacamOCRRegion{1000, 2200, 140, 100}, true, 0, 20},
 		{"iva", layout.topometric, pentacamOCRRegion{842, 2293, 52, 31}, true, 0, 5},
-		{"ki", layout.topometric, pentacamOCRRegion{830, 2315, 150, 65}, true, 0, 5},
+		{"ihd", layout.topometric, pentacamOCRRegion{1000, 2260, 160, 90}, true, 0, 1},
+		{"ki", layout.topometric, pentacamOCRRegion{820, 2310, 180, 90}, true, 0, 5},
 
 		{"z40_6mm_um", layout.z40, pentacamOCRRegion{2298, 2095, 62, 45}, true, -5, 5},
 		{"acd_internal_mm", layout.acd, pentacamOCRRegion{2250, 2400, 250, 150}, true, 0.5, 10},
@@ -105,6 +106,12 @@ func pentacamReadNumericCell(
 	if spec.Key == "kmax_d" {
 		psms = []int{7}
 	}
+	if spec.Key == "iha" || spec.Key == "ihd" {
+		psms = []int{11}
+	}
+	if spec.Key == "ki" {
+		psms = []int{6, 11}
+	}
 
 	for _, img := range ocrInputImages {
 		for _, psm := range psms {
@@ -120,13 +127,16 @@ func pentacamReadNumericCell(
 				spec.Max,
 			)
 
-			// Nesta célula do Pentacam, o Tesseract no container pode
-			// remover o zero e o ponto de "0.7", retornando apenas "7".
-			// A recuperação é restrita ao IHA e continua sujeita à votação
-			// das imagens/limiares acima.
-			if !ok && spec.Key == "iha" &&
-				regexp.MustCompile(`^\s*7\s*$`).MatchString(text) {
-				value, ok = 0.7, true
+			// O Tesseract pode remover apenas o separador decimal do IHA:
+			// "5.5"/"7.9" aparecem como "55"/"79". Só aceitamos
+			// exatamente dois dígitos nesta célula e dividimos por dez.
+			if !ok && spec.Key == "iha" {
+				compact := regexp.MustCompile(`^\s*([0-9]{2})\s*$`).FindStringSubmatch(text)
+				if len(compact) == 2 {
+					compactValue, parseErr := strconv.ParseFloat(compact[1], 64)
+					value = compactValue / 10
+					ok = parseErr == nil && value >= spec.Min && value <= spec.Max
+				}
 			}
 
 			// No container Alpine, o Tesseract/Leptonica pode
