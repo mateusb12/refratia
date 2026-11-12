@@ -44,6 +44,9 @@ func BenchmarkExtractPDFStrategies(b *testing.B) {
 }
 
 func TestExtractPDFMariaGoreteIdentity(t *testing.T) {
+	if os.Getenv("REFRATIA_RUN_INTEGRATION_TESTS") != "1" {
+		t.Skip("teste de integração desabilitado; use REFRATIA_RUN_INTEGRATION_TESTS=1")
+	}
 	data, err := os.ReadFile("../../../frontend/data/maria-gorete/BIOMETRIA AO MARIA GORETE.pdf")
 	if err != nil {
 		t.Fatal(err)

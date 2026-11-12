@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -637,7 +638,11 @@ func confirmIntakeHandler(w http.ResponseWriter, r *http.Request) {
 	cleanupObjects(r.Context(), client, orphanedCopies)
 
 	if _, patientError := upsertPatientFromAnalysis(finalAnalysis); patientError != nil {
-		writeError(w, http.StatusInternalServerError, "não foi possível salvar o paciente")
+		if errors.Is(patientError, errPatientIdentity) {
+			writeError(w, http.StatusUnprocessableEntity, "não foi possível salvar o paciente: nome ou data de nascimento estão incompletos ou conflitantes")
+		} else {
+			writeError(w, http.StatusInternalServerError, "não foi possível salvar o paciente")
+		}
 		return
 	}
 

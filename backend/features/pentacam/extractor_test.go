@@ -38,6 +38,9 @@ func TestParsePentacamZ31RecoversOCRWithoutDecimal(t *testing.T) {
 }
 
 func TestExtractPDFMariaGoreteODRecoversVisibleFields(t *testing.T) {
+	if os.Getenv("REFRATIA_RUN_INTEGRATION_TESTS") != "1" {
+		t.Skip("teste de integração desabilitado; use REFRATIA_RUN_INTEGRATION_TESTS=1")
+	}
 	fixturePath := os.Getenv("PENTACAM_FIXTURE")
 	if fixturePath == "" {
 		fixturePath = "../../../frontend/data/maria-gorete/PENTACAM OD MARIA GORETE.pdf"
@@ -60,6 +63,9 @@ func TestExtractPDFMariaGoreteODRecoversVisibleFields(t *testing.T) {
 }
 
 func TestDetectEyeMariaGoreteOE(t *testing.T) {
+	if os.Getenv("REFRATIA_RUN_INTEGRATION_TESTS") != "1" {
+		t.Skip("teste de integração desabilitado; use REFRATIA_RUN_INTEGRATION_TESTS=1")
+	}
 	data, errorValue := os.ReadFile(
 		"../../../frontend/data/maria-gorete/PENTACAM OE MARIA GORETE.pdf",
 	)
@@ -77,6 +83,9 @@ func TestDetectEyeMariaGoreteOE(t *testing.T) {
 }
 
 func TestExtractPDFMariaGoreteOERecoversRequiredFields(t *testing.T) {
+	if os.Getenv("REFRATIA_RUN_INTEGRATION_TESTS") != "1" {
+		t.Skip("teste de integração desabilitado; use REFRATIA_RUN_INTEGRATION_TESTS=1")
+	}
 	data, errorValue := os.ReadFile(
 		"../../../frontend/data/maria-gorete/PENTACAM OE MARIA GORETE.pdf",
 	)
@@ -119,6 +128,9 @@ func TestExtractPDFMariaGoreteOERecoversRequiredFields(t *testing.T) {
 }
 
 func TestExtractPDFCresoAversaRecoversCriticalFieldsForBothEyes(t *testing.T) {
+	if os.Getenv("REFRATIA_RUN_INTEGRATION_TESTS") != "1" {
+		t.Skip("teste de integração desabilitado; use REFRATIA_RUN_INTEGRATION_TESTS=1")
+	}
 	cases := []struct {
 		filename string
 		expected map[string]float64

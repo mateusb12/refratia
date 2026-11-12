@@ -7,6 +7,9 @@ import (
 )
 
 func TestExtractCresoAversaFixture(t *testing.T) {
+	if os.Getenv("REFRATIA_RUN_INTEGRATION_TESTS") != "1" {
+		t.Skip("teste de integração desabilitado; use REFRATIA_RUN_INTEGRATION_TESTS=1")
+	}
 	data, err := os.ReadFile("../../../frontend/data/creso-aversa/MICROSCOPIA ESPECULAR.jpeg")
 	if err != nil {
 		t.Fatal(err)
