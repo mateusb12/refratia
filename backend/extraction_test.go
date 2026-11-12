@@ -23,7 +23,7 @@ func TestPrepareExtractionFilesRejectsInvalidPDF(t *testing.T) {
 }
 
 func TestStoredAnalysisRejectsDifferentFile(t *testing.T) {
-	files := []intakefeature.FileMetadata{{Filename: "exame.pdf", SHA256: "hash-correto", Key: "drafts/intake/exame.pdf"}}
+	files := []intakefeature.FileMetadata{{Filename: "exame.pdf", SHA256: "hash-correto", Key: refratiaDraftsPrefix + "intake/exame.pdf"}}
 	valid := map[string]any{"source_files": []any{map[string]any{"path": "exame.pdf", "sha256": "hash-correto"}}}
 	if err := validateStoredAnalysis(valid, files); err != nil {
 		t.Fatalf("expected matching analysis: %v", err)

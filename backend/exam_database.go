@@ -171,7 +171,7 @@ func examMetadataFromManifest(
 }
 
 func validExamObjectPath(caseID, path string) bool {
-	prefix := fmt.Sprintf("cases/%s/", caseID)
+	prefix := fmt.Sprintf(refratiaCasesPrefix+"%s/", caseID)
 	return strings.HasPrefix(path, prefix) && path != prefix && path != prefix+"paciente_compilado.json"
 }
 

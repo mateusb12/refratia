@@ -12,6 +12,13 @@ import (
 
 type fileRepository = fileStorage.Repository
 
+const (
+	refratiaCasesPrefix         = "refratia/cases/"
+	refratiaDraftsPrefix        = "refratia/drafts/"
+	refratiaCheckpointsPrefix   = "refratia/file-checkpoints/"
+	refratiaConfirmationsPrefix = "refratia/intake-confirmations/"
+)
+
 func storageClient(operationContext context.Context) (fileRepository, error) {
 	return fileStorage.New(operationContext)
 }

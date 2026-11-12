@@ -37,7 +37,7 @@ func loadExamManifest(
 	caseID string,
 ) (map[string]any, []byte, error) {
 	key := fmt.Sprintf(
-		"cases/%s/paciente_compilado.json",
+		refratiaCasesPrefix+"%s/paciente_compilado.json",
 		caseID,
 	)
 
@@ -96,7 +96,7 @@ func downloadSavedExam(w http.ResponseWriter, r *http.Request) {
 
 	caseID := r.URL.Query().Get("caseId")
 	path := r.URL.Query().Get("path")
-	casePrefix := fmt.Sprintf("cases/%s/", caseID)
+	casePrefix := fmt.Sprintf(refratiaCasesPrefix+"%s/", caseID)
 
 	if !validCaseID(caseID) ||
 		!strings.HasPrefix(path, casePrefix) ||
@@ -192,7 +192,7 @@ func listSavedExams(
 			r.Context(),
 			&s3.ListObjectsV2Input{
 				Bucket:            aws.String(bucket),
-				Prefix:            aws.String("cases/"),
+				Prefix:            aws.String(refratiaCasesPrefix),
 				Delimiter:         aws.String("/"),
 				ContinuationToken: casesContinuation,
 			},
@@ -213,7 +213,7 @@ func listSavedExams(
 			caseID := strings.TrimSuffix(
 				strings.TrimPrefix(
 					casePrefix,
-					"cases/",
+					refratiaCasesPrefix,
 				),
 				"/",
 			)
@@ -529,7 +529,7 @@ func prepareExamUpload(
 	bucket := os.Getenv("BUCKET_NAME")
 
 	analysisKey := fmt.Sprintf(
-		"cases/%s/paciente_compilado.json",
+		refratiaCasesPrefix+"%s/paciente_compilado.json",
 		request.CaseID,
 	)
 
@@ -562,7 +562,7 @@ func prepareExamUpload(
 	}
 
 	key := fmt.Sprintf(
-		"cases/%s/%d-%s",
+		refratiaCasesPrefix+"%s/%d-%s",
 		request.CaseID,
 		time.Now().UTC().UnixNano(),
 		safeFilename,
@@ -654,7 +654,7 @@ func removeSavedExam(
 	}
 
 	casePrefix := fmt.Sprintf(
-		"cases/%s/",
+		refratiaCasesPrefix+"%s/",
 		request.CaseID,
 	)
 

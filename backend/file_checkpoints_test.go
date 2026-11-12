@@ -18,7 +18,7 @@ func TestProcessedCheckpointKeyUsesVersionAndSHA256(
 		)
 
 	expected :=
-		"file-checkpoints/v1/" +
+		refratiaCheckpointsPrefix + "v1/" +
 			hash +
 			"/result.json"
 
@@ -44,7 +44,7 @@ func TestUploadedCheckpointKeyUsesVersionAndSHA256(
 		)
 
 	expected :=
-		"file-checkpoints/v1/" +
+		refratiaCheckpointsPrefix + "v1/" +
 			hash +
 			"/source"
 

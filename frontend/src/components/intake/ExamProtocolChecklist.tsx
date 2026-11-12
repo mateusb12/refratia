@@ -88,6 +88,15 @@ function fileIcon(file: File) {
   return `${import.meta.env.BASE_URL}${icon}`
 }
 
+function fallbackFileIcon(event: React.SyntheticEvent<HTMLImageElement>) {
+  const image = event.currentTarget
+  const filename = image.src.split('/').pop()
+  if (!filename || image.dataset.fallbackApplied === 'true') return
+
+  image.dataset.fallbackApplied = 'true'
+  image.src = `/${filename}`
+}
+
 function eyeLabel(eye: Eye) {
   if (eye === 'AO') return 'Ambos os olhos'
   if (eye === 'OD') return 'Olho direito'
@@ -165,6 +174,7 @@ function RequiredExamSlotRow({
         <img
           alt=""
           className="h-9 w-9 flex-none object-contain"
+          onError={fallbackFileIcon}
           src={fileIcon(matchingFiles[0].file)}
         />
       ) : (

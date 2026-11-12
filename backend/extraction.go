@@ -1019,7 +1019,7 @@ func validateStoredAnalysis(analysis map[string]any, files []intakefeature.FileM
 	}
 	for index, file := range files {
 		source, ok := sources[index].(map[string]any)
-		if !ok || source["sha256"] != file.SHA256 || filepath.Base(fmt.Sprint(source["path"])) != file.Filename || !strings.HasPrefix(file.Key, "drafts/") {
+		if !ok || source["sha256"] != file.SHA256 || filepath.Base(fmt.Sprint(source["path"])) != file.Filename || !strings.HasPrefix(file.Key, refratiaDraftsPrefix) {
 			return errors.New("os arquivos não correspondem ao JSON analisado")
 		}
 	}

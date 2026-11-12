@@ -333,7 +333,7 @@ func analyzeIntakeHandler(w http.ResponseWriter, r *http.Request) {
 			metadata.CanonicalFilename = intakefeature.CanonicalExamFilename(patientName, metadata.ExamType, metadata.Eye, extension)
 			storageName = metadata.CanonicalFilename
 		}
-		key := fmt.Sprintf("drafts/%s/%s", intakeID, storageName)
+		key := fmt.Sprintf(refratiaDraftsPrefix+"%s/%s", intakeID, storageName)
 
 		_, putErr := client.PutObject(
 			ctx,
@@ -388,7 +388,7 @@ func analyzeIntakeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	draftKey := fmt.Sprintf(
-		"drafts/%s/intake.json",
+		refratiaDraftsPrefix+"%s/intake.json",
 		intakeID,
 	)
 
@@ -512,8 +512,8 @@ func confirmIntakeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	defaultCaseID := "case-" + strings.TrimPrefix(request.IntakeID, "intake-")
-	defaultAnalysisKey := fmt.Sprintf("cases/%s/paciente_compilado.json", defaultCaseID)
-	draftKey := fmt.Sprintf("drafts/%s/intake.json", request.IntakeID)
+	defaultAnalysisKey := fmt.Sprintf(refratiaCasesPrefix+"%s/paciente_compilado.json", defaultCaseID)
+	draftKey := fmt.Sprintf(refratiaDraftsPrefix+"%s/intake.json", request.IntakeID)
 
 	object, getErr := client.GetObject(r.Context(), &s3.GetObjectInput{
 		Bucket: aws.String(bucket),
@@ -565,7 +565,7 @@ func confirmIntakeHandler(w http.ResponseWriter, r *http.Request) {
 
 	if found {
 		caseID = existingCaseID
-		analysisKey = fmt.Sprintf("cases/%s/paciente_compilado.json", caseID)
+		analysisKey = fmt.Sprintf(refratiaCasesPrefix+"%s/paciente_compilado.json", caseID)
 		existingAnalysis = existing
 		action = "updated"
 	}
@@ -574,7 +574,7 @@ func confirmIntakeHandler(w http.ResponseWriter, r *http.Request) {
 	copiedKeys := make([]string, 0, len(draft.Files))
 
 	for _, file := range draft.Files {
-		key := fmt.Sprintf("cases/%s/%s", caseID, filepath.Base(file.Key))
+		key := fmt.Sprintf(refratiaCasesPrefix+"%s/%s", caseID, filepath.Base(file.Key))
 
 		_, copyErr := client.CopyObject(r.Context(), &s3.CopyObjectInput{
 			Bucket:            aws.String(bucket),
@@ -684,7 +684,7 @@ func intakeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	bucket := os.Getenv("BUCKET_NAME")
-	draftKey := fmt.Sprintf("drafts/%s/intake.json", intakeID)
+	draftKey := fmt.Sprintf(refratiaDraftsPrefix+"%s/intake.json", intakeID)
 	object, err := client.GetObject(r.Context(), &s3.GetObjectInput{Bucket: aws.String(bucket), Key: aws.String(draftKey)})
 	if err != nil {
 		w.WriteHeader(http.StatusNoContent)
@@ -698,7 +698,7 @@ func intakeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	keys := []string{draftKey}
-	prefix := fmt.Sprintf("drafts/%s/", intakeID)
+	prefix := fmt.Sprintf(refratiaDraftsPrefix+"%s/", intakeID)
 	for _, file := range draft.Files {
 		if strings.HasPrefix(file.Key, prefix) {
 			keys = append(keys, file.Key)
@@ -745,7 +745,7 @@ func intakeHeaders(w http.ResponseWriter, r *http.Request) ([]*multipart.FileHea
 
 func cleanupExpiredDrafts(ctx context.Context, client fileRepository) {
 	// ponytail: one-page cleanup; use a bucket lifecycle rule if drafts can exceed 1000 objects.
-	listed, err := client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{Bucket: aws.String(os.Getenv("BUCKET_NAME")), Prefix: aws.String("drafts/")})
+	listed, err := client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{Bucket: aws.String(os.Getenv("BUCKET_NAME")), Prefix: aws.String(refratiaDraftsPrefix)})
 	if err != nil {
 		return
 	}

@@ -28,7 +28,7 @@ func casesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	listed, err := client.ListObjectsV2(r.Context(), &s3.ListObjectsV2Input{
 		Bucket:    aws.String(os.Getenv("BUCKET_NAME")),
-		Prefix:    aws.String("cases/"),
+		Prefix:    aws.String(refratiaCasesPrefix),
 		Delimiter: aws.String("/"),
 	})
 	if err != nil {
@@ -44,7 +44,7 @@ func casesHandler(w http.ResponseWriter, r *http.Request) {
 	cases := make([]storedCase, 0, len(listed.CommonPrefixes))
 	for _, prefix := range listed.CommonPrefixes {
 		casePrefix := aws.ToString(prefix.Prefix)
-		caseID := strings.TrimSuffix(strings.TrimPrefix(casePrefix, "cases/"), "/")
+		caseID := strings.TrimSuffix(strings.TrimPrefix(casePrefix, refratiaCasesPrefix), "/")
 		analysisKey := casePrefix + "paciente_compilado.json"
 		object, getErr := client.GetObject(r.Context(), &s3.GetObjectInput{
 			Bucket: aws.String(os.Getenv("BUCKET_NAME")),
@@ -89,7 +89,7 @@ func caseHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "storage indisponível")
 		return
 	}
-	analysisKey := fmt.Sprintf("cases/%s/paciente_compilado.json", caseID)
+	analysisKey := fmt.Sprintf(refratiaCasesPrefix+"%s/paciente_compilado.json", caseID)
 	object, err := client.GetObject(r.Context(), &s3.GetObjectInput{
 		Bucket: aws.String(os.Getenv("BUCKET_NAME")),
 		Key:    aws.String(analysisKey),
@@ -113,7 +113,7 @@ func caseHandler(w http.ResponseWriter, r *http.Request) {
 		for _, rawFile := range files {
 			file, ok := rawFile.(map[string]any)
 			key, ok := file["path"].(string)
-			if !ok || !strings.HasPrefix(key, fmt.Sprintf("cases/%s/", caseID)) {
+			if !ok || !strings.HasPrefix(key, fmt.Sprintf(refratiaCasesPrefix+"%s/", caseID)) {
 				continue
 			}
 			request, err := presigner.PresignGetObject(r.Context(), &s3.GetObjectInput{
@@ -146,7 +146,7 @@ func deleteCaseHandler(w http.ResponseWriter, r *http.Request, caseID string) {
 		return
 	}
 	bucket := os.Getenv("BUCKET_NAME")
-	prefix := fmt.Sprintf("cases/%s/", caseID)
+	prefix := fmt.Sprintf(refratiaCasesPrefix+"%s/", caseID)
 	marker := prefix + "paciente_compilado.json"
 	keys := make([]string, 0)
 	var continuation *string
@@ -210,7 +210,7 @@ func deleteCaseConfirmationReceipts(ctx context.Context, client fileRepository, 
 	for {
 		listed, err := client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
 			Bucket:            aws.String(bucket),
-			Prefix:            aws.String("intake-confirmations/"),
+			Prefix:            aws.String(refratiaConfirmationsPrefix),
 			ContinuationToken: continuation,
 		})
 		if err != nil {

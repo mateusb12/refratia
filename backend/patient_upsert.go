@@ -42,7 +42,7 @@ func findExistingPatientCase(
 	for {
 		listed, err := client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
 			Bucket:            aws.String(bucket),
-			Prefix:            aws.String("cases/"),
+			Prefix:            aws.String(refratiaCasesPrefix),
 			Delimiter:         aws.String("/"),
 			ContinuationToken: continuation,
 		})
@@ -52,7 +52,7 @@ func findExistingPatientCase(
 
 		for _, prefix := range listed.CommonPrefixes {
 			casePrefix := aws.ToString(prefix.Prefix)
-			caseID := strings.TrimSuffix(strings.TrimPrefix(casePrefix, "cases/"), "/")
+			caseID := strings.TrimSuffix(strings.TrimPrefix(casePrefix, refratiaCasesPrefix), "/")
 			if caseID == "" {
 				continue
 			}
@@ -99,7 +99,7 @@ func loadStoredCaseAnalysis(
 	bucket string,
 	caseID string,
 ) (map[string]any, error) {
-	key := "cases/" + caseID + "/paciente_compilado.json"
+	key := refratiaCasesPrefix + caseID + "/paciente_compilado.json"
 
 	object, err := client.GetObject(ctx, &s3.GetObjectInput{
 		Bucket: aws.String(bucket),
@@ -119,7 +119,7 @@ func loadStoredCaseAnalysis(
 }
 
 func confirmationKey(intakeID string) string {
-	return "intake-confirmations/" + intakeID + ".json"
+	return refratiaConfirmationsPrefix + intakeID + ".json"
 }
 
 func loadConfirmationReceipt(

@@ -213,7 +213,7 @@ func uploadedFileCheckpointObjectKey(
 	sha256Value string,
 ) string {
 	return fmt.Sprintf(
-		"file-checkpoints/%s/%s/source",
+		refratiaCheckpointsPrefix+"%s/%s/source",
 		fileCheckpointVersion,
 		strings.ToLower(sha256Value),
 	)
@@ -223,7 +223,7 @@ func processedFileCheckpointObjectKey(
 	sha256Value string,
 ) string {
 	return fmt.Sprintf(
-		"file-checkpoints/%s/%s/result.json",
+		refratiaCheckpointsPrefix+"%s/%s/result.json",
 		fileCheckpointVersion,
 		strings.ToLower(sha256Value),
 	)
