@@ -45,3 +45,10 @@ func TestTrimWordBoxCutsBorderAndUnit(t *testing.T) {
 		}
 	}
 }
+
+func TestAllEqual(t *testing.T) {
+	a, b := anchoredValue{Value: 0.2}, anchoredValue{Value: 2}
+	if !allEqual([]anchoredValue{a}) || !allEqual([]anchoredValue{a, a}) || allEqual([]anchoredValue{a, b}) {
+		t.Fatal("allEqual must require every reading to match")
+	}
+}

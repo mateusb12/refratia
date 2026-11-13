@@ -65,6 +65,9 @@ func fillPentacamFocusedCells(
 		if _, byAnchor := anchored[spec.Key]; byAnchor {
 			continue // read by its label; the fixed box is only a fallback
 		}
+		if blocked, present := values[spec.Key]; present && blocked == nil {
+			continue // conflicting readings: stay empty
+		}
 		_, hasExtractedDocumentValue := values[spec.Key]
 		focusedValueShouldOverride := spec.Key == "k1_d" ||
 			spec.Key == "thinnest_um" || spec.Key == "iha" ||

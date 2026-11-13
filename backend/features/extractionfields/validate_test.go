@@ -86,3 +86,24 @@ func TestValidateReportsMissing(t *testing.T) {
 		t.Fatalf("valid=%d missing=%d", valid, missing)
 	}
 }
+
+func TestApplyHint(t *testing.T) {
+	missing := Diagnostic{Status: "missing", Stage: "mapping"}
+	ApplyHint(&missing, Hint{Status: "not_applicable", Stage: "region", Screen: "belin_ambrosio"})
+	if missing.Status != "not_applicable" || missing.Stage != "region" {
+		t.Fatalf("absent screen must become not_applicable: %+v", missing)
+	}
+
+	conflict := Diagnostic{Status: "missing", Stage: "mapping"}
+	ApplyHint(&conflict, Hint{Status: "conflicting", Stage: "recognition", Candidates: 2})
+	if conflict.Status != "conflicting" || conflict.Candidates != 2 {
+		t.Fatalf("disagreeing readings must be conflicting: %+v", conflict)
+	}
+
+	// A hint never rescues a value that failed validation.
+	bad := Diagnostic{Status: "unreadable", Stage: "validation"}
+	ApplyHint(&bad, Hint{Status: "valid", Strategy: "label_anchor", BBox: [4]int{1, 2, 3, 4}})
+	if bad.Status != "unreadable" || bad.Strategy != "label_anchor" || len(bad.BBox) != 4 {
+		t.Fatalf("unexpected: %+v", bad)
+	}
+}

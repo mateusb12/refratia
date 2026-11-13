@@ -174,11 +174,20 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 			pageImages[page] = decoded
 		}
 	}
-	anchored := readAnchored(executionContext, screensToPages(screens), pageImages)
+	anchored, conflicts := readAnchored(executionContext, screensToPages(screens), pageImages)
 
 	values := map[string]any{}
 	for key, found := range anchored {
 		values[key] = found.Value
+	}
+	// A conflicting field (two screens disagree) must stay empty: block the
+	// fixed-box readers from filling it with a third, unverified reading.
+	for _, conflict := range conflicts {
+		for key, spec := range valueKeySpec {
+			if spec == conflict.Spec {
+				values[key] = nil
+			}
+		}
 	}
 	// The fixed-box readers below only fill what the anchors did not read.
 	hasAll := func(keys ...string) bool {
@@ -512,15 +521,15 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 		"cataract_preop": map[string]any{
 			"total_corneal_z40_6mm_um": values["z40_6mm_um"],
 		},
-	}, buildHints(screens, anchored), nil
+	}, buildHints(screens, anchored, conflicts), nil
 }
 
 func screensToPages(screens map[Screen]int) map[Screen]int { return screens }
 
 // buildHints reports, for the C4 diagnostics, which strategy read each field
 // and which fields cannot exist because their screen is absent.
-func buildHints(screens map[Screen]int, anchored map[string]anchoredValue) []FieldHint {
-	var hints []FieldHint
+func buildHints(screens map[Screen]int, anchored map[string]anchoredValue, conflicts []FieldHint) []FieldHint {
+	hints := append([]FieldHint(nil), conflicts...)
 	for _, found := range anchored {
 		hints = append(hints, found.Hint)
 	}

@@ -923,13 +923,13 @@ func mergeFileCheckpointAnalysis(
 	currentAnalysis map[string]any,
 	checkpointAnalysis map[string]any,
 ) (map[string]any, error) {
-	currentIdentity,
+	_,
 		currentIdentifiable :=
 		patientfeature.Identity(
 			currentAnalysis,
 		)
 
-	checkpointIdentity,
+	_,
 		checkpointIdentifiable :=
 		patientfeature.Identity(
 			checkpointAnalysis,
@@ -937,8 +937,10 @@ func mergeFileCheckpointAnalysis(
 
 	if currentIdentifiable &&
 		checkpointIdentifiable &&
-		currentIdentity !=
-			checkpointIdentity {
+		!patientfeature.SameIdentity(
+			currentAnalysis,
+			checkpointAnalysis,
+		) {
 		return nil,
 			fmt.Errorf(
 				"arquivos pertencem a pacientes diferentes",

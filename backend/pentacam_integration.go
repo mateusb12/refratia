@@ -63,6 +63,21 @@ func tryExtractPentacamLocal(
 			identity.ExamDateRaw,
 			"MDY", // the Pentacam prints MM/DD/YYYY
 		)
+		if identity.BirthDateIssue != "" {
+			// Out-of-range birth date (not before the exam, age outside
+			// 18..110): never persisted, always flagged. Identity fields carry
+			// no raw text.
+			diagnostics, _ := analysis["extraction_diagnostics"].([]any)
+			analysis["extraction_diagnostics"] = append(diagnostics, map[string]any{
+				"file_sha256": file.Metadata.SHA256,
+				"exam_type":   "pentacam_corneal_tomography",
+				"eye":         eye,
+				"field":       "birth_date",
+				"status":      identity.BirthDateIssue,
+				"stage":       "validation",
+				"error":       "data de nascimento implausível em relação à data do exame",
+			})
+		}
 	}
 
 	mergeLocalPentacamExam(

@@ -223,3 +223,24 @@ func TestCanonicalExamFilenameIsUniquePerFileAndReparses(t *testing.T) {
 		t.Fatalf("canonical name must reparse, got %q %q %v", exam, eye, ok)
 	}
 }
+
+func TestOutOfProtocolTypesAreInTheVocabulary(t *testing.T) {
+	for name, want := range map[string]string{
+		"CORNEA__OD__X__20260101_000000.jpeg": "anterior_segment_photo",
+		"ANTSEG OD EXAMPLE.jpeg":              "anterior_segment_photo",
+		"EXAMPLE TOPO OD.pdf":                 "corneal_topography_other",
+	} {
+		got, _, ok := CanonicalClassificationFromFilename(name)
+		if !ok || got != want {
+			t.Errorf("%q => %q,%v want %q", name, got, ok, want)
+		}
+	}
+	for key, label := range map[string]string{"anterior_segment_photo": "ANTSEG", "corneal_topography_other": "TOPO"} {
+		if got, ok := ExamTypeFromContract(key); !ok || got != label {
+			t.Errorf("ExamTypeFromContract(%q)=%q,%v", key, got, ok)
+		}
+		if got, ok := ContractExamType(label); !ok || got != key {
+			t.Errorf("ContractExamType(%q)=%q,%v", label, got, ok)
+		}
+	}
+}

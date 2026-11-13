@@ -255,7 +255,7 @@ func RuleFor(examKey, field string) (Rule, bool) {
 // a field; ApplyHint merges it into the validation diagnostic of that field.
 type Hint struct {
 	Spec       string // field name in _field_spec.json
-	Status     string // "valid" | "not_applicable" (others come from validation)
+	Status     string // "valid" | "not_applicable" | "conflicting" (others come from validation)
 	Stage      string
 	Screen     string
 	Page       int
@@ -273,6 +273,10 @@ func ApplyHint(d *Diagnostic, h Hint) {
 	case h.Status == "not_applicable" && d.Status == "missing":
 		d.Status, d.Stage = "not_applicable", h.Stage
 		d.Screen = h.Screen
+	case h.Status == "conflicting" && d.Status == "missing":
+		// Two readings (screens/strategies) disagreed: nothing was emitted.
+		d.Status, d.Stage = "conflicting", h.Stage
+		d.Screen, d.Page, d.Strategy, d.Candidates = h.Screen, h.Page, h.Strategy, h.Candidates
 	case d.Status == "valid" || d.Status == "unreadable":
 		d.Screen, d.Page, d.Strategy = h.Screen, h.Page, h.Strategy
 		d.Votes, d.Candidates = h.Votes, h.Candidates

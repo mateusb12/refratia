@@ -83,3 +83,18 @@ func TestStripBoxBorderKeepsLetterStems(t *testing.T) {
 		t.Fatal("letter stem was damaged")
 	}
 }
+
+// Screen text on the same row but far to the right (segment list, colour
+// scale) must not leak into the name (it did: "° 2/25 Segmento: 294° ...").
+func TestIdentityNameStopsAtGapAndIgnoresDigitWords(t *testing.T) {
+	words := panelWords("Nasc.:", "01/28/1980")
+	words = append(words, word("2/25", 1400, 100), word("Segmento:", 1500, 100))
+	words = append(words, word("294°", 380, 100))
+	got, err := parsePentacamIdentityWords(words)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.FullName != "GIVEN SURNAME" {
+		t.Fatalf("name leaked screen text: %q", got.FullName)
+	}
+}

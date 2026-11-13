@@ -187,7 +187,7 @@ func CanonicalClassificationFromFilename(
 	}
 
 	stem := strings.TrimSuffix(filename, fileExtension(filename))
-	examMatch := regexp.MustCompile(`(?i)(^|[[:space:]_-])(PENTACAM|EYESUITE|BIOMETRIA|AUTO|RETINA|OCT|CORNEA|TOPOGRAFIA|TOPO|MICROSCOPIA([_[:space:]]+ESPECULAR)?)([[:space:]_-]|$)`).FindStringSubmatch(stem)
+	examMatch := regexp.MustCompile(`(?i)(^|[[:space:]_-])(PENTACAM|EYESUITE|BIOMETRIA|AUTO|RETINA|OCT|CORNEA|ANTSEG|TOPOGRAFIA|TOPO|MICROSCOPIA([_[:space:]]+ESPECULAR)?)([[:space:]_-]|$)`).FindStringSubmatch(stem)
 	if len(examMatch) != 5 {
 		return "", "", false
 	}
@@ -224,7 +224,7 @@ func examTypeFromFilenameLabel(label string) (string, bool) {
 		return "fundus_retinography", true
 	case "OCT":
 		return "oct_retina", true
-	case "CORNEA":
+	case "CORNEA", "ANTSEG":
 		return "anterior_segment_photo", true
 	case "TOPO", "TOPOGRAFIA":
 		return "corneal_topography_other", true
@@ -361,6 +361,12 @@ func ExamTypeFromContract(
 
 	case "oct_retina":
 		return "OCT", true
+
+	case "anterior_segment_photo":
+		return "ANTSEG", true
+
+	case "corneal_topography_other":
+		return "TOPO", true
 
 	default:
 		return "", false

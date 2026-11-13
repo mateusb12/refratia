@@ -100,12 +100,21 @@ func bandValue(words []ocr.Word, label labelSpan) []ocr.Word {
 		}
 	}
 	sort.Slice(in, func(i, j int) bool { return in[i].Left < in[j].Left })
+	// The value is one contiguous run starting next to the label: text further
+	// right across a wide gap belongs to another element of the screen (the
+	// Scheimpflug segment list, a colour scale), and an input box is not wider
+	// than ~22 label heights.
+	end := len(in)
+	prevRight := label.right
 	for i, w := range in {
-		if rowStopLabels.MatchString(normLabelWord(w.Text)) {
-			return in[:i]
+		if rowStopLabels.MatchString(normLabelWord(w.Text)) ||
+			w.Left-prevRight > 6*h || w.Left > label.right+22*h {
+			end = i
+			break
 		}
+		prevRight = max(prevRight, w.Left+w.Width)
 	}
-	return in
+	return in[:end]
 }
 
 func parsePentacamIdentityWords(words []ocr.Word) (Identity, error) {
@@ -130,9 +139,14 @@ func parsePentacamIdentityWords(words []ocr.Word) (Identity, error) {
 		}
 		return *best, true
 	}
+	// Names contain no digits: a word with a digit or a degree sign is screen
+	// text that leaked into the band, not part of the name.
 	join := func(ws []ocr.Word) string {
 		parts := make([]string, 0, len(ws))
 		for _, w := range ws {
+			if strings.IndexFunc(w.Text, func(r rune) bool { return unicode.IsDigit(r) || r == '°' }) >= 0 {
+				continue
+			}
 			parts = append(parts, w.Text)
 		}
 		return cleanIdentityValue(strings.Join(parts, " "))

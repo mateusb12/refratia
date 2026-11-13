@@ -147,7 +147,7 @@ func readAnchored(
 	ctx context.Context,
 	pageOf map[Screen]int,
 	pageImages map[int]image.Image,
-) map[string]anchoredValue {
+) (map[string]anchoredValue, []FieldHint) {
 	type screenWords struct {
 		words []ocr.Word
 		spans []labelSpan
@@ -177,12 +177,17 @@ func readAnchored(
 	}
 
 	out := map[string]anchoredValue{}
+	var conflicts []FieldHint
 	located := map[string]labelSpan{} // Key -> label span, for ColumnOf
 	for _, field := range anchorFields {
 		rule, ok := extractionfields.RuleFor(examKey, field.Spec)
 		if !ok {
 			continue
 		}
+		// A field printed on several screens (the cornea box repeats on the
+		// topometric and 4-map screens) is read on each; the readings must
+		// agree, otherwise the field is conflicting and stays empty.
+		var readings []anchoredValue
 		for _, screen := range field.Screens {
 			page := pageOf[screen]
 			img := pageImages[page]
@@ -199,14 +204,32 @@ func readAnchored(
 			if !ok {
 				continue
 			}
-			out[field.Key] = anchoredValue{Value: value, Hint: FieldHint{
+			readings = append(readings, anchoredValue{Value: value, Hint: FieldHint{
 				Spec: field.Spec, Status: "valid", Stage: "recognition", Screen: string(screen), Page: page,
 				Strategy: "label_anchor", BBox: to300dpi(rect, img.Bounds()), Votes: votes, Candidates: candidates,
-			}}
-			break
+			}})
+		}
+		switch {
+		case len(readings) == 0:
+		case allEqual(readings):
+			out[field.Key] = readings[0]
+		default:
+			conflicts = append(conflicts, FieldHint{
+				Spec: field.Spec, Status: "conflicting", Stage: "recognition", Strategy: "label_anchor",
+				Screen: readings[0].Hint.Screen, Page: readings[0].Hint.Page, Candidates: len(readings),
+			})
 		}
 	}
-	return out
+	return out, conflicts
+}
+
+func allEqual(readings []anchoredValue) bool {
+	for _, r := range readings[1:] {
+		if r.Value != readings[0].Value {
+			return false
+		}
+	}
+	return true
 }
 
 func to300dpi(r image.Rectangle, page image.Rectangle) [4]int {

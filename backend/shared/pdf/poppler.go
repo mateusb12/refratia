@@ -227,9 +227,12 @@ func renderPagesAtDPI(
 	)
 
 	for page := 1; page <= pages; page++ {
+		// pdftoppm zero-pads the page number to the width of the page count
+		// (page-01.png for a 12-page PDF).
 		path := fmt.Sprintf(
-			"%s-%d.png",
+			"%s-%0*d.png",
 			prefix,
+			len(strconv.Itoa(pages)),
 			page,
 		)
 
