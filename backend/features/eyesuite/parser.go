@@ -67,6 +67,7 @@ func parseEyeSuiteEye(words []ocr.Word) (map[string]any, error) {
 	rows := ocr.GroupRows(words, 10)
 
 	values := map[string]float64{}
+	lensStatus := ""
 	var astigAxis float64
 	axisFound := false
 
@@ -90,6 +91,28 @@ func parseEyeSuiteEye(words []ocr.Word) (map[string]any, error) {
 			if axis, found := axisAfter(text); found {
 				astigAxis = axis
 				axisFound = true
+			}
+		}
+		if status := lensStatusPattern.FindString(text); status != "" && lensStatus == "" {
+			lensStatus = strings.ToUpper(status[:1]) + strings.ToLower(status[1:])
+		}
+		if value, ok := integerAfter(text, `\bCCT\b`); ok {
+			values["central_corneal_thickness_um"] = value
+		}
+		if value, ok := decimalAfter(text, `\bAD\b`); ok {
+			values["aqueous_depth_mm"] = value
+		}
+		// "K1 [D/mm/°] 44,15/7,64 @ 168": power / radius / axis.
+		for _, k := range []struct{ label, power, radius, axis string }{
+			{`\bK1\b`, "k1_d", "k1_radius_mm", "k1_axis_deg"},
+			{`\bK2\b`, "k2_d", "k2_radius_mm", "k2_axis_deg"},
+			{`(?:^|\s)K(?:\s|\[)`, "mean_k_d", "mean_radius_mm", ""},
+		} {
+			if power, radius, axis, hasAxis, ok := powerRadiusAxisAfter(text, k.label); ok {
+				values[k.power], values[k.radius] = power, radius
+				if hasAxis && k.axis != "" {
+					values[k.axis] = axis
+				}
 			}
 		}
 		if value, ok := decimalAfter(text, `\bACD\b`); ok {
@@ -117,9 +140,19 @@ func parseEyeSuiteEye(words []ocr.Word) (map[string]any, error) {
 		}
 	}
 	put(payload, "axial_length_mm", "axial_length_mm")
+	put(payload, "central_corneal_thickness_um", "central_corneal_thickness_um")
+	put(payload, "aqueous_depth_mm", "aqueous_depth_mm")
+	if lensStatus != "" {
+		payload["status"] = lensStatus
+	}
 	put(keratometry, "k1_d", "k1_d")
+	put(keratometry, "k1_radius_mm", "k1_radius_mm")
+	put(keratometry, "k1_axis_deg", "k1_axis_deg")
 	put(keratometry, "k2_d", "k2_d")
+	put(keratometry, "k2_radius_mm", "k2_radius_mm")
+	put(keratometry, "k2_axis_deg", "k2_axis_deg")
 	put(keratometry, "mean_k_d", "mean_k_d")
+	put(keratometry, "mean_radius_mm", "mean_radius_mm")
 	put(keratometry, "astigmatism_d", "astigmatism_d")
 	if axisFound {
 		keratometry["astigmatism_axis_deg"] = astigAxis
@@ -136,6 +169,44 @@ func parseEyeSuiteEye(words []ocr.Word) (map[string]any, error) {
 		return nil, errors.New("nenhum campo EyeSuite lido")
 	}
 	return payload, nil
+}
+
+var (
+	lensStatusPattern = regexp.MustCompile(`(?i)\b(?:pseudophakic|aphakic|phakic)\b`)
+	powerRadiusAxis   = regexp.MustCompile(`(\d+[,.]\d+)\s*/\s*(\d+[,.]\d+)(?:\s*@\s*(\d{1,3}))?`)
+)
+
+func integerAfter(text, labelPattern string) (float64, bool) {
+	location := regexp.MustCompile(`(?i)` + labelPattern).FindStringIndex(text)
+	if location == nil {
+		return 0, false
+	}
+	match := regexp.MustCompile(`\b(\d{2,4})\b`).FindStringSubmatch(text[location[1]:])
+	if match == nil {
+		return 0, false
+	}
+	value, err := strconv.ParseFloat(match[1], 64)
+	return value, err == nil
+}
+
+func powerRadiusAxisAfter(text, labelPattern string) (power, radius, axis float64, hasAxis, ok bool) {
+	location := regexp.MustCompile(`(?i)` + labelPattern).FindStringIndex(text)
+	if location == nil {
+		return
+	}
+	m := powerRadiusAxis.FindStringSubmatch(text[location[1]:])
+	if m == nil {
+		return
+	}
+	parse := func(v string) float64 {
+		f, _ := strconv.ParseFloat(strings.ReplaceAll(v, ",", "."), 64)
+		return f
+	}
+	power, radius = parse(m[1]), parse(m[2])
+	if m[3] != "" {
+		axis, hasAxis = parse(m[3]), true
+	}
+	return power, radius, axis, hasAxis, true
 }
 
 func decimalAfter(text, labelPattern string) (float64, bool) {

@@ -22,6 +22,9 @@ import (
 type OCRPanel struct {
 	Laterality string
 	Text       string
+	// ExtraTexts are further readings of the same panel (other upscale /
+	// binarization / PSM); they only complete table rows the first lacks.
+	ExtraTexts []string
 }
 
 type Evidence struct {
@@ -56,9 +59,13 @@ func ParseOCRPanels(panels []OCRPanel) (map[string]any, []Evidence, error) {
 			continue
 		}
 
-		eyes[eye] = map[string]any{
+		fields := map[string]any{
 			"cell_density_cells_per_mm2": value,
 		}
+		for key, other := range parseTableRows(value, true, append([]string{panel.Text}, panel.ExtraTexts...)...) {
+			fields[key] = other
+		}
+		eyes[eye] = fields
 		evidence = append(evidence, Evidence{
 			Laterality: eye,
 			Context:    contextText,
@@ -273,9 +280,10 @@ func normalizeOCRText(value string) string {
 }
 
 type panelOCRResult struct {
-	Processed []byte
-	TSV       string
-	Text      string
+	ExtraTexts []string
+	Processed  []byte
+	TSV        string
+	Text       string
 }
 
 // ocrMicroscopyPanel concentra o único caminho de OCR usado tanto
@@ -284,6 +292,17 @@ func ocrMicroscopyPanel(
 	ctx context.Context,
 	img image.Image,
 	panel panelRect,
+) (panelOCRResult, error) {
+	return ocrMicroscopyPanelOpts(ctx, img, panel, true)
+}
+
+// ocrMicroscopyPanelOpts with collectExtras=false stops at the first reading
+// that recognises the density row (what detection needs).
+func ocrMicroscopyPanelOpts(
+	ctx context.Context,
+	img image.Image,
+	panel panelRect,
+	collectExtras bool,
 ) (panelOCRResult, error) {
 	pngData, err := preprocessPanel(img, panel)
 	if err != nil {
@@ -294,15 +313,19 @@ func ocrMicroscopyPanel(
 	if err != nil {
 		return panelOCRResult{}, err
 	}
-	if looksLikeSpecularMicroscopyText(first.Text) {
-		return first, nil
-	}
 
-	// The raw crop can lose a whole row (small, low-contrast text). Retry the
+	// The raw crop can lose whole rows (small, low-contrast text). Re-read the
 	// same panel upscaled x3 with the darkest-channel grey, auto-contrast and
-	// binarized, under two page segmentation modes, and keep the first reading
-	// in which the density row is recognised.
+	// binarized, under two page segmentation modes. The first reading in which
+	// the density row is recognised is the main one; every other reading is
+	// kept to complete result-table rows the main one lacks.
 	crop := image.Rect(panel.x, panel.y, panel.x+panel.w, panel.y+panel.h)
+	main := first
+	mainOK := looksLikeSpecularMicroscopyText(first.Text)
+	if mainOK && !collectExtras {
+		return main, nil
+	}
+	var extras []string
 	for _, variant := range []struct {
 		binarize int
 		psm      int
@@ -317,11 +340,23 @@ func ocrMicroscopyPanel(
 			continue
 		}
 		result, ocrErr := ocrPanelPNG(ctx, encoded, variant.psm)
-		if ocrErr == nil && looksLikeSpecularMicroscopyText(result.Text) {
-			return result, nil
+		if ocrErr != nil {
+			continue
 		}
+		if !mainOK && looksLikeSpecularMicroscopyText(result.Text) {
+			main, mainOK = result, true
+			if !collectExtras {
+				break
+			}
+			continue
+		}
+		extras = append(extras, result.Text)
 	}
-	return first, nil
+	if !mainOK {
+		extras = nil
+	}
+	main.ExtraTexts = extras
+	return main, nil
 }
 
 func ocrPanelPNG(ctx context.Context, pngData []byte, psm int) (panelOCRResult, error) {
@@ -377,10 +412,11 @@ func Detect(
 
 	for _, panel := range microscopyPanels(img.Bounds()) {
 		result, err :=
-			ocrMicroscopyPanel(
+			ocrMicroscopyPanelOpts(
 				ctx,
 				img,
 				panel,
+				false,
 			)
 
 		if err != nil {
@@ -495,6 +531,7 @@ func Extract(ctx context.Context, data []byte) (Result, error) {
 			OCRPanel{
 				Laterality: laterality,
 				Text:       panelText,
+				ExtraTexts: panelOCR.ExtraTexts,
 			},
 		)
 	}

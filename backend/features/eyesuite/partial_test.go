@@ -41,3 +41,21 @@ func TestParseEyeSuiteEyeEmptyIsAnError(t *testing.T) {
 		t.Fatal("an eye with no field at all must be an error")
 	}
 }
+
+func TestParseEyeSuiteEyeReadsRadiiAxesCCTADAndStatus(t *testing.T) {
+	var words []ocr.Word
+	words = append(words, rowWords(10, "Phakic")...)
+	words = append(words, rowWords(40, "CCT", "[um]", "534", "K2[D/mm/°]", "45,20/7,47", "@", "78")...)
+	words = append(words, rowWords(70, "AD", "[mm]", "3,21", "K", "[D/mm]", "44,67/7,56")...)
+	words = append(words, rowWords(100, "AL", "[mm]", "23,49", "K1[D/mm/°]", "44,15/7,64", "@", "168")...)
+	got, err := parseEyeSuiteEye(words)
+	if err != nil {
+		t.Fatal(err)
+	}
+	k := got["keratometry"].(map[string]any)
+	if got["status"] != "Phakic" || got["central_corneal_thickness_um"] != 534.0 || got["aqueous_depth_mm"] != 3.21 ||
+		k["k1_radius_mm"] != 7.64 || k["k1_axis_deg"] != 168.0 || k["k2_radius_mm"] != 7.47 || k["k2_axis_deg"] != 78.0 ||
+		k["mean_radius_mm"] != 7.56 || k["mean_k_d"] != 44.67 {
+		t.Fatalf("unexpected: %v", got)
+	}
+}
