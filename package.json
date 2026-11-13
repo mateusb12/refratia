@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite --config frontend/vite.config.ts",
     "dev:backend": "go -C backend run .",
+    "benchmark": "go -C backend run ./cmd/benchmark",
     "dev:containers": "docker compose up --build",
     "build:backend": "go -C backend build -o refratia-backend .",
     "build": "tsc -b frontend/tsconfig.json && vite build --config frontend/vite.config.ts",
