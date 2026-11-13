@@ -54,7 +54,10 @@ func tryExtractPentacamLocal(
 		return false
 	}
 
-	if identity, identityErr := pentacam.ExtractIdentity(ctx, file.Data); identityErr == nil {
+	identity, identityErr := pentacam.ExtractIdentity(ctx, file.Data)
+	if identityErr != nil {
+		recordIdentityNotRead(analysis, file, eye)
+	} else {
 		mergeLocalPatientIdentity(
 			analysis,
 			file.Metadata.Filename,
@@ -103,6 +106,33 @@ func tryExtractPentacamLocal(
 // evidence. Order matters: the raw reading (with the device's declared
 // day/month order) is appended first and canonicalised afterwards, so
 // patient.birth_date is ISO or absent, never the raw device string.
+// recordIdentityNotRead keeps the failure observable: a Pentacam always leaves
+// an identity entry (without values, with its declared date order) and a
+// diagnostic per identity field, so a document whose panel could not be read
+// is never silently absent from the identity evidence.
+func recordIdentityNotRead(analysis map[string]any, file uploadedFile, eye string) {
+	verification, _ := analysis["verificacao_identidade"].([]any)
+	analysis["verificacao_identidade"] = append(verification, map[string]any{
+		"source":     file.Metadata.Filename,
+		"confidence": "unreadable",
+		"method":     "local_ocr_tesseract",
+		"date_order": "MDY",
+	})
+	diagnostics, _ := analysis["extraction_diagnostics"].([]any)
+	for _, field := range []string{"full_name", "birth_date", "exam_date"} {
+		diagnostics = append(diagnostics, map[string]any{
+			"file_sha256": file.Metadata.SHA256,
+			"exam_type":   "pentacam_corneal_tomography",
+			"eye":         eye,
+			"field":       field,
+			"status":      "unreadable",
+			"stage":       "region",
+			"error":       "painel de identificação não localizado",
+		})
+	}
+	analysis["extraction_diagnostics"] = diagnostics
+}
+
 func mergeLocalPatientIdentity(
 	analysis map[string]any,
 	source,

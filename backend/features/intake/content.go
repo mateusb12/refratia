@@ -43,25 +43,47 @@ func ClassifyText(text string) string {
 // "" means unknown. Errors are not fatal: classification then falls back to
 // the file name.
 func ClassifyContent(ctx context.Context, contentType string, data []byte) (string, error) {
+	examType, _, err := ClassifyContentEye(ctx, contentType, data)
+	return examType, err
+}
+
+var topographyExamHeader = regexp.MustCompile(`#\s*\d+\s*-\s*\d{1,2}/\d{1,2}/\d{4}`)
+
+// TopographyEye: a TP-15 report prints one result column per exam, each headed
+// "#<id> - <date>". Two columns hold both eyes (AO); a single one does not say
+// which eye it is, so the eye stays unknown.
+func TopographyEye(text string) string {
+	if len(topographyExamHeader.FindAllString(text, -1)) >= 2 {
+		return "AO"
+	}
+	return ""
+}
+
+// ClassifyContentEye is ClassifyContent plus the eye when the document itself
+// states it (never taken from the file name).
+func ClassifyContentEye(ctx context.Context, contentType string, data []byte) (string, string, error) {
 	if contentType == "application/pdf" {
 		_, layer, err := pdfutil.Inspect(ctx, data)
 		if err != nil {
-			return "", err
+			return "", "", err
 		}
 		if len(strings.Fields(layer)) >= 5 {
 			if t := ClassifyText(layer); t != "" {
-				return t, nil
+				if t == "corneal_topography_other" {
+					return t, TopographyEye(layer), nil
+				}
+				return t, "", nil
 			}
 		}
 		page, err := pdfutil.RenderPageAtDPI(ctx, data, 1, 100)
 		if err != nil {
-			return "", err
+			return "", "", err
 		}
 		text, err := ocr.RunTesseractText(ctx, page, 11, "")
 		if err != nil {
-			return "", err
+			return "", "", err
 		}
-		return ClassifyText(text), nil
+		return ClassifyText(text), "", nil
 	}
 
 	if strings.HasPrefix(strings.ToLower(contentType), "image/") {
@@ -72,14 +94,14 @@ func ClassifyContent(ctx context.Context, contentType string, data []byte) (stri
 			if png, err := ocr.EncodePNG(gray); err == nil {
 				if text, err := ocr.RunTesseractText(ctx, png, 11, ""); err == nil {
 					if t := ClassifyText(text); t == "refractometry" {
-						return t, nil
+						return t, "", nil
 					}
 				}
 			}
 		}
 		if result, err := retinography.Extract(ctx, data); err == nil && result.Mode == "Cornea" {
-			return "anterior_segment_photo", nil
+			return "anterior_segment_photo", "", nil
 		}
 	}
-	return "", nil
+	return "", "", nil
 }

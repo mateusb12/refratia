@@ -181,7 +181,11 @@ func conclude(run *Run, e *env, baselinePath string, update bool, compareArg, ou
 		}
 		if prev != "" {
 			run.Compare = compareRuns(run, prev)
-			if run.Compare != nil {
+			if run.Compare == nil {
+				run.InfraFails = append(run.InfraFails, "compare: cannot read previous report "+prev)
+				run.Why = append(run.Why, "infra: compare: cannot read previous report "+prev)
+				run.Complete = false
+			} else {
 				for _, f := range run.Compare.Fields {
 					if f.Category == "regressed" {
 						run.Regressions = append(run.Regressions, f.ID+" (vs previous run)")

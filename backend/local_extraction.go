@@ -1046,11 +1046,15 @@ func resolveLocalClassification(
 	// avoid an extra OCR pass over every photo.
 	isPDF := file.Metadata.ContentType == "application/pdf"
 	if isPDF || examType == "" {
-		if byContent, _ := intakefeature.ClassifyContent(
+		byContent, contentEye, _ := intakefeature.ClassifyContentEye(
 			ctx,
 			file.Metadata.ContentType,
 			file.Data,
-		); byContent != "" && byContent != examType {
+		)
+		if eye == "" && contentEye != "" {
+			eye = contentEye
+		}
+		if byContent != "" && byContent != examType {
 			if examType != "" {
 				recordClassificationConflict(analysis, file, byContent)
 			}

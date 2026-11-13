@@ -30,3 +30,17 @@ func TestValidateTouchedEyesDropsInvalidAndRecords(t *testing.T) {
 		t.Fatalf("want one unreadable axis diagnostic, got %d", unreadable)
 	}
 }
+
+func TestRecordIdentityNotReadLeavesEntryAndDiagnostics(t *testing.T) {
+	analysis := map[string]any{}
+	file := uploadedFile{}
+	file.Metadata.Filename, file.Metadata.SHA256 = "f.pdf", "abcd"
+	recordIdentityNotRead(analysis, file, "OD")
+	entries := analysis["verificacao_identidade"].([]any)
+	if len(entries) != 1 || entries[0].(map[string]any)["date_order"] != "MDY" {
+		t.Fatalf("identity entry missing: %v", entries)
+	}
+	if len(analysis["extraction_diagnostics"].([]any)) != 3 {
+		t.Fatal("one diagnostic per identity field expected")
+	}
+}

@@ -78,7 +78,7 @@ func InspectFile(
 
 		// O tipo vem do conteúdo impresso (título do aparelho), não da
 		// contagem de páginas nem do nome do arquivo.
-		if examType, _ := ClassifyContent(
+		if examType, contentEye, _ := ClassifyContentEye(
 			ctx,
 			file.ContentType,
 			file.Data,
@@ -97,6 +97,9 @@ func InspectFile(
 				item.FilenameConflict = item.RecognizedExamType != ""
 				item.RecognizedExamType = examType
 				item.RecognizedEye = ""
+			}
+			if contentEye != "" {
+				item.RecognizedEye = contentEye
 			}
 		}
 

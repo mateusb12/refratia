@@ -281,7 +281,7 @@ func NameKey(name string) string {
 }
 
 // NamesCompatible: every token of the shorter name appears in the longer one,
-// either whole or as a one-letter initial (nome_parcial: "MARIA GORETE DE C").
+// either whole or as a one-letter initial (nome_parcial: "ANA PAULA DE S").
 func NamesCompatible(a, b string) bool {
 	ta, tb := strings.Fields(normalizePatientName(a)), strings.Fields(normalizePatientName(b))
 	if len(ta) > len(tb) {

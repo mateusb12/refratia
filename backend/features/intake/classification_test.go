@@ -244,3 +244,14 @@ func TestOutOfProtocolTypesAreInTheVocabulary(t *testing.T) {
 		}
 	}
 }
+
+func TestTopographyEyeFromColumnHeaders(t *testing.T) {
+	two := "#4380 - 9/18/2026 4:40:46 PM   #4381 - 9/18/2026 4:43:01 PM"
+	one := "#4380 - 9/18/2026 4:40:46 PM"
+	if TopographyEye(two) != "AO" {
+		t.Fatal("two exam columns hold both eyes")
+	}
+	if TopographyEye(one) != "" {
+		t.Fatal("a single column does not say which eye it is")
+	}
+}

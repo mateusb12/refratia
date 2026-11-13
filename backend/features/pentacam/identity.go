@@ -76,9 +76,7 @@ func ExtractIdentity(ctx context.Context, data []byte) (Identity, error) {
 		}
 		// Re-read the name boxes from pixels: the box border is read as a
 		// letter ("J") by the page-level pass.
-		if name := readNameBoxes(ctx, img, panel, words); name != "" {
-			identity.FullName = name
-		}
+		identity = refineFromPixels(ctx, img, panel, words, identity)
 		return identity, nil
 	}
 	return Identity{}, errors.New("Pentacam: nome/nascimento não localizados")
@@ -87,34 +85,86 @@ func ExtractIdentity(ctx context.Context, data []byte) (Identity, error) {
 // bandValue returns the words to the right of label on its own row band, up to
 // (excluding) the next label on that row, in reading order.
 func bandValue(words []ocr.Word, label labelSpan) []ocr.Word {
-	h := max(label.height, 12)
+	return wordsInBand(words, label.right-max(label.height, 12)/4, label.cy, max(label.height, 12))
+}
+
+// wordsInBand returns the contiguous run of words whose vertical centre lies
+// within 0.75h of cy, starting at x >= fromX. Text further right across a wide
+// gap belongs to another element of the screen (the Scheimpflug segment list,
+// a colour scale), and an input box is not wider than ~22 label heights.
+func wordsInBand(words []ocr.Word, fromX, cy, h int) []ocr.Word {
 	var in []ocr.Word
 	for _, w := range words {
 		wh := w.Height
 		if wh == 0 {
 			wh = h
 		}
-		cy := w.Top + wh/2
-		if w.Left >= label.right-h/4 && abs(cy-label.cy) <= h*3/4 {
+		if w.Left >= fromX && abs(w.Top+wh/2-cy) <= h*3/4 {
 			in = append(in, w)
 		}
 	}
 	sort.Slice(in, func(i, j int) bool { return in[i].Left < in[j].Left })
-	// The value is one contiguous run starting next to the label: text further
-	// right across a wide gap belongs to another element of the screen (the
-	// Scheimpflug segment list, a colour scale), and an input box is not wider
-	// than ~22 label heights.
 	end := len(in)
-	prevRight := label.right
+	prevRight := fromX
 	for i, w := range in {
 		if rowStopLabels.MatchString(normLabelWord(w.Text)) ||
-			w.Left-prevRight > 6*h || w.Left > label.right+22*h {
+			w.Left-prevRight > 6*h || w.Left > fromX+22*h {
 			end = i
 			break
 		}
 		prevRight = max(prevRight, w.Left+w.Width)
 	}
 	return in[:end]
+}
+
+var looseDate = regexp.MustCompile(`\d{1,2}/\d{1,2}/\d{2,4}`)
+
+// identityRows is where the panel's rows are, found from the dates' own
+// geometry: the birth and exam date boxes are stacked in one column, one row
+// pitch apart, and the name boxes sit above them at the same pitch. The label
+// text is only a cross-check, because the OCR frequently drops it.
+type identityRows struct {
+	birth, exam       ocr.Word
+	hasBirth, hasExam bool
+	pitch, h          int
+}
+
+func locateIdentityRows(words []ocr.Word, spans []labelSpan) identityRows {
+	var dates []ocr.Word
+	for _, w := range words {
+		if looseDate.MatchString(w.Text) {
+			dates = append(dates, w)
+		}
+	}
+	sort.Slice(dates, func(i, j int) bool { return dates[i].Top < dates[j].Top })
+	var rows identityRows
+	for i := range dates {
+		for j := i + 1; j < len(dates); j++ {
+			a, b := dates[i], dates[j]
+			h := max(a.Height, 12)
+			pitch := (b.Top + b.Height/2) - (a.Top + a.Height/2)
+			if abs(a.Left-b.Left) <= 2*h && pitch >= 3*h/2 && pitch <= 4*h {
+				return identityRows{birth: a, exam: b, hasBirth: true, hasExam: true, pitch: pitch, h: h}
+			}
+		}
+	}
+	// One date only: its own label decides what it is; without a readable
+	// label it is not guessed.
+	for _, d := range dates {
+		h := max(d.Height, 12)
+		cy := d.Top + d.Height/2
+		for _, s := range spans {
+			if s.right <= d.Left+h && abs(s.cy-cy) <= h*3/4 {
+				switch {
+				case birthLabel.MatchString(s.text):
+					rows.birth, rows.hasBirth, rows.h = d, true, h
+				case regexp.MustCompile(`exame`).MatchString(s.text):
+					rows.exam, rows.hasExam, rows.h = d, true, h
+				}
+			}
+		}
+	}
+	return rows
 }
 
 func parsePentacamIdentityWords(words []ocr.Word) (Identity, error) {
@@ -124,26 +174,15 @@ func parsePentacamIdentityWords(words []ocr.Word) (Identity, error) {
 		}
 	}
 	spans := labelSpans(append([]ocr.Word(nil), words...), 12)
-	find := func(pattern *regexp.Regexp, below *labelSpan) (labelSpan, bool) {
-		var best *labelSpan
-		for i := range spans {
-			if !pattern.MatchString(spans[i].text) || (below != nil && spans[i].top <= below.top) {
-				continue
-			}
-			if best == nil || spans[i].top < best.top {
-				best = &spans[i]
-			}
-		}
-		if best == nil {
-			return labelSpan{}, false
-		}
-		return *best, true
-	}
-	// Names contain no digits: a word with a digit or a degree sign is screen
-	// text that leaked into the band, not part of the name.
+	rows := locateIdentityRows(words, spans)
+
+	// Names are read from the rows above the dates when the date geometry is
+	// known (labels are often unreadable); otherwise from their own labels.
 	join := func(ws []ocr.Word) string {
 		parts := make([]string, 0, len(ws))
 		for _, w := range ws {
+			// Names contain no digits: a word with a digit or a degree sign is
+			// screen text that leaked into the band.
 			if strings.IndexFunc(w.Text, func(r rune) bool { return unicode.IsDigit(r) || r == '°' }) >= 0 {
 				continue
 			}
@@ -151,31 +190,45 @@ func parsePentacamIdentityWords(words []ocr.Word) (Identity, error) {
 		}
 		return cleanIdentityValue(strings.Join(parts, " "))
 	}
-
 	var surname, given string
-	surnameSpan, hasSurname := find(surnameLabel, nil)
-	if hasSurname {
-		surname = join(bandValue(words, surnameSpan))
-	}
-	if givenSpan, ok := find(givenLabel, ternary(hasSurname, &surnameSpan, nil)); ok {
-		given = join(bandValue(words, givenSpan))
+	if rows.hasBirth && rows.hasExam {
+		cy := rows.birth.Top + rows.birth.Height/2
+		from := rows.birth.Left - rows.h/2
+		surname = join(wordsInBand(words, from, cy-3*rows.pitch, rows.h))
+		given = join(wordsInBand(words, from, cy-2*rows.pitch, rows.h))
+	} else {
+		find := func(pattern *regexp.Regexp, below *labelSpan) (labelSpan, bool) {
+			var best *labelSpan
+			for i := range spans {
+				if !pattern.MatchString(spans[i].text) || (below != nil && spans[i].top <= below.top) {
+					continue
+				}
+				if best == nil || spans[i].top < best.top {
+					best = &spans[i]
+				}
+			}
+			if best == nil {
+				return labelSpan{}, false
+			}
+			return *best, true
+		}
+		surnameSpan, hasSurname := find(surnameLabel, nil)
+		if hasSurname {
+			surname = join(bandValue(words, surnameSpan))
+		}
+		if givenSpan, ok := find(givenLabel, ternary(hasSurname, &surnameSpan, nil)); ok {
+			given = join(bandValue(words, givenSpan))
+		}
 	}
 
-	// A date is looked for only inside its own label's band: a label that was
-	// not read yields no date, it never borrows the neighbouring row's.
-	dateIn := func(pattern *regexp.Regexp) string {
-		span, ok := find(pattern, nil)
-		if !ok {
-			return ""
-		}
-		for _, w := range bandValue(words, span) {
-			if d := pentacamDatePattern.FindString(w.Text); d != "" {
-				return d
-			}
-		}
-		return ""
+	dateText := func(w ocr.Word) string { return looseDate.FindString(w.Text) }
+	var birth, exam string
+	if rows.hasBirth {
+		birth = dateText(rows.birth)
 	}
-	birth, exam := dateIn(birthLabel), dateIn(examDateLabel)
+	if rows.hasExam {
+		exam = dateText(rows.exam)
+	}
 
 	fullName := strings.TrimSpace(given + " " + surname)
 	if fullName == "" || birth == "" {
@@ -184,7 +237,8 @@ func parsePentacamIdentityWords(words []ocr.Word) (Identity, error) {
 
 	identity := Identity{FullName: fullName, BirthDateRaw: birth, ExamDateRaw: exam, DateOrder: DateOrder}
 	// A birth date equal to the exam date, in the future, or giving an age
-	// outside 18..110 is a misread label: drop it instead of reporting it.
+	// outside 18..110 is a misread: it is reported as conflicting, never
+	// persisted and never silently dropped.
 	if exam != "" {
 		birthISO, examISO := examdate.FromSlashOrder(birth, DateOrder), examdate.FromSlashOrder(exam, DateOrder)
 		if examISO != "" && !examdate.PlausibleBirth(birthISO, examISO) {
@@ -214,53 +268,72 @@ func cleanIdentityValue(value string) string {
 	return strings.Join(strings.Fields(value), " ")
 }
 
-// readNameBoxes re-reads the surname and given-name boxes from pixels: the
-// left cell border is cut off first and the interior is read at several
-// scales; the text most reads agree on wins. Returns "" without a clear
-// majority (the caller then keeps the page-level text).
-func readNameBoxes(ctx context.Context, img image.Image, panel image.Rectangle, words []ocr.Word) string {
+// refineFromPixels re-reads the name and date boxes from pixels, located by
+// the date geometry. The page-level text carries the box border as a letter
+// ("J"), merges words and truncates dates. Each box is cut at its border, read
+// at several scales and the text most reads agree on wins; with no majority the
+// page-level reading stays.
+func refineFromPixels(ctx context.Context, img image.Image, panel image.Rectangle, words []ocr.Word, identity Identity) Identity {
 	spans := labelSpans(append([]ocr.Word(nil), words...), 12)
-	pick := func(pattern *regexp.Regexp, below *labelSpan) (labelSpan, bool) {
-		var best *labelSpan
-		for i := range spans {
-			if !pattern.MatchString(spans[i].text) || (below != nil && spans[i].top <= below.top) {
-				continue
-			}
-			if best == nil || spans[i].top < best.top {
-				best = &spans[i]
-			}
-		}
-		if best == nil {
-			return labelSpan{}, false
-		}
-		return *best, true
+	rows := locateIdentityRows(words, spans)
+	if !rows.hasBirth || !rows.hasExam {
+		return identity
 	}
-	surname, ok := pick(surnameLabel, nil)
-	if !ok {
-		return ""
-	}
-	given, ok := pick(givenLabel, &surname)
-	if !ok {
-		return ""
-	}
-	read := func(label labelSpan) string {
-		h := label.height
-		rect := image.Rect(
-			panel.Min.X+label.right+h/4, panel.Min.Y+label.cy-h,
-			panel.Min.X+label.right+h/4+15*h, panel.Min.Y+label.cy+h,
+	h := rows.h
+	box := func(w ocr.Word, cy, width int) image.Rectangle {
+		return image.Rect(
+			panel.Min.X+w.Left-h/2, panel.Min.Y+cy-h,
+			panel.Min.X+w.Left-h/2+width, panel.Min.Y+cy+h,
 		).Intersect(panel)
-		return readTextBox(ctx, img, rect)
 	}
-	surnameText, givenText := read(surname), read(given)
-	if surnameText == "" && givenText == "" {
-		return ""
+	cy := rows.birth.Top + rows.birth.Height/2
+	fullDate := regexp.MustCompile(`^\d{1,2}/\d{1,2}/\d{4}$`)
+	digits := func(t string) string {
+		return strings.Join(strings.Fields(regexp.MustCompile(`[^0-9/]`).ReplaceAllString(t, " ")), "")
 	}
-	return strings.TrimSpace(givenText + " " + surnameText)
+
+	refined := false
+	if d := readTextBox(ctx, img, box(rows.birth, cy, 12*h), "0123456789/", digits, ""); fullDate.MatchString(d) && examdate.FromSlashOrder(d, DateOrder) != "" {
+		identity.BirthDateRaw, refined = d, true
+	}
+	examCY := rows.exam.Top + rows.exam.Height/2
+	if d := readTextBox(ctx, img, box(rows.exam, examCY, 12*h), "0123456789/", digits, ""); fullDate.MatchString(d) && examdate.FromSlashOrder(d, DateOrder) != "" {
+		identity.ExamDateRaw, refined = d, true
+	}
+	letters := func(t string) string {
+		return strings.ToUpper(strings.Join(strings.Fields(nonNameRune.ReplaceAllString(foldAccents(t), " ")), " "))
+	}
+	tsvSurname, tsvGiven := rowNames(words, rows)
+	surname := readTextBox(ctx, img, box(rows.birth, cy-3*rows.pitch, 22*h), "", letters, tsvSurname)
+	given := readTextBox(ctx, img, box(rows.birth, cy-2*rows.pitch, 22*h), "", letters, tsvGiven)
+	// Each box is refined on its own; a box without a clear majority keeps the
+	// page-level text of that row.
+	if surname != "" || given != "" {
+		if surname == "" {
+			surname = tsvSurname
+		}
+		if given == "" {
+			given = tsvGiven
+		}
+		identity.FullName = strings.TrimSpace(given + " " + surname)
+	}
+
+	// Re-run the plausibility check on the refined dates.
+	if refined {
+		identity.BirthDateIssue = ""
+	}
+	if refined && identity.BirthDateRaw != "" && identity.ExamDateRaw != "" {
+		b, e := examdate.FromSlashOrder(identity.BirthDateRaw, DateOrder), examdate.FromSlashOrder(identity.ExamDateRaw, DateOrder)
+		if e != "" && !examdate.PlausibleBirth(b, e) {
+			identity.BirthDateRaw, identity.BirthDateIssue = "", "conflicting"
+		}
+	}
+	return identity
 }
 
 var nonNameRune = regexp.MustCompile(`[^\p{L}' -]`)
 
-func readTextBox(ctx context.Context, img image.Image, rect image.Rectangle) string {
+func readTextBox(ctx context.Context, img image.Image, rect image.Rectangle, whitelist string, normalize func(string) string, hint string) string {
 	if rect.Empty() {
 		return ""
 	}
@@ -270,7 +343,6 @@ func readTextBox(ctx context.Context, img image.Image, rect image.Rectangle) str
 		return ""
 	}
 	votes := map[string]int{}
-	reads := 0
 	for _, scale := range []int{2, 3} {
 		for _, threshold := range []uint8{0, 150} {
 			var encoded []byte
@@ -285,29 +357,93 @@ func readTextBox(ctx context.Context, img image.Image, rect image.Rectangle) str
 				continue
 			}
 			for _, psm := range []int{7, 13} {
-				text, err := ocr.RunTesseractText(ctx, encoded, psm, "")
+				text, err := ocr.RunTesseractText(ctx, encoded, psm, whitelist)
 				if err != nil {
 					continue
 				}
-				text = strings.ToUpper(strings.Join(strings.Fields(nonNameRune.ReplaceAllString(text, " ")), " "))
+				text = normalize(text)
 				if text != "" {
 					votes[text]++
-					reads++
 				}
 			}
 		}
 	}
-	best, bestVotes, tie := "", 0, false
+	// Readings differ only in where the OCR puts the spaces; they vote as one
+	// text (spaces removed) and the commonest spelling, preferring more spaces,
+	// is reported.
+	groups := map[string]map[string]int{}
+	groupVotes := map[string]int{}
 	for text, n := range votes {
+		key := strings.ReplaceAll(text, " ", "")
+		if groups[key] == nil {
+			groups[key] = map[string]int{}
+		}
+		groups[key][text] += n
+		groupVotes[key] += n
+	}
+	bestKey, bestVotes, tie := "", 0, false
+	for key, n := range groupVotes {
 		switch {
 		case n > bestVotes:
-			best, bestVotes, tie = text, n, false
+			bestKey, bestVotes, tie = key, n, false
 		case n == bestVotes:
 			tie = true
 		}
 	}
-	if tie || bestVotes < 2 || bestVotes*2 <= reads {
+	if bestVotes < 2 {
 		return ""
+	}
+	if tie {
+		// Equal votes: the page-level text of the same row is one more,
+		// independent reading; the candidate sharing the most words with it
+		// wins, otherwise there is no value.
+		hintWords := map[string]bool{}
+		for _, w := range strings.Fields(normalize(hint)) {
+			hintWords[w] = true
+		}
+		bestKey, tie = "", false
+		top := -1
+		for key, n := range groupVotes {
+			if n != bestVotes {
+				continue
+			}
+			shared := 0
+			for text := range groups[key] {
+				for _, w := range strings.Fields(text) {
+					if hintWords[w] {
+						shared++
+					}
+				}
+			}
+			switch {
+			case shared > top:
+				bestKey, top, tie = key, shared, false
+			case shared == top:
+				tie = true
+			}
+		}
+		if tie || top <= 0 {
+			return ""
+		}
+	}
+	// Prefer the spelling with the most spaces among those read at least twice
+	// (the OCR often drops a space, never invents one), else the commonest.
+	best, bestSpelling := "", 0
+	for text, n := range groups[bestKey] {
+		if n < 2 {
+			continue
+		}
+		if best == "" || strings.Count(text, " ") > strings.Count(best, " ") ||
+			(strings.Count(text, " ") == strings.Count(best, " ") && n > bestSpelling) {
+			best, bestSpelling = text, n
+		}
+	}
+	if best == "" {
+		for text, n := range groups[bestKey] {
+			if n > bestSpelling {
+				best, bestSpelling = text, n
+			}
+		}
 	}
 	return best
 }
@@ -325,11 +461,11 @@ func stripBoxBorder(g *image.Gray) *image.Gray {
 	for x := b.Min.X; x < b.Min.X+b.Dx()*18/100; x++ {
 		dark := 0
 		for y := b.Min.Y + b.Dy()*8/100; y < b.Max.Y-b.Dy()*8/100; y++ {
-			if g.GrayAt(x, y).Y < 120 {
+			if g.GrayAt(x, y).Y < 170 {
 				dark++
 			}
 		}
-		if dark*100 >= rows*90 {
+		if dark*100 >= rows*80 {
 			cut = x
 		}
 	}
@@ -337,4 +473,34 @@ func stripBoxBorder(g *image.Gray) *image.Gray {
 		return g
 	}
 	return g.SubImage(image.Rect(cut+2, b.Min.Y, b.Max.X, b.Max.Y)).(*image.Gray)
+}
+
+var accentFolder = strings.NewReplacer(
+	"Á", "A", "À", "A", "Â", "A", "Ã", "A", "Ä", "A", "É", "E", "È", "E", "Ê", "E", "Ë", "E",
+	"Í", "I", "Ì", "I", "Î", "I", "Ï", "I", "Ó", "O", "Ò", "O", "Ô", "O", "Õ", "O", "Ö", "O",
+	"Ú", "U", "Ù", "U", "Û", "U", "Ü", "U", "Ç", "C", "Ñ", "N",
+	"á", "a", "à", "a", "â", "a", "ã", "a", "ä", "a", "é", "e", "è", "e", "ê", "e", "ë", "e",
+	"í", "i", "ì", "i", "î", "i", "ï", "i", "ó", "o", "ò", "o", "ô", "o", "õ", "o", "ö", "o",
+	"ú", "u", "ù", "u", "û", "u", "ü", "u", "ç", "c", "ñ", "n",
+)
+
+// foldAccents makes the readings of one name comparable: the OCR flips between
+// "Ã" and "A" from read to read.
+func foldAccents(s string) string { return accentFolder.Replace(s) }
+
+// rowNames is the page-level text of the surname and given-name rows.
+func rowNames(words []ocr.Word, rows identityRows) (surname, given string) {
+	cy := rows.birth.Top + rows.birth.Height/2
+	from := rows.birth.Left - rows.h/2
+	text := func(ws []ocr.Word) string {
+		parts := []string{}
+		for _, w := range ws {
+			if strings.IndexFunc(w.Text, func(r rune) bool { return unicode.IsDigit(r) || r == '°' }) >= 0 {
+				continue
+			}
+			parts = append(parts, w.Text)
+		}
+		return cleanIdentityValue(strings.Join(parts, " "))
+	}
+	return text(wordsInBand(words, from, cy-3*rows.pitch, rows.h)), text(wordsInBand(words, from, cy-2*rows.pitch, rows.h))
 }

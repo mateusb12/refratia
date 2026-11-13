@@ -4,12 +4,14 @@ import (
 	"context"
 	"fmt"
 	"image"
+	"math"
 	"os"
 	"regexp"
 	"strings"
 
 	"refratia/backend/features/extractionfields"
 	"refratia/backend/shared/ocr"
+	"refratia/backend/shared/parallelwork"
 )
 
 const examKey = "pentacam_corneal_tomography"
@@ -154,11 +156,7 @@ func readAnchored(
 	}
 	cache := map[Screen]*screenWords{}
 	load := func(screen Screen) *screenWords {
-		if sw, ok := cache[screen]; ok {
-			return sw
-		}
 		sw := &screenWords{}
-		cache[screen] = sw
 		img := pageImages[pageOf[screen]]
 		if img == nil {
 			return sw
@@ -176,52 +174,118 @@ func readAnchored(
 		return sw
 	}
 
-	out := map[string]anchoredValue{}
-	var conflicts []FieldHint
+	// Page OCR of each needed screen is independent: run them in parallel.
+	var screensNeeded []Screen
+	seen := map[Screen]bool{}
+	for _, field := range anchorFields {
+		for _, screen := range field.Screens {
+			if pageImages[pageOf[screen]] != nil && !seen[screen] {
+				seen[screen] = true
+				screensNeeded = append(screensNeeded, screen)
+			}
+		}
+	}
+	loaded, _ := parallelwork.Map(ctx, screensNeeded, readerConcurrency, func(_ context.Context, screen Screen) (*screenWords, error) {
+		return load(screen), nil
+	})
+	for i, screen := range screensNeeded {
+		cache[screen] = loaded[i]
+	}
+
+	// Phase 1 (cheap, sequential): locate every label. Phase 2 (the expensive
+	// OCR voting): read all value boxes in parallel, they are independent.
+	type job struct {
+		field  anchorField
+		rule   extractionfields.Rule
+		screen Screen
+		span   labelSpan
+	}
+	var jobs []job
 	located := map[string]labelSpan{} // Key -> label span, for ColumnOf
 	for _, field := range anchorFields {
 		rule, ok := extractionfields.RuleFor(examKey, field.Spec)
 		if !ok {
 			continue
 		}
-		// A field printed on several screens (the cornea box repeats on the
-		// topometric and 4-map screens) is read on each; the readings must
-		// agree, otherwise the field is conflicting and stays empty.
-		var readings []anchoredValue
 		for _, screen := range field.Screens {
-			page := pageOf[screen]
-			img := pageImages[page]
-			if img == nil {
+			if pageImages[pageOf[screen]] == nil {
 				continue
 			}
-			sw := load(screen)
-			span, found := pickLabel(sw.spans, field, located)
+			span, found := pickLabel(cache[screen].spans, field, located)
 			if !found {
 				continue
 			}
 			located[field.Key] = span
-			value, votes, candidates, rect, ok := readValueBox(ctx, img, sw.words, span, rule)
-			if !ok {
-				continue
-			}
-			readings = append(readings, anchoredValue{Value: value, Hint: FieldHint{
-				Spec: field.Spec, Status: "valid", Stage: "recognition", Screen: string(screen), Page: page,
-				Strategy: "label_anchor", BBox: to300dpi(rect, img.Bounds()), Votes: votes, Candidates: candidates,
-			}})
+			jobs = append(jobs, job{field, rule, screen, span})
 		}
+	}
+	type result struct {
+		reading anchoredValue
+		ok      bool
+	}
+	results, _ := parallelwork.Map(ctx, jobs, readerConcurrency, func(c context.Context, j job) (result, error) {
+		page := pageOf[j.screen]
+		img := pageImages[page]
+		value, votes, candidates, rect, ok := readValueBox(c, img, cache[j.screen].words, j.span, j.rule)
+		if !ok {
+			return result{}, nil
+		}
+		return result{anchoredValue{Value: value, Hint: FieldHint{
+			Spec: j.field.Spec, Status: "valid", Stage: "recognition", Screen: string(j.screen), Page: page,
+			Strategy: "label_anchor", BBox: to300dpi(rect, img.Bounds()), Votes: votes, Candidates: candidates,
+		}}, true}, nil
+	})
+
+	// A field printed on several screens (the cornea box repeats on the
+	// topometric and 4-map screens) is read on each; the readings must agree,
+	// otherwise the field is conflicting and stays empty.
+	out := map[string]anchoredValue{}
+	var conflicts []FieldHint
+	readings := map[string][]anchoredValue{}
+	var order []string
+	for i, j := range jobs {
+		if _, ok := readings[j.field.Key]; !ok {
+			order = append(order, j.field.Key)
+		}
+		readings[j.field.Key] = readings[j.field.Key]
+		if results[i].ok {
+			readings[j.field.Key] = append(readings[j.field.Key], results[i].reading)
+		}
+	}
+	for _, key := range order {
+		rs := readings[key]
 		switch {
-		case len(readings) == 0:
-		case allEqual(readings):
-			out[field.Key] = readings[0]
+		case len(rs) == 0:
+		case allEqual(rs):
+			out[key] = rs[0]
 		default:
 			conflicts = append(conflicts, FieldHint{
-				Spec: field.Spec, Status: "conflicting", Stage: "recognition", Strategy: "label_anchor",
-				Screen: readings[0].Hint.Screen, Page: readings[0].Hint.Page, Candidates: len(readings),
+				Spec: rs[0].Hint.Spec, Status: "conflicting", Stage: "recognition", Strategy: "label_anchor",
+				Screen: rs[0].Hint.Screen, Page: rs[0].Hint.Page, Candidates: len(rs),
 			})
 		}
 	}
 	return out, conflicts
 }
+
+// crossCheckAstigmatism: the anterior astigmatism is the difference between the
+// steep and flat keratometry (K2 - K1), printed rounded. A value that disagrees
+// by more than the rounding (a lost decimal point: 0.5 read as 5), whichever
+// strategy read it, is removed and reported conflicting.
+func crossCheckAstigmatism(values map[string]any) []FieldHint {
+	k1, ok1 := values["k1_d"].(float64)
+	k2, ok2 := values["k2_d"].(float64)
+	astig, ok3 := values["astigmatism_d"].(float64)
+	if !ok1 || !ok2 || !ok3 || math.Abs((k2-k1)-astig) <= 0.3 {
+		return nil
+	}
+	values["astigmatism_d"] = nil
+	return []FieldHint{{Spec: "astig_ant_d", Status: "conflicting", Stage: "recognition", Strategy: "cross_check", Candidates: 2}}
+}
+
+// readerConcurrency bounds parallel tesseract processes (they are
+// single-threaded under OMP_THREAD_LIMIT=1).
+const readerConcurrency = 4
 
 func allEqual(readings []anchoredValue) bool {
 	for _, r := range readings[1:] {

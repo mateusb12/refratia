@@ -131,6 +131,13 @@ func realMain() (code int) {
 
 	t0 := time.Now()
 	ctx := context.Background()
+	for _, p := range []*string{compare, rescore, resume} { // relative paths: as given, else relative to the repo root
+		if *p != "" {
+			if _, err := os.Stat(*p); err != nil {
+				*p = filepath.Join(root, *p)
+			}
+		}
+	}
 	e := &env{data: *dataDir, gtDir: *gtDir, reForce: *reForce, httpc: &http.Client{}, analyzeTO: *analyzeTO, stepTO: *stepTO}
 	e.spec = &Spec{}
 	must(loadJSON(filepath.Join(e.gtDir, "_field_spec.json"), e.spec))
@@ -145,7 +152,11 @@ func realMain() (code int) {
 		e.out = filepath.Join(*outBase, t0.Format("20060102-150405")+"-rescore")
 		must(os.MkdirAll(filepath.Join(e.out, "patients"), 0o755))
 		run = e.rescoreRun(*rescore, run)
-		return conclude(run, e, *baseline, false, "-", *outBase, t0)
+		cmp := *compare
+		if cmp == "" {
+			cmp = "-"
+		}
+		return conclude(run, e, *baseline, false, cmp, *outBase, t0)
 	}
 
 	// anything unexpected in setup is an infra failure, reported (INCOMPLETE) with exit code 2

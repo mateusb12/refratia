@@ -480,6 +480,8 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 		"Pentacam validado",
 	)
 
+	conflicts = append(conflicts, crossCheckAstigmatism(values)...)
+
 	return map[string]any{
 		"anterior_cornea": map[string]any{
 			"k1_d":          values["k1_d"],

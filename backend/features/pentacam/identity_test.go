@@ -14,8 +14,8 @@ func word(text string, left, top int) ocr.Word {
 // to the right, on the same band.
 func panelWords(birthLabel string, birth string) []ocr.Word {
 	words := []ocr.Word{
-		word("Sobrenome:", 100, 100), word("SURNAME", 300, 100),
-		word("Nome:", 100, 140), word("GIVEN", 300, 140),
+		word("Sobrenome:", 100, 60), word("SURNAME", 300, 60),
+		word("Nome:", 100, 100), word("GIVEN", 300, 100),
 		word("Data", 100, 220), word("de", 160, 220), word("Exame:", 200, 220), word("09/21/2026", 300, 220), word("Hora:", 500, 220), word("09:39:37", 580, 220),
 	}
 	if birthLabel != "" {
@@ -40,12 +40,28 @@ func TestIdentityBindsEachValueToItsLabelBand(t *testing.T) {
 	}
 }
 
-// F8: when the "Nasc." label is not read, the birth date must stay missing; it
-// must never fall through to the next row (the exam date).
-func TestIdentityNeverBorrowsExamDateForUnreadBirthLabel(t *testing.T) {
-	_, err := parsePentacamIdentityWords(panelWords("", "01/28/1980"))
+// F8: with only the exam date on the panel (the birth row unread), the birth
+// date must stay missing; it must never be taken from the exam row.
+func TestIdentityNeverBorrowsExamDateForUnreadBirthRow(t *testing.T) {
+	_, err := parsePentacamIdentityWords(panelWords("", ""))
 	if err == nil {
-		t.Fatal("expected an error: birth date label was not read")
+		t.Fatal("expected an error: birth date row was not read")
+	}
+}
+
+// The labels are often lost by the OCR: the stacked date boxes alone locate the
+// birth and exam rows, and the names sit above them at the same pitch.
+func TestIdentityWorksWithoutAnyLabelText(t *testing.T) {
+	words := []ocr.Word{
+		word("SURNAME", 300, 60), word("GIVEN", 300, 100),
+		word("|01/28/1980", 300, 180), word("09/21/2026", 300, 220),
+	}
+	got, err := parsePentacamIdentityWords(words)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.FullName != "GIVEN SURNAME" || got.ExamDateRaw != "09/21/2026" || got.BirthDateRaw != "01/28/1980" {
+		t.Fatalf("unexpected: %+v", got)
 	}
 }
 
@@ -88,8 +104,8 @@ func TestStripBoxBorderKeepsLetterStems(t *testing.T) {
 // scale) must not leak into the name (it did: "° 2/25 Segmento: 294° ...").
 func TestIdentityNameStopsAtGapAndIgnoresDigitWords(t *testing.T) {
 	words := panelWords("Nasc.:", "01/28/1980")
-	words = append(words, word("2/25", 1400, 100), word("Segmento:", 1500, 100))
-	words = append(words, word("294°", 380, 100))
+	words = append(words, word("2/25", 1400, 60), word("Segmento:", 1500, 60))
+	words = append(words, word("294°", 380, 60))
 	got, err := parsePentacamIdentityWords(words)
 	if err != nil {
 		t.Fatal(err)

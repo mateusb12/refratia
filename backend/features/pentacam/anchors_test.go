@@ -52,3 +52,14 @@ func TestAllEqual(t *testing.T) {
 		t.Fatal("allEqual must require every reading to match")
 	}
 }
+
+func TestCrossCheckAstigmatism(t *testing.T) {
+	ok := map[string]any{"k1_d": 43.5, "k2_d": 44.0, "astigmatism_d": 0.5}
+	if c := crossCheckAstigmatism(ok); len(c) != 0 || ok["astigmatism_d"] != 0.5 {
+		t.Fatal("consistent astigmatism must stay")
+	}
+	bad := map[string]any{"k1_d": 43.5, "k2_d": 44.0, "astigmatism_d": 5.0}
+	if c := crossCheckAstigmatism(bad); len(c) != 1 || c[0].Status != "conflicting" || bad["astigmatism_d"] != nil {
+		t.Fatal("astigmatism read as 5 instead of 0.5 must be removed and conflict")
+	}
+}
