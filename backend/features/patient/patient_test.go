@@ -863,3 +863,24 @@ func TestNamesSimilarCatchesOCRTypoButNotOtherPeople(t *testing.T) {
 		t.Fatal("different people must not be similar")
 	}
 }
+
+func TestNamesSimilarIsIndependentOfSortOrder(t *testing.T) {
+	// The typo changes the sorted position of the token.
+	for _, c := range [][2]string{
+		{"ANA JZ BRAGA", "ANA Z BRAGA"},
+		{"DANIELA JVSXQ ROCHA", "DANIELA VSXQ ROCHA"},
+		{"JOAO ZZ AGUIAR", "JOAO ZZ AGUIAR"},
+	} {
+		if !NamesSimilar(c[0], c[1]) || !NamesSimilar(c[1], c[0]) {
+			t.Errorf("%q and %q must be similar", c[0], c[1])
+		}
+	}
+	for _, c := range [][2]string{
+		{"ANA JZ BRAGA", "CARLOS ANDRADE LIMA"},
+		{"ANA MARIA BRAGA", "ANA PAULA SOUZA"},
+	} {
+		if NamesSimilar(c[0], c[1]) {
+			t.Errorf("%q and %q are different people", c[0], c[1])
+		}
+	}
+}

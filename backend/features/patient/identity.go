@@ -534,12 +534,26 @@ func NamesSimilar(a, b string) bool {
 	if len(ta) != len(tb) || len(ta) == 0 {
 		return false
 	}
-	for i := range ta {
-		if editDistance(ta[i], tb[i]) > 2 {
-			return false
+	// Tokens are paired by edit distance, not by sorted position: a typo can
+	// change the sort order. Names have few tokens, so backtracking is cheap.
+	used := make([]bool, len(tb))
+	var pair func(i int) bool
+	pair = func(i int) bool {
+		if i == len(ta) {
+			return true
 		}
+		for j := range tb {
+			if !used[j] && editDistance(ta[i], tb[j]) <= 2 {
+				used[j] = true
+				if pair(i + 1) {
+					return true
+				}
+				used[j] = false
+			}
+		}
+		return false
 	}
-	return true
+	return pair(0)
 }
 
 func editDistance(a, b string) int {

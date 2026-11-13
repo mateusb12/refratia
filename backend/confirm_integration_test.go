@@ -292,9 +292,10 @@ func confirmWith(t *testing.T, id string, decision map[string]string) (int, map[
 
 func TestNameTypoVariantRequiresIdentityDecision(t *testing.T) {
 	ctx, client, bucket := integrationSetup(t)
-	stamp := uniqueName()[len("TESTE PERSIST "):]
-	typo := "DANIELA J" + stamp + " ROCHA"
-	clean := "DANIELA " + stamp + " ROCHA"
+	// Fixed names (deterministic): the typo changes the sorted token order.
+	typo, clean := "ANA JZ BRAGA", "ANA Z BRAGA"
+	// Fixed identity: clear debris of earlier runs (test DB only).
+	appDatabase.Gorm.Where("birth_date = ?", "1973-07-08").Delete(&database.Patient{})
 	status, first := confirm(t, putDraft(t, ctx, client, bucket, typo, "1973-07-08", testDocs[:1]))
 	if status != 200 {
 		t.Fatalf("seed: %d %v", status, first)
@@ -330,7 +331,7 @@ func TestNameTypoVariantRequiresIdentityDecision(t *testing.T) {
 	}
 
 	// new: a second patient, knowingly.
-	id2 := putDraft(t, ctx, client, bucket, "DANIELA K"+stamp+" ROCHA", "1973-07-08", testDocs[2:3])
+	id2 := putDraft(t, ctx, client, bucket, "ANA KZ BRAGA", "1973-07-08", testDocs[2:3])
 	status, out = confirmWith(t, id2, map[string]string{"action": "new"})
 	if status != 200 || out["action"] != "created" {
 		t.Fatalf("new: %d %v", status, out)
