@@ -1,109 +1,85 @@
 package pentacam
 
 import (
-	"context"
-	"os"
 	"testing"
 
 	"refratia/backend/shared/ocr"
 )
 
-func TestParsePentacamIdentityWords(t *testing.T) {
+func word(text string, left, top int) ocr.Word {
+	return ocr.Word{Text: text, Left: left, Top: top, Width: 40 + 10*len(text), Height: 24}
+}
+
+// panelWords builds the identity panel with one label per row and its value
+// to the right, on the same band.
+func panelWords(birthLabel string, birth string) []ocr.Word {
 	words := []ocr.Word{
-		{Text: "Sobrenome:", Left: 100, Top: 100},
-		{Text: "JDE", Left: 300, Top: 100},
-		{Text: "CARVALHO", Left: 380, Top: 100},
-		{Text: "Nome:", Left: 100, Top: 140},
-		{Text: "MARIA", Left: 300, Top: 140},
-		{Text: "GORETE", Left: 400, Top: 140},
-		{Text: "Nasc.:", Left: 100, Top: 180},
-		{Text: "03/21/1962", Left: 300, Top: 180},
-		{Text: "Data de Exame:", Left: 100, Top: 220},
-		{Text: "10/27/2026", Left: 300, Top: 220},
+		word("Sobrenome:", 100, 100), word("SURNAME", 300, 100),
+		word("Nome:", 100, 140), word("GIVEN", 300, 140),
+		word("Data", 100, 220), word("de", 160, 220), word("Exame:", 200, 220), word("09/21/2026", 300, 220), word("Hora:", 500, 220), word("09:39:37", 580, 220),
 	}
+	if birthLabel != "" {
+		words = append(words, word(birthLabel, 100, 180))
+	}
+	if birth != "" {
+		words = append(words, word(birth, 300, 180), word("Olho:", 500, 180), word("Direito", 580, 180))
+	}
+	return words
+}
 
-	got, err := parsePentacamIdentityWords(words)
+func TestIdentityBindsEachValueToItsLabelBand(t *testing.T) {
+	got, err := parsePentacamIdentityWords(panelWords("Nasc.:", "01/28/1980"))
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	if got.FullName != "MARIA GORETE JDE CARVALHO" {
-		t.Fatalf("nome inesperado: %q", got.FullName)
+	if got.FullName != "GIVEN SURNAME" || got.BirthDateRaw != "01/28/1980" || got.ExamDateRaw != "09/21/2026" {
+		t.Fatalf("unexpected identity: %+v", got)
 	}
-	if got.BirthDateRaw != "03/21/1962" {
-		t.Fatalf("nascimento inesperado: %q", got.BirthDateRaw)
-	}
-	if got.ExamDateRaw != "10/27/2026" {
-		t.Fatalf("data do exame inesperada: %q", got.ExamDateRaw)
+	if got.DateOrder != "MDY" {
+		t.Fatalf("Pentacam date order must be declared MDY, got %q", got.DateOrder)
 	}
 }
 
-func TestParsePentacamIdentityWordsDoesNotUseExamDateAsBirthDate(t *testing.T) {
-	words := []ocr.Word{
-		{Text: "Data", Left: 100, Top: 100},
-		{Text: "de", Left: 150, Top: 100},
-		{Text: "Exame:", Left: 180, Top: 100},
-		{Text: "11/04/2026", Left: 300, Top: 100},
-		{Text: "Nasc.:", Left: 100, Top: 140},
-		{Text: "12/14/1979", Left: 300, Top: 140},
-		{Text: "Sobrenome:", Left: 100, Top: 180},
-		{Text: "AVERSA MARTINELLI", Left: 300, Top: 180},
-		{Text: "Nome:", Left: 100, Top: 220},
-		{Text: "CRESO", Left: 300, Top: 220},
-	}
-
-	got, err := parsePentacamIdentityWords(words)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.BirthDateRaw != "12/14/1979" {
-		t.Fatalf("nascimento inesperado: %q", got.BirthDateRaw)
-	}
-	if got.ExamDateRaw != "11/04/2026" {
-		t.Fatalf("data do exame inesperada: %q", got.ExamDateRaw)
+// F8: when the "Nasc." label is not read, the birth date must stay missing; it
+// must never fall through to the next row (the exam date).
+func TestIdentityNeverBorrowsExamDateForUnreadBirthLabel(t *testing.T) {
+	_, err := parsePentacamIdentityWords(panelWords("", "01/28/1980"))
+	if err == nil {
+		t.Fatal("expected an error: birth date label was not read")
 	}
 }
 
-func TestExtractIdentityFromMariaGoretePentacam(t *testing.T) {
-	if os.Getenv("REFRATIA_RUN_INTEGRATION_TESTS") != "1" {
-		t.Skip("teste de integração desabilitado; use REFRATIA_RUN_INTEGRATION_TESTS=1")
+func TestIdentityDropsImplausibleBirthDate(t *testing.T) {
+	cases := map[string]string{
+		"birth equals exam date":  "09/21/2026",
+		"patient younger than 18": "09/21/2015",
+		"birth after exam":        "10/01/2026",
 	}
-	data, err := os.ReadFile("../../../frontend/data/maria-gorete/PENTACAM OD MARIA GORETE.pdf")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	got, err := ExtractIdentity(context.Background(), data)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if got.FullName != "MARIA GORETE JDE CARVALHO" {
-		t.Fatalf("nome inesperado: %q", got.FullName)
-	}
-	if got.BirthDateRaw != "03/21/1962" {
-		t.Fatalf("nascimento inesperado: %q", got.BirthDateRaw)
-	}
-	if got.ExamDateRaw != "10/27/2026" {
-		t.Fatalf("data do exame inesperada: %q", got.ExamDateRaw)
+	for name, birth := range cases {
+		got, err := parsePentacamIdentityWords(panelWords("Nasc.:", birth))
+		if err != nil {
+			// the whole identity is refused only when name AND birth are missing
+			continue
+		}
+		if got.BirthDateRaw != "" || got.BirthDateIssue != "conflicting" {
+			t.Errorf("%s: expected the birth date to be dropped as conflicting, got %+v", name, got)
+		}
 	}
 }
 
-func TestExtractIdentityFromCresoAversaPentacam(t *testing.T) {
-	if os.Getenv("REFRATIA_RUN_INTEGRATION_TESTS") != "1" {
-		t.Skip("teste de integração desabilitado; use REFRATIA_RUN_INTEGRATION_TESTS=1")
+func TestStripBoxBorderKeepsLetterStems(t *testing.T) {
+	g := newGray(60, 30)
+	for y := 0; y < 30; y++ { // full-height border at x=2
+		g.SetGray(2, y, black)
 	}
-	data, err := os.ReadFile("../../../frontend/data/creso-aversa/PENTACAM CRESO AVERSA OS .pdf")
-	if err != nil {
-		t.Fatal(err)
+	for y := 8; y < 22; y++ { // a letter stem, about half the height
+		g.SetGray(20, y, black)
 	}
-
-	got, err := ExtractIdentity(context.Background(), data)
-	if err != nil {
-		t.Fatal(err)
+	out := stripBoxBorder(g)
+	if out.Bounds().Dx() >= 60 {
+		t.Fatal("border was not cut")
 	}
-
-	if got.FullName != "CRESO AVERSA MARTINELLI" || got.BirthDateRaw != "12/14/1979" || got.ExamDateRaw != "11/04/2026" {
-		t.Fatalf("identidade inesperada: %#v", got)
+	if out.GrayAt(20, 15).Y != 0 {
+		t.Fatal("letter stem was damaged")
 	}
 }

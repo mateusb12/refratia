@@ -49,3 +49,13 @@ func TestBinaryUpscalePolarityAndColour(t *testing.T) {
 		}
 	}
 }
+
+var black = color.Gray{Y: 0}
+
+func newGray(w, h int) *image.Gray {
+	g := image.NewGray(image.Rect(0, 0, w, h))
+	for i := range g.Pix {
+		g.Pix[i] = 255
+	}
+	return g
+}

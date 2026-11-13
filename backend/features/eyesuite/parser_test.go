@@ -127,7 +127,7 @@ func TestParseEyeSuiteIdentityWords(t *testing.T) {
 	}
 }
 
-func TestParseEyeSuiteIdentityRejectsIncompleteHeader(t *testing.T) {
+func TestParseEyeSuiteIdentityKeepsNameAndBirthWithoutTimestamp(t *testing.T) {
 	words := []ocr.Word{
 		{Text: "PESSOA", Left: 100, Top: 420},
 		{Text: "TESTE", Left: 300, Top: 420},
@@ -137,7 +137,11 @@ func TestParseEyeSuiteIdentityRejectsIncompleteHeader(t *testing.T) {
 		{Text: "(CID):", Left: 1510, Top: 440},
 	}
 
-	if _, err := parseEyeSuiteIdentityWords(words); err == nil {
-		t.Fatal("cabeçalho sem timestamp deveria ser rejeitado")
+	got, err := parseEyeSuiteIdentityWords(words)
+	if err != nil {
+		t.Fatalf("name and birth date are valid evidence without a timestamp: %v", err)
+	}
+	if got.BirthDateRaw != "03/14/1980" || got.TimestampRaw != "" {
+		t.Fatalf("unexpected identity: %+v", got)
 	}
 }

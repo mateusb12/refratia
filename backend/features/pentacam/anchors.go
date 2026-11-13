@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"image"
+	"os"
 	"regexp"
 	"strings"
 
@@ -21,21 +22,25 @@ type anchorField struct {
 	Spec    string         // field name in _field_spec.json (printed format, range)
 	Screens []Screen       // screens tried in order (first that yields a value)
 	Label   *regexp.Regexp // matched against the normalised label words
+	// (IVA's label is often garbled by the OCR; it is the nearest short word
+	// below ISV in the same column.)
 	// ColumnOf, when set, restricts candidates to labels below the label of
 	// that other anchor and in the same column (the "Índices" box repeats
 	// labels such as KI that also exist in the cornea boxes).
 	ColumnOf string
+	// Bottom picks the bottom-most match instead of the topmost.
+	Bottom bool
 }
 
 func lbl(pattern string) *regexp.Regexp { return regexp.MustCompile(`^(?:` + pattern + `)$`) }
 
 var anchorFields = []anchorField{
 	// Córnea Ant. box (identical on the 4-maps and topometric screens).
-	{Key: "k1_d", Spec: "k1_d", Screens: []Screen{ScreenRefractive, ScreenTopometric}, Label: lbl(`k[1il]`)},
-	{Key: "k2_d", Spec: "k2_d", Screens: []Screen{ScreenRefractive, ScreenTopometric}, Label: lbl(`k2`)},
-	{Key: "km_d", Spec: "km_d", Screens: []Screen{ScreenRefractive, ScreenTopometric}, Label: lbl(`km`)},
-	{Key: "astigmatism_d", Spec: "astig_ant_d", Screens: []Screen{ScreenRefractive, ScreenTopometric}, Label: lbl(`astig`)},
-	{Key: "axis_deg", Spec: "axis_flat_deg", Screens: []Screen{ScreenRefractive, ScreenTopometric}, Label: lbl(`eixo`)},
+	{Key: "k1_d", Spec: "k1_d", Screens: []Screen{ScreenTopometric, ScreenRefractive}, Label: lbl(`k[1il]`)},
+	{Key: "k2_d", Spec: "k2_d", Screens: []Screen{ScreenTopometric, ScreenRefractive}, Label: lbl(`k2`)},
+	{Key: "km_d", Spec: "km_d", Screens: []Screen{ScreenTopometric, ScreenRefractive}, Label: lbl(`km`)},
+	{Key: "astigmatism_d", Spec: "astig_ant_d", Screens: []Screen{ScreenTopometric, ScreenRefractive}, Label: lbl(`astig`)},
+	{Key: "axis_deg", Spec: "axis_flat_deg", Screens: []Screen{ScreenTopometric, ScreenRefractive}, Label: lbl(`eixo`)},
 
 	// Topometric screen.
 	{Key: "kmax_d", Spec: "kmax_ant_d", Screens: []Screen{ScreenTopometric}, Label: lbl(`k m[aá]x ant`)},
@@ -43,12 +48,17 @@ var anchorFields = []anchorField{
 	{Key: "pupil_center_um", Spec: "pachy_pupil_center_um", Screens: []Screen{ScreenTopometric}, Label: lbl(`centro pupilar`)},
 	{Key: "vertex_normal_um", Spec: "pachy_vertex_um", Screens: []Screen{ScreenTopometric}, Label: lbl(`pachy vertex n`)},
 	{Key: "acd_external_mm", Spec: "acd_ext_mm", Screens: []Screen{ScreenTopometric}, Label: lbl(`prof c.mara ant ext`)},
-	{Key: "isv", Spec: "isv", Screens: []Screen{ScreenTopometric}, Label: lbl(`isv|15v`)},
+	{Key: "isv", Spec: "isv", Screens: []Screen{ScreenTopometric}, Label: lbl(`[i1l][s5][vy]`)},
 	{Key: "iha", Spec: "iha", Screens: []Screen{ScreenTopometric}, Label: lbl(`iha`)},
 	{Key: "ihd", Spec: "ihd", Screens: []Screen{ScreenTopometric}, Label: lbl(`ihd`)},
-	{Key: "iva", Spec: "iva", Screens: []Screen{ScreenTopometric}, Label: lbl(`iva|vay|iv4`), ColumnOf: "isv"},
+	{Key: "iva", Spec: "iva", Screens: []Screen{ScreenTopometric}, Label: lbl(`iva|[a-z0-9]{2,4}`), ColumnOf: "isv"},
 	{Key: "ki", Spec: "ki", Screens: []Screen{ScreenTopometric}, Label: lbl(`k[i1l]`), ColumnOf: "isv"},
 	{Key: "cki", Spec: "cki", Screens: []Screen{ScreenTopometric}, Label: lbl(`cki`)},
+
+	// Belin/Ambrósio screen: "D:" is the bottom-most single-letter label of
+	// the page (the deviation-index row); ARTmax sits in the progression box.
+	{Key: "bad_d", Spec: "bad_d", Screens: []Screen{ScreenBelin}, Label: lbl(`d`), Bottom: true},
+	{Key: "art_max", Spec: "art_max_um", Screens: []Screen{ScreenBelin}, Label: lbl(`art\s?max`)},
 
 	// Cataract Pre-OP screen.
 	{Key: "z40_6mm_um", Spec: "z40_6mm_um", Screens: []Screen{ScreenCataract}, Label: lbl(`z40`)},
@@ -181,17 +191,11 @@ func readAnchored(
 			}
 			sw := load(screen)
 			span, found := pickLabel(sw.spans, field, located)
-			if debugAnchors {
-				println("DBG", field.Key, found, span.text, span.left, span.top)
-			}
 			if !found {
 				continue
 			}
 			located[field.Key] = span
 			value, votes, candidates, rect, ok := readValueBox(ctx, img, sw.words, span, rule)
-			if debugAnchors {
-				println("DBG  ->", field.Key, value, votes, candidates, ok)
-			}
 			if !ok {
 				continue
 			}
@@ -228,10 +232,10 @@ func pickLabel(spans []labelSpan, field anchorField, located map[string]labelSpa
 		if !field.Label.MatchString(s.text) {
 			continue
 		}
-		if ref != nil && (s.top < ref.top || s.left < ref.left-ref.height || s.left > ref.left+2*ref.height) {
+		if ref != nil && (s.top <= ref.top+ref.height/2 || s.left < ref.left-ref.height || s.left > ref.left+2*ref.height) {
 			continue
 		}
-		if best == nil || s.top < best.top {
+		if best == nil || (!field.Bottom && s.top < best.top) || (field.Bottom && s.top > best.top) {
 			best = &spans[i]
 		}
 	}
@@ -336,9 +340,6 @@ func readValueBox(
 		}
 	}
 
-	if debugAnchors {
-		println("DBG   votes", label.text, fmt.Sprint(votes))
-	}
 	bestValue, bestVotes, rival := 0.0, 0, false
 	for v, n := range votes {
 		switch {
@@ -351,6 +352,10 @@ func readValueBox(
 	total := 0
 	for _, n := range votes {
 		total += n
+	}
+	if os.Getenv("REFRATIA_OCR_DEBUG") == "1" {
+		// Clinical readings only (never identity fields).
+		fmt.Fprintf(os.Stderr, "pentacam anchor %q votes=%v\n", label.text, votes)
 	}
 	// A competing reading (3 vs 9 in a pixel font) must not be outvoted by a
 	// small margin: with rivals the winner needs 80% of the valid reads.
@@ -447,5 +452,3 @@ func abs(v int) int {
 	}
 	return v
 }
-
-var debugAnchors = false

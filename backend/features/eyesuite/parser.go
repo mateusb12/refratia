@@ -2,7 +2,6 @@ package eyesuite
 
 import (
 	"errors"
-	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
@@ -53,9 +52,12 @@ func parseEyeSuiteTSV(tsv string) (map[string]any, error) {
 
 		payload, err := parseEyeSuiteEye(selected)
 		if err != nil {
-			return nil, fmt.Errorf("%s: %w", eye.Name, err)
+			continue // that eye yielded nothing; the other one may still be good
 		}
 		eyes[eye.Name] = payload
+	}
+	if len(eyes) == 0 {
+		return nil, errors.New("nenhum olho EyeSuite lido")
 	}
 
 	return map[string]any{"eyes": eyes}, nil
@@ -104,45 +106,36 @@ func parseEyeSuiteEye(words []ocr.Word) (map[string]any, error) {
 		}
 	}
 
-	required := []string{
-		"axial_length_mm",
-		"k1_d",
-		"k2_d",
-		"mean_k_d",
-		"astigmatism_d",
-		"anterior_chamber_depth_mm",
-		"lens_thickness_mm",
-		"white_to_white_mm",
-		"target_refraction_d",
-	}
-
-	missing := make([]string, 0)
-	for _, key := range required {
-		if _, ok := values[key]; !ok {
-			missing = append(missing, key)
+	// Partial results: a field the page did not yield stays absent (the
+	// diagnostics report it as missing) instead of discarding the fields that
+	// were read. Only an eye with nothing at all is an error.
+	keratometry := map[string]any{}
+	payload := map[string]any{}
+	put := func(into map[string]any, key, valueKey string) {
+		if value, ok := values[valueKey]; ok {
+			into[key] = value
 		}
 	}
-	if !axisFound {
-		missing = append(missing, "astigmatism_axis_deg")
+	put(payload, "axial_length_mm", "axial_length_mm")
+	put(keratometry, "k1_d", "k1_d")
+	put(keratometry, "k2_d", "k2_d")
+	put(keratometry, "mean_k_d", "mean_k_d")
+	put(keratometry, "astigmatism_d", "astigmatism_d")
+	if axisFound {
+		keratometry["astigmatism_axis_deg"] = astigAxis
 	}
-	if len(missing) > 0 {
-		return nil, fmt.Errorf("campos ausentes: %s", strings.Join(missing, ", "))
+	if len(keratometry) > 0 {
+		payload["keratometry"] = keratometry
 	}
+	put(payload, "anterior_chamber_depth_mm", "anterior_chamber_depth_mm")
+	put(payload, "lens_thickness_mm", "lens_thickness_mm")
+	put(payload, "white_to_white_mm", "white_to_white_mm")
+	put(payload, "target_refraction_d", "target_refraction_d")
 
-	return map[string]any{
-		"axial_length_mm": values["axial_length_mm"],
-		"keratometry": map[string]any{
-			"k1_d":                 values["k1_d"],
-			"k2_d":                 values["k2_d"],
-			"mean_k_d":             values["mean_k_d"],
-			"astigmatism_d":        values["astigmatism_d"],
-			"astigmatism_axis_deg": astigAxis,
-		},
-		"anterior_chamber_depth_mm": values["anterior_chamber_depth_mm"],
-		"lens_thickness_mm":         values["lens_thickness_mm"],
-		"white_to_white_mm":         values["white_to_white_mm"],
-		"target_refraction_d":       values["target_refraction_d"],
-	}, nil
+	if len(payload) == 0 {
+		return nil, errors.New("nenhum campo EyeSuite lido")
+	}
+	return payload, nil
 }
 
 func decimalAfter(text, labelPattern string) (float64, bool) {
@@ -273,13 +266,14 @@ func parseEyeSuiteIdentityWords(words []ocr.Word) (Identity, error) {
 		}
 	}
 
-	if examDate == "" || examTime == "" {
-		return Identity{}, errors.New("EyeSuite: timestamp não localizado")
-	}
-
-	timestamp := examdate.FromOCR(examDate + " " + examTime)
-	if timestamp == "" {
-		timestamp = examDate + " " + examTime
+	// The timestamp is optional: without it the name and birth date are still
+	// valid identity evidence (the declared DMY order does not depend on it).
+	timestamp := ""
+	if examDate != "" && examTime != "" {
+		timestamp = examdate.FromOCR(examDate + " " + examTime)
+		if timestamp == "" {
+			timestamp = examDate + " " + examTime
+		}
 	}
 
 	return Identity{

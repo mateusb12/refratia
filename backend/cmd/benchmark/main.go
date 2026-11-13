@@ -22,6 +22,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -122,6 +123,13 @@ func main() {
 		slugs = strings.Split(*patients, ",")
 	}
 
+	// one run at a time: the bench DB and bucket are shared and wiped at start
+	lock, err := os.OpenFile(filepath.Join(os.TempDir(), "refratia-benchmark.lock"), os.O_CREATE|os.O_RDWR, 0o644)
+	must(err)
+	if syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB) != nil {
+		die("another benchmark run is in progress (shared refratia_bench DB/bucket); wait for it to finish")
+	}
+	defer lock.Close()
 	e.resetInfra(ctx)
 	stop := e.startBackend(ctx, *backendDir)
 	defer stop()
@@ -603,7 +611,7 @@ func (e *env) runPatient(ctx context.Context, slug string) *PatientRun {
 	cs, cbody := e.confirm(ctx, intakeID)
 	b, _ := json.Marshal(cbody)
 	os.WriteFile(filepath.Join(e.out, "raw", slug+".confirm1.json"), b, 0o644)
-	add("persistence", "confirm_http_200", cs == 200, fmt.Sprintf("HTTP %d status=%s", cs, sval(cbody, "status")))
+	add("persistence", "confirm_http_200", cs == 200, fmt.Sprintf("HTTP %d action=%s", cs, sval(cbody, "action")))
 	post1 := e.snapshot(ctx)
 	e.persistenceChecks(g, pre, post1, byName, add)
 
@@ -628,9 +636,32 @@ func (e *env) runPatient(ctx context.Context, slug string) *PatientRun {
 	post3 := e.snapshot(ctx)
 	d3 := diffSnap(post2, post3)
 	pr.Changes = d3
-	add("idempotency", "reingest_no_duplicates", cs3 == 200 && len(d3) == 0,
-		fmt.Sprintf("HTTP %d status=%s; changes: %s", cs3, sval(cb3, "status"), summarize(d3)))
+	add("idempotency", "reingest_no_duplicates", cs3 == 200 && !structural(d3),
+		fmt.Sprintf("HTTP %d action=%s; changes: %s", cs3, sval(cb3, "action"), summarize(d3)))
 	return pr
+}
+
+// structural: any added/removed patient, row or object (size-only changes, e.g. the merged manifest, are recorded but allowed).
+func structural(d []string) bool {
+	for _, x := range d {
+		if !strings.HasPrefix(x, "object size changed") {
+			return true
+		}
+	}
+	return false
+}
+
+func nameCmp(got, want string) (bool, string) {
+	if normStr(got) == normStr(want) {
+		return true, "match"
+	}
+	a, b := strings.Fields(normStr(got)), strings.Fields(normStr(want))
+	sort.Strings(a)
+	sort.Strings(b)
+	if strings.Join(a, " ") == strings.Join(b, " ") {
+		return false, "mismatch: same words, different order"
+	}
+	return false, "mismatch"
 }
 
 func summarize(d []string) string {
@@ -649,7 +680,8 @@ func (e *env) identityChecks(g *GT, analysis any, add func(string, string, bool,
 	ns, _ := nm.(string)
 	bs, _ := bd.(string)
 	wantName, _ := g.Patient.FullName.Value.(string)
-	add("identity", "name", normStr(ns) == normStr(wantName), map[bool]string{true: "match", false: "mismatch"}[normStr(ns) == normStr(wantName)])
+	nok, nd := nameCmp(ns, wantName)
+	add("identity", "name", nok, nd)
 	if g.Patient.BirthDate.Verification != "agent_visual" {
 		add("identity", "birth_date", true, "unverified (needs_human in ground truth); value not scored")
 	} else {
@@ -679,8 +711,8 @@ func (e *env) persistenceChecks(g *GT, pre, post *Snap, shaByName map[string]str
 	if len(np) == 1 {
 		patientID, caseID = sval(np[0], "id"), sval(np[0], "case_id")
 		wantName, _ := g.Patient.FullName.Value.(string)
-		ok := normStr(sval(np[0], "full_name")) == normStr(wantName)
-		add("persistence", "patient_row_name", ok, map[bool]string{true: "match", false: "mismatch"}[ok])
+		ok, d := nameCmp(sval(np[0], "full_name"), wantName)
+		add("persistence", "patient_row_name", ok, d)
 		if g.Patient.BirthDate.Verification == "agent_visual" {
 			want, _ := g.Patient.BirthDate.Value.(string)
 			ok := normDate(sval(np[0], "birth_date")) == want

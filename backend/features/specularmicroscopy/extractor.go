@@ -290,40 +290,55 @@ func ocrMicroscopyPanel(
 		return panelOCRResult{}, err
 	}
 
-	tsv, err :=
-		ocr.RunTesseractTSVWithPSM(
-			ctx,
-			pngData,
-			6,
-		)
+	first, err := ocrPanelPNG(ctx, pngData, 6)
 	if err != nil {
 		return panelOCRResult{}, err
 	}
+	if looksLikeSpecularMicroscopyText(first.Text) {
+		return first, nil
+	}
 
-	words, _, err :=
-		ocr.ParseTSVWords(tsv)
+	// The raw crop can lose a whole row (small, low-contrast text). Retry the
+	// same panel upscaled x3 with the darkest-channel grey, auto-contrast and
+	// binarized, under two page segmentation modes, and keep the first reading
+	// in which the density row is recognised.
+	crop := image.Rect(panel.x, panel.y, panel.x+panel.w, panel.y+panel.h)
+	for _, variant := range []struct {
+		binarize int
+		psm      int
+	}{{0, 6}, {0, 4}, {60, 6}, {60, 4}} {
+		gray := ocr.PrepareGray(img, crop, 3, 0)
+		ocr.AutoContrast(gray)
+		if variant.binarize > 0 {
+			gray = ocr.Binarize(gray, variant.binarize)
+		}
+		encoded, encodeErr := ocr.EncodePNG(gray)
+		if encodeErr != nil {
+			continue
+		}
+		result, ocrErr := ocrPanelPNG(ctx, encoded, variant.psm)
+		if ocrErr == nil && looksLikeSpecularMicroscopyText(result.Text) {
+			return result, nil
+		}
+	}
+	return first, nil
+}
+
+func ocrPanelPNG(ctx context.Context, pngData []byte, psm int) (panelOCRResult, error) {
+	tsv, err := ocr.RunTesseractTSVWithPSM(ctx, pngData, psm)
 	if err != nil {
 		return panelOCRResult{}, err
 	}
-
+	words, _, err := ocr.ParseTSVWords(tsv)
+	if err != nil {
+		return panelOCRResult{}, err
+	}
 	rows := ocr.GroupRows(words, 12)
-
-	textRows :=
-		make([]string, 0, len(rows))
-
+	textRows := make([]string, 0, len(rows))
 	for _, row := range rows {
-		textRows =
-			append(
-				textRows,
-				ocr.RowText(row),
-			)
+		textRows = append(textRows, ocr.RowText(row))
 	}
-
-	return panelOCRResult{
-		Processed: pngData,
-		TSV:       tsv,
-		Text:      strings.Join(textRows, "\n"),
-	}, nil
+	return panelOCRResult{Processed: pngData, TSV: tsv, Text: strings.Join(textRows, "\n")}, nil
 }
 
 func looksLikeSpecularMicroscopyText(
@@ -497,18 +512,14 @@ func specularOCRDebugEnabled() bool {
 	return os.Getenv("REFRATIA_OCR_DEBUG") == "1"
 }
 
-func debugSpecularPanel(index int, original image.Rectangle, panel panelRect, processed []byte, rawTSV, lines, laterality string) {
+// debugSpecularPanel prints geometry and the parse outcome only. The raw OCR
+// text and the crop are never printed or saved: the panel header carries the
+// patient's name and id.
+func debugSpecularPanel(index int, original image.Rectangle, panel panelRect, _ []byte, _, lines, laterality string) {
 	if !specularOCRDebugEnabled() {
 		return
 	}
-
 	panelName := []string{"R", "L"}[index]
-	processedImage, err := png.Decode(bytes.NewReader(processed))
-	processedSize := "unknown"
-	if err == nil {
-		processedSize = fmt.Sprintf("%dx%d", processedImage.Bounds().Dx(), processedImage.Bounds().Dy())
-	}
-
 	_, _, reason, ok := parseCellDensityDetailed(lines)
 	if ok {
 		reason = "match"
@@ -516,18 +527,8 @@ func debugSpecularPanel(index int, original image.Rectangle, panel panelRect, pr
 	if laterality == "" {
 		laterality = "<missing>"
 	}
-
-	fmt.Fprintf(os.Stderr, "=== SPECULAR OCR DEBUG ===\npanel=%s\noriginal=%dx%d\nroi=%d,%d,%d,%d\ncrop=%dx%d\nprocessed=%s\npreprocess=raw_crop psm=6\n--- RAW OCR ---\n%s\n--- RECONSTRUCTED LINES ---\n%s\n--- RELEVANT TOKENS ---\n%s\n--- PARSE ---\nlaterality=%s\ncell_density=%s\nreason=%q\n", panelName, original.Dx(), original.Dy(), panel.x, panel.y, panel.x+panel.w, panel.y+panel.h, panel.w, panel.h, processedSize, redactDebugTSV(rawTSV), redactDebugLines(lines), relevantOCRTokens(lines), laterality, densityDebugValue(lines), reason)
-
-	if os.Getenv("REFRATIA_OCR_DEBUG_SAVE") == "1" {
-		path := fmt.Sprintf("/tmp/specular-%s-preprocessed.png", panelName)
-		if err := os.WriteFile(path, processed, 0600); err != nil {
-			fmt.Fprintf(os.Stderr, "debug_save_error=%q\n", err.Error())
-		} else {
-			fmt.Fprintf(os.Stderr, "debug_saved=%s\n", path)
-		}
-	}
-
+	fmt.Fprintf(os.Stderr, "specular panel=%s original=%dx%d roi=%d,%d,%d,%d laterality=%s reason=%q\n",
+		panelName, original.Dx(), original.Dy(), panel.x, panel.y, panel.x+panel.w, panel.y+panel.h, laterality, reason)
 }
 
 func redactDebugTSV(tsv string) string {

@@ -61,6 +61,7 @@ func tryExtractPentacamLocal(
 			identity.FullName,
 			identity.BirthDateRaw,
 			identity.ExamDateRaw,
+			"MDY", // the Pentacam prints MM/DD/YYYY
 		)
 	}
 
@@ -82,12 +83,18 @@ func tryExtractPentacamLocal(
 	return true
 }
 
+// mergeLocalPatientIdentity records one document's identity reading and then
+// lets the patient feature derive patient.full_name / birth_date from ALL the
+// evidence. Order matters: the raw reading (with the device's declared
+// day/month order) is appended first and canonicalised afterwards, so
+// patient.birth_date is ISO or absent, never the raw device string.
 func mergeLocalPatientIdentity(
 	analysis map[string]any,
 	source,
 	fullName,
-	birthDateRaw string,
-	examDateRaw string,
+	birthDateRaw,
+	examDateRaw,
+	dateOrder string,
 ) {
 	patient, _ := analysis["patient"].(map[string]any)
 	if patient == nil {
@@ -98,29 +105,35 @@ func mergeLocalPatientIdentity(
 	if current, _ := patient["full_name"].(string); strings.TrimSpace(current) == "" {
 		patient["full_name"] = fullName
 	}
-	if _, ok := patientfeature.CanonicalBirthDate(analysis); !ok {
-		patient["birth_date"] = birthDateRaw
-		if birthDate, valid := patientfeature.CanonicalBirthDate(analysis); valid {
-			patient["birth_date"] = birthDate
-		}
-	}
 
 	verification, _ := analysis["verificacao_identidade"].([]any)
+	known := false
 	for _, raw := range verification {
 		entry, _ := raw.(map[string]any)
 		if fmt.Sprint(entry["source"]) == source {
-			return
+			known = true
 		}
 	}
 
-	analysis["verificacao_identidade"] = append(verification, map[string]any{
-		"source":          source,
-		"nome_lido":       fullName,
-		"nascimento_lido": birthDateRaw,
-		"timestamp_lido":  examDateRaw,
-		"confidence":      "deterministic_template",
-		"method":          "local_ocr_tesseract",
-	})
+	if !known {
+		entry := map[string]any{
+			"source":          source,
+			"nome_lido":       fullName,
+			"nascimento_lido": birthDateRaw,
+			"timestamp_lido":  examDateRaw,
+			"confidence":      "deterministic_template",
+			"method":          "local_ocr_tesseract",
+		}
+		if dateOrder != "" {
+			entry["date_order"] = dateOrder
+		}
+		analysis["verificacao_identidade"] = append(verification, entry)
+	}
+
+	patientfeature.NormalizeIdentityFields(analysis)
+	if _, ok := patientfeature.CanonicalBirthDate(analysis); !ok {
+		delete(patient, "birth_date")
+	}
 }
 
 func mergeLocalPentacamExam(

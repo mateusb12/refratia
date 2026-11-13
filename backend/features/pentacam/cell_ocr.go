@@ -8,6 +8,7 @@ import (
 	"image/png"
 	"os"
 	"os/exec"
+	"refratia/backend/features/extractionfields"
 	"refratia/backend/shared/ocr"
 	"regexp"
 	"strconv"
@@ -43,7 +44,6 @@ func fillPentacamFocusedCells(
 
 		// Página 9 — Topométrico / Estadiamento KC.
 		// Célula K Máx. (ant.), sem incluir as bordas horizontais.
-		// Fixtures reais Rolmey: OD = 44.2 D; OS = 45.5 D.
 		{"kmax_d", layout.topometric, pentacamOCRRegion{335, 2250, 155, 55}, true, 20, 70},
 
 		// Índices: use células um pouco mais largas para tolerar o OCR do
@@ -110,11 +110,8 @@ func pentacamReadNumericCell(
 
 	psms := []int{7, 8, 13}
 
-	// Kmax fica em uma célula horizontal curta.
-	//
-	// PSM 7 foi estável semanticamente em host e container.
-	// PSM 13 confundiu 45.5 com 41.5 no ambiente Alpine,
-	// portanto não participa da votação deste campo.
+	// Fallback strategy only (fixed boxes). Short single-line cells vote with
+	// PSM 7; the index cells are read with sparse-text PSMs.
 	if spec.Key == "kmax_d" {
 		psms = []int{7}
 	}
@@ -132,51 +129,10 @@ func pentacamReadNumericCell(
 				continue
 			}
 
-			value, ok := pentacamParseCellNumber(
-				text,
-				spec.Decimal,
-				spec.Min,
-				spec.Max,
-			)
-
-			// O Tesseract pode remover apenas o separador decimal do IHA:
-			// "5.5"/"7.9" aparecem como "55"/"79". Só aceitamos
-			// exatamente dois dígitos nesta célula e dividimos por dez.
-			if !ok && spec.Key == "iha" {
-				compact := regexp.MustCompile(`^\s*([0-9]{2})\s*$`).FindStringSubmatch(text)
-				if len(compact) == 2 {
-					compactValue, parseErr := strconv.ParseFloat(compact[1], 64)
-					value = compactValue / 10
-					ok = parseErr == nil && value >= spec.Min && value <= spec.Max
-				}
-			}
-
-			// Z40 is a small isolated decimal cell. Some OCR runtimes
-			// return 0173 instead of 0.173 after removing the decimal.
-			if !ok && spec.Key == "z40_6mm_um" {
-				digits := regexp.MustCompile(`^\s*0?([0-9]{3})\s*$`).FindStringSubmatch(text)
-				if len(digits) == 2 {
-					compactValue, parseErr := strconv.ParseFloat("0."+digits[1], 64)
-					ok = parseErr == nil && compactValue >= spec.Min && compactValue <= spec.Max
-					value = compactValue
-				}
-			}
-
-			// No container Alpine, o Tesseract/Leptonica pode
-			// remover apenas o separador decimal do Kmax:
-			//
-			//   44.20 -> "4420"
-			//   45.50 -> "4550"
-			//
-			// Só aplicamos esta recuperação ao Kmax e somente
-			// quando o parser normal falhou.
-			if !ok && spec.Key == "kmax_d" {
-				value, ok = pentacamRecoverKMaxCompactDecimal(
-					text,
-					spec.Min,
-					spec.Max,
-				)
-			}
+			// One normalizer for every cell: the field's printed format
+			// decides how a missing separator is restored; the sign is
+			// preserved; there are no per-field patches.
+			value, ok := pentacamNormalizeCell(text, spec)
 
 			if !ok {
 				continue
@@ -327,61 +283,20 @@ func pentacamBinaryUpscale(
 	return buf.Bytes(), nil
 }
 
-// pentacamRecoverKMaxCompactDecimal recupera apenas o caso observado
-// em que o OCR do Kmax remove o separador decimal.
-//
-// Exemplos válidos:
-//
-//	"4420" -> 44.20
-//	"4550" -> 45.50
-//
-// Deliberadamente não recuperamos três dígitos:
-//
-//	"550" != 55.0
-//
-// porque esse padrão também apareceu como falso positivo em outros PSMs.
-func pentacamRecoverKMaxCompactDecimal(
-	text string,
-	min float64,
-	max float64,
-) (float64, bool) {
-	digits := make([]byte, 0, 4)
+// valueKeySpec maps the extractor's value keys to their _field_spec.json
+// field, so that every cell is normalised with its printed format.
+var valueKeySpec = map[string]string{
+	"k1_d": "k1_d", "k2_d": "k2_d", "km_d": "km_d", "astigmatism_d": "astig_ant_d",
+	"kmax_d": "kmax_ant_d", "thinnest_um": "pachy_thinnest_um", "isv": "isv", "iva": "iva",
+	"iha": "iha", "ihd": "ihd", "ki": "ki", "cki": "cki", "z40_6mm_um": "z40_6mm_um",
+	"acd_internal_mm": "acd_int_mm", "art_max": "art_max_um", "z31_5mm_um": "coma_z31_5mm_um",
+	"bad_d": "bad_d",
+}
 
-	for i := 0; i < len(text); i++ {
-		ch := text[i]
-
-		if ch < '0' || ch > '9' {
-			continue
-		}
-
-		digits = append(
-			digits,
-			ch,
-		)
-
-		if len(digits) > 4 {
-			return 0, false
-		}
-	}
-
-	if len(digits) != 4 {
+func pentacamNormalizeCell(text string, spec pentacamCellSpec) (float64, bool) {
+	rule, ok := extractionfields.RuleFor(examKey, valueKeySpec[spec.Key])
+	if !ok {
 		return 0, false
 	}
-
-	number := 0
-
-	for _, digit := range digits {
-		number =
-			number*10 +
-				int(digit-'0')
-	}
-
-	value :=
-		float64(number) / 100.0
-
-	if value < min || value > max {
-		return 0, false
-	}
-
-	return value, true
+	return normalizePrinted(text, rule)
 }

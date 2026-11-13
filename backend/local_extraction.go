@@ -14,8 +14,6 @@ import (
 	"refratia/backend/features/specularmicroscopy"
 
 	progress "refratia/backend/shared/progress"
-
-	patientfeature "refratia/backend/features/patient"
 )
 
 func localExamTypeFromFilename(
@@ -138,32 +136,15 @@ func tryExtractEyeSuiteLocal(
 		bundle.Exam
 
 	if bundle.Identity != nil {
-		patient := map[string]any{
-			"full_name": bundle.Identity.FullName,
-		}
-
-		analysis["patient"] = patient
-
-		analysis["verificacao_identidade"] =
-			[]any{
-				map[string]any{
-					"source":          file.Metadata.Filename,
-					"nome_lido":       bundle.Identity.FullName,
-					"nascimento_lido": bundle.Identity.BirthDateRaw,
-					"timestamp_lido":  bundle.Identity.TimestampRaw,
-					"confidence":      "deterministic_template",
-					"method":          "local_ocr_tesseract",
-				},
-			}
-
-		if birthDate, ok :=
-			patientfeature.CanonicalBirthDate(
-				analysis,
-			); ok {
-
-			patient["birth_date"] =
-				birthDate
-		}
+		// The EyeSuite prints DD/MM/YYYY.
+		mergeLocalPatientIdentity(
+			analysis,
+			file.Metadata.Filename,
+			bundle.Identity.FullName,
+			bundle.Identity.BirthDateRaw,
+			bundle.Identity.TimestampRaw,
+			"DMY",
+		)
 	}
 
 	return true

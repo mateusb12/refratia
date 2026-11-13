@@ -412,10 +412,13 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 	// Prefer the deterministic reader whenever it can prove the decimal
 	// separator and each digit independently. The broad OCR reader can
 	// collapse values such as 0.98 into "5" or pick a nearby annotation.
-	if value, ok := readPentacamBADDDeterministicFromPage(executionContext, pages[layout.badd]); ok {
-		values["bad_d"] = value
-	} else if value, ok := readPentacamBADDFromRenderedPage(executionContext, pages[layout.badd]); ok {
-		values["bad_d"] = value
+	// The broad OCR reader of the "D" cell was removed: it returned
+	// well-formed but wrong values (a lone digit) when the cell was clipped.
+	// Only the reader that proves the decimal separator in the pixels stays.
+	if !hasAll("bad_d") {
+		if value, ok := readPentacamBADDDeterministicFromPage(executionContext, pages[layout.badd]); ok {
+			values["bad_d"] = value
+		}
 	}
 
 	// K1 rescue determinístico:
