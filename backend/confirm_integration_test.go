@@ -342,3 +342,58 @@ func TestNameTypoVariantRequiresIdentityDecision(t *testing.T) {
 		t.Fatalf("want 2 patients after explicit new, got %d", patients)
 	}
 }
+
+func TestConfirmSurvivesSQLFailureAfterGarageWrites(t *testing.T) {
+	ctx, client, bucket := integrationSetup(t)
+	name := uniqueName()
+	birth := "1974-09-10"
+	id := putDraft(t, ctx, client, bucket, name, birth, testDocs)
+	caseID := "case-" + strings.TrimPrefix(id, "intake-")
+	cleanupCase(t, ctx, client, bucket, caseID)
+
+	afterGarageWrites = func() error { return fmt.Errorf("injected sql failure") }
+	status, out := confirm(t, id)
+	afterGarageWrites = nil
+	if status < 500 {
+		t.Fatalf("want 5xx, got %d %v", status, out)
+	}
+	// (1) no receipt, (3) draft kept.
+	if n := countKeys(t, ctx, client, bucket, confirmationKey(id)); n != 0 {
+		t.Fatal("failed confirm must leave no receipt")
+	}
+	if n := countKeys(t, ctx, client, bucket, refratiaDraftsPrefix+id+"/"); n != len(testDocs)+1 {
+		t.Fatalf("draft must be kept for retry, found %d objects", n)
+	}
+	// (2) nothing committed.
+	var patients, exams int64
+	appDatabase.Gorm.Model(&database.Patient{}).Where("birth_date = ?", birth).Count(&patients)
+	appDatabase.Gorm.Model(&database.Exam{}).Where("case_id = ?", caseID).Count(&exams)
+	if patients != 0 || exams != 0 {
+		t.Fatalf("rolled back: patients=%d exams=%d", patients, exams)
+	}
+	// Garage objects of the failed attempt exist (garbage until the retry).
+	garbage := countKeys(t, ctx, client, bucket, refratiaCasesPrefix+caseID+"/")
+	if garbage != len(testDocs)+1 {
+		t.Fatalf("expected %d orphan objects, got %d", len(testDocs)+1, garbage)
+	}
+
+	// (4) retry converges; (5) the same keys are reused, no duplicates.
+	status, out = confirm(t, id)
+	if status != 200 {
+		t.Fatalf("retry: %d %v", status, out)
+	}
+	if out["caseId"] != caseID {
+		t.Fatalf("retry must reuse the case of the failed attempt: %v", out)
+	}
+	appDatabase.Gorm.Model(&database.Patient{}).Where("birth_date = ?", birth).Count(&patients)
+	appDatabase.Gorm.Model(&database.Exam{}).Where("case_id = ?", caseID).Count(&exams)
+	if patients != 1 || exams != 4 {
+		t.Fatalf("converged state: patients=%d exams=%d (want 1, 4)", patients, exams)
+	}
+	if n := countKeys(t, ctx, client, bucket, refratiaCasesPrefix+caseID+"/"); n != garbage {
+		t.Fatalf("retry changed object count: %d -> %d", garbage, n)
+	}
+	if n := countKeys(t, ctx, client, bucket, refratiaDraftsPrefix+id+"/"); n != 0 {
+		t.Fatalf("draft must be consumed after success, found %d", n)
+	}
+}

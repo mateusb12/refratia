@@ -668,6 +668,10 @@ func confirmIntakeHandler(w http.ResponseWriter, r *http.Request) {
 
 func (e *intakeError) Error() string { return e.message }
 
+// afterGarageWrites is a test seam: it runs inside the commit transaction after
+// the Garage writes and before the SQL rows, so tests can fail that step.
+var afterGarageWrites func() error
+
 // commitIntake is the commit protocol (C3). Garage objects live at keys that
 // are deterministic per intake; the case marker (paciente_compilado.json) is
 // written next; everything in SQL (patient + exam rows) commits in ONE
@@ -852,6 +856,11 @@ func commitIntake(
 		}
 		cleanupObjects(ctx, client, orphanedCopies)
 
+		if afterGarageWrites != nil {
+			if err := afterGarageWrites(); err != nil {
+				return err
+			}
+		}
 		if err := savePatient(tx, patient, fullName, birthDate, caseID); err != nil {
 			return fmt.Errorf("update patient: %w", err)
 		}
