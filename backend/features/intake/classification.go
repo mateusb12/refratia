@@ -393,6 +393,12 @@ func CanonicalExamFilename(
 
 			"oct_retina": "OCT",
 			"OCT":        "OCT",
+
+			"anterior_segment_photo": "ANTSEG",
+			"ANTSEG":                 "ANTSEG",
+
+			"corneal_topography_other": "TOPO",
+			"TOPO":                     "TOPO",
 		}
 
 	label := labels[examType]

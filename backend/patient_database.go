@@ -28,7 +28,8 @@ func patientIdentity(analysis map[string]any) (identityKey, fullName, birthDate 
 	if !ok {
 		return "", "", "", errPatientIdentity
 	}
-	fullName, _ = patientData["full_name"].(string)
+	_ = patientData
+	fullName, _ = patientfeature.ResolveName(analysis)
 	fullName = strings.TrimSpace(fullName)
 	birthDate, ok = patientfeature.CanonicalBirthDate(analysis)
 	if fullName == "" || !ok {

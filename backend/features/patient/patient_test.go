@@ -796,3 +796,61 @@ func TestSameIdentityAcceptsDayMonthInversion(t *testing.T) {
 		t.Fatal("different names must not match")
 	}
 }
+
+func TestDeclaredDateOrderWinsOverHeuristic(t *testing.T) {
+	// Pentacam timestamp ambiguous (08/05/2026): heuristic says MDY, but the
+	// extractor declared DMY for this document, so 08/05/1969 is 8 May.
+	analysis := identityEntries(
+		map[string]any{"nascimento_lido": "08/05/1969", "timestamp_lido": "08/05/2026", "date_order": "DMY"},
+	)
+	if date, _, ok := ResolveBirthDate(analysis); !ok || date != "1969-05-08" {
+		t.Fatalf("declared DMY: got %q %v", date, ok)
+	}
+	delete(analysis["verificacao_identidade"].([]any)[0].(map[string]any), "date_order")
+	if date, _, ok := ResolveBirthDate(analysis); !ok || date != "1969-08-05" {
+		t.Fatalf("heuristic fallback: got %q %v", date, ok)
+	}
+	nidek := identityEntries(map[string]any{"nascimento_lido": "28/JAN/2001", "date_order": "DMONY"})
+	if date, _, ok := ResolveBirthDate(nidek); !ok || date != "2001-01-28" {
+		t.Fatalf("DMONY: got %q %v", date, ok)
+	}
+	inv := identityEntries(
+		map[string]any{"nascimento_lido": "08/05/1969", "date_order": "DMY"},
+		map[string]any{"nascimento_lido": "08/05/1969", "date_order": "MDY"},
+	)
+	if date, inverted, ok := ResolveBirthDate(inv); !ok || !inverted || date != "1969-08-05" {
+		t.Fatalf("declared inversion: got %q %v %v", date, inverted, ok)
+	}
+}
+
+func TestNormalizeNeverKeepsRawBirthDate(t *testing.T) {
+	analysis := identityEntries(map[string]any{"nascimento_lido": "03/04/1980"})
+	analysis["patient"].(map[string]any)["birth_date"] = "03/04/1980"
+	NormalizeIdentityFields(analysis)
+	if _, has := analysis["patient"].(map[string]any)["birth_date"]; has {
+		t.Fatal("unresolved birth_date must be absent, not raw")
+	}
+}
+
+func TestGarbageNameNeverBecomesIdentity(t *testing.T) {
+	garbage := "° 2/25 Segmento: 294° 114° \\ NOGUEIRA ROCHA"
+	only := identityEntries(map[string]any{"nome_lido": garbage}, map[string]any{"nome_lido": "jJO40 JFRANCISCO"})
+	only["patient"] = map[string]any{"full_name": garbage, "birth_date": "2001-01-28"}
+	if key, ok := Identity(only); ok {
+		t.Fatalf("garbage-only must be unresolved, got %q", key)
+	}
+	mixed := identityEntries(
+		map[string]any{"nome_lido": garbage},
+		map[string]any{"nome_lido": "NOGUEIRA ROCHA, DANIELA"},
+		map[string]any{"nome_lido": "DANIELA NOGUEIRA ROCHA"},
+	)
+	mixed["patient"] = map[string]any{"full_name": garbage, "birth_date": "2001-01-28"}
+	key, ok := Identity(mixed)
+	if !ok || key != "daniela nogueira rocha|2001-01-28" {
+		t.Fatalf("clean name must win, got %q %v", key, ok)
+	}
+	NormalizeIdentityFields(mixed)
+	if mixed["patient"].(map[string]any)["full_name"] == garbage {
+		t.Fatal("garbage must be replaced in patient.full_name")
+	}
+}

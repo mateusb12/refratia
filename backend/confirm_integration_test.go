@@ -113,7 +113,14 @@ func cleanupCase(t *testing.T, ctx context.Context, client fileRepository, bucke
 	})
 }
 
-func uniqueName() string { return fmt.Sprintf("TESTE PERSIST %d", time.Now().UnixNano()) }
+// uniqueName is alphabetic only: names with digits are rejected as OCR noise.
+func uniqueName() string {
+	n, letters := time.Now().UnixNano(), []byte{}
+	for ; n > 0; n /= 26 {
+		letters = append(letters, byte('A'+n%26))
+	}
+	return "TESTE PERSIST " + string(letters)
+}
 
 func TestConfirmWritesOneRowPerDocumentAndEyeAndIsIdempotent(t *testing.T) {
 	ctx, client, bucket := integrationSetup(t)

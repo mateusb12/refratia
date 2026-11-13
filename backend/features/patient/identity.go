@@ -14,7 +14,7 @@ func Identity(analysis map[string]any) (string, bool) {
 		return "", false
 	}
 
-	fullName, _ := patient["full_name"].(string)
+	fullName, _ := ResolveName(analysis)
 	fullName = NameKey(fullName)
 
 	birthDate, birthOK := CanonicalBirthDate(analysis)
@@ -27,6 +27,53 @@ func Identity(analysis map[string]any) (string, bool) {
 	}
 
 	return fullName + "|" + birthDate, true
+}
+
+// plausibleName: alphabetic tokens only (no digits/symbols), at least 2 tokens.
+func plausibleName(name string) bool {
+	tokens := strings.Fields(name)
+	if len(tokens) < 2 {
+		return false
+	}
+	for _, r := range name {
+		if !unicode.IsLetter(r) && !strings.ContainsRune(" .,'-", r) {
+			return false
+		}
+	}
+	return true
+}
+
+// ResolveName picks the identity name. patient.full_name wins when plausible;
+// otherwise the plausible identity-entry name that most other readings agree
+// with (ties: more tokens). No plausible name = unresolved: OCR garbage may
+// never become an identity_key.
+func ResolveName(analysis map[string]any) (string, bool) {
+	patient, _ := analysis["patient"].(map[string]any)
+	if name, _ := patient["full_name"].(string); plausibleName(name) {
+		return strings.TrimSpace(name), true
+	}
+	entries, _ := analysis["verificacao_identidade"].([]any)
+	names := make([]string, 0)
+	for _, raw := range entries {
+		entry, _ := raw.(map[string]any)
+		if name, _ := entry["nome_lido"].(string); plausibleName(name) {
+			names = append(names, strings.TrimSpace(name))
+		}
+	}
+	best, bestScore := "", -1
+	for _, candidate := range names {
+		score := 0
+		for _, other := range names {
+			if NamesCompatible(candidate, other) {
+				score++
+			}
+		}
+		score = score*100 + len(strings.Fields(candidate))
+		if score > bestScore {
+			best, bestScore = candidate, score
+		}
+	}
+	return best, best != ""
 }
 
 // CanonicalBirthDate resolves the birth date. See ResolveBirthDate.
@@ -67,8 +114,20 @@ func ResolveBirthDate(analysis map[string]any) (date string, inverted bool, ok b
 				continue
 			}
 			timestamp, _ := entry["timestamp_lido"].(string)
-			order, reference := documentDateOrder(timestamp)
-			canonical, valid := canonicalizeDocumentDate(raw, order)
+			var (
+				order     string
+				reference bool
+				canonical string
+				valid     bool
+			)
+			if declared, _ := entry["date_order"].(string); declared == "MDY" || declared == "DMY" || declared == "DMONY" {
+				// Ordem declarada pelo extrator (conhecimento do aparelho): estrita.
+				order, reference = declared, declared == "MDY"
+				canonical, valid = canonicalizeDeclaredDate(raw, order)
+			} else {
+				order, reference = documentDateOrder(timestamp)
+				canonical, valid = canonicalizeDocumentDate(raw, order)
+			}
 			if !valid {
 				// Existe uma data bruta, mas ela é ambígua.
 				// Não caímos para o "normalized" do modelo porque ele pode
@@ -275,6 +334,53 @@ func inferSlashDateOrder(value string) string {
 	}
 }
 
+var monthNames = map[string]int{
+	"JAN": 1, "FEV": 2, "FEB": 2, "MAR": 3, "ABR": 4, "APR": 4, "MAI": 5, "MAY": 5, "JUN": 6,
+	"JUL": 7, "AGO": 8, "AUG": 8, "SET": 9, "SEP": 9, "OUT": 10, "OCT": 10, "NOV": 11, "DEZ": 12, "DEC": 12,
+}
+
+// canonicalizeDeclaredDate parses with the device's declared order, no guessing.
+func canonicalizeDeclaredDate(value, order string) (string, bool) {
+	value = strings.TrimSpace(value)
+	if canonical, ok := canonicalISODate(value); ok {
+		return canonical, true
+	}
+	parts := strings.Split(value, "/")
+	if len(parts) != 3 {
+		return "", false
+	}
+	var first, second, year int
+	if _, err := fmt.Sscanf(parts[0], "%d", &first); err != nil {
+		return "", false
+	}
+	if _, err := fmt.Sscanf(parts[2], "%d", &year); err != nil {
+		return "", false
+	}
+	day, month := first, 0
+	switch order {
+	case "DMONY":
+		m, ok := monthNames[strings.ToUpper(strings.TrimSpace(parts[1]))]
+		if !ok {
+			if _, err := fmt.Sscanf(parts[1], "%d", &second); err != nil {
+				return "", false
+			}
+			m = second
+		}
+		month = m
+	case "DMY":
+		if _, err := fmt.Sscanf(parts[1], "%d", &second); err != nil {
+			return "", false
+		}
+		month = second
+	case "MDY":
+		if _, err := fmt.Sscanf(parts[1], "%d", &second); err != nil {
+			return "", false
+		}
+		month, day = first, second
+	}
+	return canonicalISODate(fmt.Sprintf("%04d-%02d-%02d", year, month, day))
+}
+
 func canonicalizeDocumentDate(value, order string) (string, bool) {
 	value = strings.TrimSpace(value)
 
@@ -343,7 +449,20 @@ func NormalizeIdentityFields(analysis map[string]any) {
 		return
 	}
 
-	if birthDate, ok := CanonicalBirthDate(analysis); ok {
+	if name, ok := ResolveName(analysis); ok {
+		patient["full_name"] = name
+	}
+	birthDate, ok := CanonicalBirthDate(analysis)
+	if !ok {
+		// birth_date é ISO ou ausente, nunca a string bruta.
+		if raw, isStr := patient["birth_date"].(string); isStr {
+			if _, iso := canonicalISODate(raw); !iso {
+				delete(patient, "birth_date")
+			}
+		}
+		return
+	}
+	{
 		patient["birth_date"] = birthDate
 
 		// O modelo pode devolver aliases "normalized" incorretos.

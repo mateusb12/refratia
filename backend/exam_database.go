@@ -28,13 +28,18 @@ var examTypeKeys = map[string]string{
 	"MICROSCOPIA_ESPECULAR": "specular_microscopy",
 	"RETINA":                "fundus_retinography",
 	"OCT":                   "oct_retina",
+	"ANTSEG":                "anterior_segment_photo",
+	"TOPO":                  "corneal_topography_other",
 }
+
+// outOfProtocolExamKeys are persisted as-is (rows outside the protocol).
+var outOfProtocolExamKeys = map[string]bool{"anterior_segment_photo": true, "corneal_topography_other": true}
 
 func examTypeKey(label string) string {
 	if key, ok := examTypeKeys[label]; ok {
 		return key
 	}
-	if patientfeature.IsOfficialExamKey(label) {
+	if patientfeature.IsOfficialExamKey(label) || outOfProtocolExamKeys[label] {
 		return label
 	}
 	return "unclassified"
@@ -149,7 +154,7 @@ func confirmSavedExam(w http.ResponseWriter, r *http.Request) {
 
 	examType, eye := metadata.examType, metadata.eye
 	if !metadata.referenced {
-		if patientfeature.IsOfficialExamKey(request.ExamType) {
+		if patientfeature.IsOfficialExamKey(request.ExamType) || outOfProtocolExamKeys[request.ExamType] {
 			examType = request.ExamType
 		}
 		eye = strings.ToUpper(strings.TrimSpace(request.Eye))

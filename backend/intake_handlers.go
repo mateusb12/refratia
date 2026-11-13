@@ -138,6 +138,11 @@ func analyzeIntakeHandler(w http.ResponseWriter, r *http.Request) {
 		if examType, eye, filenameOK := intakefeature.CanonicalClassificationFromFilename(
 			files[index].Metadata.Filename,
 		); filenameOK {
+			// Metadata.ExamType usa o mesmo vocabulário (rótulo) da classificação
+			// explícita do frontend; o fallback devolvia a chave do contrato (F14).
+			if label, labelOK := intakefeature.ExamTypeFromContract(examType); labelOK {
+				examType = label
+			}
 			files[index].Metadata.ExamType = examType
 			files[index].Metadata.Eye = eye
 		}
