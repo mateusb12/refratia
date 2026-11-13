@@ -702,7 +702,15 @@
         "decimals_printed": null,
         "plausible_range": null,
         "protocol_role": "identity",
-        "app_paths": []
+        "app_paths": [
+          [
+            "exams",
+            "iol_calculation",
+            "eyes",
+            "<EYE>",
+            "measurement_date"
+          ]
+        ]
       },
       "al_mm": {
         "unit": "mm",

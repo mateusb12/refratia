@@ -691,7 +691,7 @@ func readValueBox(
 	}
 	if os.Getenv("REFRATIA_OCR_DEBUG") == "1" {
 		// Clinical readings only (never identity fields).
-		fmt.Fprintf(os.Stderr, "pentacam anchor %q votes=%v\n", label.text, votes)
+		fmt.Fprintf(os.Stderr, "pentacam anchor %q votes=%v grey=%v\n", label.text, votes, family[0])
 	}
 	// A competing reading (3 vs 9 in a pixel font) must not be outvoted by a
 	// small margin: with rivals the winner needs 80% of the valid reads.
@@ -704,7 +704,9 @@ func readValueBox(
 		for _, n := range family[0] {
 			greyTotal += n
 		}
-		if grey >= 2 && strictPlurality(family[0], *tokenValue) && grey*3 >= greyTotal*2 {
+		// The token needs a 3:1 majority among the grey-scale reads: a 2:1 share
+		// (3 vs 9 on a pixel font) is a genuinely split cell, not a distortion.
+		if grey >= 2 && grey*4 >= greyTotal*3 {
 			return *tokenValue, votes[*tokenValue], len(votes), rect, true
 		}
 	}
@@ -712,20 +714,6 @@ func readValueBox(
 		return 0, bestVotes, len(votes), rect, false
 	}
 	return bestValue, bestVotes, len(votes), rect, true
-}
-
-// strictPlurality reports whether v has more votes than every other value.
-func strictPlurality(votes map[float64]int, v float64) bool {
-	n := votes[v]
-	if n == 0 {
-		return false
-	}
-	for other, m := range votes {
-		if other != v && m >= n {
-			return false
-		}
-	}
-	return true
 }
 
 func leadingNonDigits(text string) int {

@@ -13,6 +13,7 @@ import (
 	"math"
 	"sort"
 	"strings"
+	"time"
 )
 
 //go:embed field_spec.json
@@ -193,6 +194,12 @@ func check(examKey string, l located, v any) string {
 		}
 		if step, ok := deviceStep[examKey+"/"+l.field]; ok && !onGrid(n, step) {
 			return "valor fora do passo impresso pelo dispositivo"
+		}
+	case "date":
+		if s, ok := v.(string); !ok {
+			return "tipo de valor inesperado para o campo"
+		} else if _, err := time.Parse("2006-01-02", s); err != nil {
+			return "data inválida (esperado AAAA-MM-DD)"
 		}
 	case "str":
 		if s, ok := v.(string); ok && strings.TrimSpace(s) == "" {

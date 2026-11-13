@@ -59,3 +59,12 @@ func TestParseEyeSuiteEyeReadsRadiiAxesCCTADAndStatus(t *testing.T) {
 		t.Fatalf("unexpected: %v", got)
 	}
 }
+
+// The measurement date is read DMY (EyeSuite) and normalized to ISO.
+func TestParseEyeSuiteEyeMeasurementDateIsDMY(t *testing.T) {
+	words := append(rowWords(10, "LS900", "04/11/2026", "1", "Anterior"), rowWords(60, "AL:", "23.49", "mm")...)
+	got, err := parseEyeSuiteEye(words)
+	if err != nil || got["measurement_date"] != "2026-11-04" {
+		t.Fatalf("got %v, %v", got, err)
+	}
+}

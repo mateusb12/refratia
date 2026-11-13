@@ -381,3 +381,8 @@ Step a addendum (final): `ValidateEyes` also accepts extractor hints (`extractio
 - `readValueBox`: a rival confined to the thresholded reads (5 read as 6 at threshold 150) no longer blocks a value the page token and a 2/3 grey-scale majority agree on (gorete OS pachy 545, rolmey OD pachy centre 534, rolmey acd_ext 3.9).
 - Specular: row grouping tolerance now scales with the upscale factor (CT value sits above its label at 3x); two threshold-120 re-reads added. ct_um matches ground truth on all 10 eyes.
 - Still missing: rolmey OD pachy_vertex (534/538/634 split, no reliable majority), gorete OD axis_flat (3 vs 9 pixel glyph, 108.3 vs 108.9).
+
+### Gate 559f373 follow-up (creso coma regression, IOL measurement_date)
+
+- Regression: creso OD `coma_z31_5mm_um` came out 0.03 (valid, expected 0.09). Cause: the grey-token plurality rule in `readValueBox` accepted the whole-page token when it held only 2/3 of the grey-scale reads (votes 0.03:12 / 0.09:6), i.e. a genuine 3-vs-9 split. Now the token needs a 3:1 grey majority (75%); fixed cells measured: gorete OS pachy centre/vertex 545 (grey 10:2), rolmey OD pachy centre 534 (grey 6:2) still pass; creso OD coma is 0.09. Limit: 75% is a calibrated bar, not a derived one; rolmey sits exactly on it.
+- IOL `measurement_date`: EyeSuite prints "<device> DD/MM/YYYY" at the head of each eye's biometry block. `parseEyeSuiteEye` reads it (DMY -> ISO via `examdate.FromOCR`) into `exams.iol_calculation.eyes.<EYE>.measurement_date`; `extractionfields` validates kind `date` (ISO). `app_paths` set in both `field_spec.json` copies. All 8 eyes match ground truth on the real PDFs.

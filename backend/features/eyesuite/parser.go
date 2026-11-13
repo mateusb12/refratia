@@ -67,7 +67,7 @@ func parseEyeSuiteEye(words []ocr.Word) (map[string]any, error) {
 	rows := ocr.GroupRows(words, 10)
 
 	values := map[string]float64{}
-	lensStatus := ""
+	lensStatus, measurementDate := "", ""
 	var astigAxis float64
 	axisFound := false
 
@@ -92,6 +92,11 @@ func parseEyeSuiteEye(words []ocr.Word) (map[string]any, error) {
 				astigAxis = axis
 				axisFound = true
 			}
+		}
+		// "LS900 04/11/2026 1 Anterior Cornea": the device's own measurement
+		// date heads each eye's biometry block. EyeSuite prints DD/MM/YYYY.
+		if m := measurementDatePattern.FindStringSubmatch(text); m != nil && measurementDate == "" {
+			measurementDate = examdate.FromOCR(m[1])
 		}
 		if status := lensStatusPattern.FindString(text); status != "" && lensStatus == "" {
 			lensStatus = strings.ToUpper(status[:1]) + strings.ToLower(status[1:])
@@ -142,6 +147,9 @@ func parseEyeSuiteEye(words []ocr.Word) (map[string]any, error) {
 	put(payload, "axial_length_mm", "axial_length_mm")
 	put(payload, "central_corneal_thickness_um", "central_corneal_thickness_um")
 	put(payload, "aqueous_depth_mm", "aqueous_depth_mm")
+	if measurementDate != "" {
+		payload["measurement_date"] = measurementDate
+	}
 	if lensStatus != "" {
 		payload["status"] = lensStatus
 	}
@@ -172,8 +180,9 @@ func parseEyeSuiteEye(words []ocr.Word) (map[string]any, error) {
 }
 
 var (
-	lensStatusPattern = regexp.MustCompile(`(?i)\b(?:pseudophakic|aphakic|phakic)\b`)
-	powerRadiusAxis   = regexp.MustCompile(`(\d+[,.]\d+)\s*/\s*(\d+[,.]\d+)(?:\s*@\s*(\d{1,3}))?`)
+	measurementDatePattern = regexp.MustCompile(`\b[A-Z]{2,}\d+\s+(\d{1,2}/\d{1,2}/\d{4})\b`)
+	lensStatusPattern      = regexp.MustCompile(`(?i)\b(?:pseudophakic|aphakic|phakic)\b`)
+	powerRadiusAxis        = regexp.MustCompile(`(\d+[,.]\d+)\s*/\s*(\d+[,.]\d+)(?:\s*@\s*(\d{1,3}))?`)
 )
 
 func integerAfter(text, labelPattern string) (float64, bool) {
