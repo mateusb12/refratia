@@ -22,6 +22,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -29,6 +30,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/jackc/pgx/v5"
+	"os/signal"
 )
 
 const (
@@ -73,11 +75,13 @@ type Run struct {
 	Started     string        `json:"started"`
 	Command     string        `json:"command"`
 	BackendDir  string        `json:"backend_dir"`
+	Commit      string        `json:"commit"`
 	Seconds     float64       `json:"seconds"`
 	Patients    []*PatientRun `json:"patients"`
 	Regressions []string      `json:"regressions"`
 	Failures    []string      `json:"failures"`
 	InfraFails  []string      `json:"infra_failures"`
+	RunInfra    []string      `json:"run_level_infra,omitempty"`
 	Complete    bool          `json:"complete"`
 	Why         []string      `json:"incomplete_reasons,omitempty"`
 	Requested   []string      `json:"requested_patients"`
@@ -98,6 +102,8 @@ type env struct {
 	httpc             *http.Client
 	reForce           bool
 	analyzeTO, stepTO time.Duration
+	cur               string
+	mu                sync.Mutex
 	cmd               *exec.Cmd
 	bin               string
 	backendDir        string
@@ -149,21 +155,21 @@ func realMain() (code int) {
 		Command: "npm run benchmark -- " + strings.Join(os.Args[1:], " ")}
 
 	if *rescore != "" {
-		e.out = filepath.Join(*outBase, t0.Format("20060102-150405")+"-rescore")
+		e.out = filepath.Join(*outBase, t0.Format("20060102-150405")+"-rescore-"+filepath.Base(*rescore))
 		must(os.MkdirAll(filepath.Join(e.out, "patients"), 0o755))
 		run = e.rescoreRun(*rescore, run)
 		cmp := *compare
 		if cmp == "" {
 			cmp = "-"
 		}
-		return conclude(run, e, *baseline, false, cmp, *outBase, t0)
+		return conclude(run, e, *baseline, *update, cmp, *outBase, t0, true)
 	}
 
 	// anything unexpected in setup is an infra failure, reported (INCOMPLETE) with exit code 2
 	defer func() {
 		if r := recover(); r != nil {
-			run.InfraFails = append(run.InfraFails, fmt.Sprint("harness: ", r))
-			code = conclude(run, e, *baseline, *update, *compare, *outBase, t0)
+			run.RunInfra = append(run.RunInfra, fmt.Sprint("harness: ", r))
+			code = conclude(run, e, *baseline, *update, *compare, *outBase, t0, true)
 		}
 	}()
 	e.setupEnv(*envFile)
@@ -176,6 +182,18 @@ func realMain() (code int) {
 	must(os.MkdirAll(filepath.Join(e.out, "raw"), 0o755))
 	must(os.MkdirAll(filepath.Join(e.out, "patients"), 0o755))
 	defer e.stopBackend()
+	run.Commit = gitRev(*backendDir)
+	// signal-safe: write the final INCOMPLETE report (with the interrupted step) before exiting
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
+	go func() {
+		sg := <-sig
+		e.mu.Lock()
+		run.RunInfra = append(run.RunInfra, fmt.Sprintf("interrupted by signal %v during %s", sg, e.cur))
+		e.stopBackend()
+		conclude(run, e, *baseline, false, *compare, *outBase, t0, true)
+		os.Exit(2)
+	}()
 
 	// one run at a time: the bench DB and bucket are shared and wiped at start
 	lock, err := os.OpenFile(filepath.Join(os.TempDir(), "refratia-benchmark.lock"), os.O_CREATE|os.O_RDWR, 0o644)
@@ -201,13 +219,29 @@ func realMain() (code int) {
 		}
 		fmt.Printf("== %s\n", slug)
 		pr := e.safePatient(ctx, slug)
+		e.mu.Lock()
 		run.Patients = append(run.Patients, pr)
 		b, _ := json.MarshalIndent(pr, "", " ")
 		os.WriteFile(filepath.Join(e.out, "patients", slug+".json"), b, 0o644)
-		run.Seconds = time.Since(t0).Seconds()
-		writeReports(run, e.out) // incremental: a crash never loses finished patients
+		// incremental: failures, regressions and compare are recomputed from the finished patients (partial)
+		conclude(run, e, *baseline, false, *compare, *outBase, t0, false)
+		e.mu.Unlock()
 	}
-	return conclude(run, e, *baseline, *update, *compare, *outBase, t0)
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return conclude(run, e, *baseline, *update, *compare, *outBase, t0, true)
+}
+
+func gitRev(dir string) string {
+	out, err := exec.Command("git", "-C", dir, "rev-parse", "--short", "HEAD").Output()
+	if err != nil {
+		return "unknown"
+	}
+	rev := strings.TrimSpace(string(out))
+	if st, _ := exec.Command("git", "-C", dir, "status", "--porcelain", "--", ".").Output(); len(bytes.TrimSpace(st)) > 0 {
+		rev += "+uncommitted changes"
+	}
+	return rev
 }
 
 func loadDone(out string) []*PatientRun {
@@ -672,9 +706,6 @@ func (e *env) runPatient(ctx context.Context, slug string, pr *PatientRun) {
 	add := func(group, name string, ok bool, detail string) {
 		pr.Checks = append(pr.Checks, Check{Group: group, Name: name, OK: ok, Info: strings.HasPrefix(name, "info_"), Detail: detail})
 	}
-	ne := func(group, name, detail string) {
-		pr.Checks = append(pr.Checks, Check{Group: group, Name: name, NE: true, Detail: detail})
-	}
 	infra := func(name, detail string) {
 		pr.Checks = append(pr.Checks, Check{Group: "harness", Name: name, Kind: "infra_failure", Detail: detail})
 		pr.Incomplete = name + ": " + detail
@@ -740,6 +771,7 @@ func (e *env) runPatient(ctx context.Context, slug string, pr *PatientRun) {
 	}
 
 	pre := e.snapshot(ctx)
+	e.cur = slug + ": analyze"
 	t := time.Now()
 	actx, cancel := withTO(ctx, e.analyzeTO)
 	status, payload, raw, err := e.analyze(actx, paths, cls, shas)
@@ -765,8 +797,10 @@ func (e *env) runPatient(ctx context.Context, slug string, pr *PatientRun) {
 	pr.Unverified = append(pr.Unverified, g.NeedsHuman...)
 	pr.Checks = append(pr.Checks, identityChecks(g, analysis)...)
 
-	// ---- persistence: always asserted on real SQL rows and Garage objects ----
+	// ---- persistence: always asserted on real SQL rows and Garage objects (snapshots are saved for -rescore) ----
+	sn := &Snaps{Pre: pre, ByName: byName}
 	intakeID, _ := payload["intakeId"].(string)
+	e.cur = slug + ": confirm"
 	cctx, cancel := withTO(ctx, e.stepTO)
 	cs, cbody := e.confirm(cctx, intakeID)
 	cancel()
@@ -776,18 +810,17 @@ func (e *env) runPatient(ctx context.Context, slug string, pr *PatientRun) {
 	}
 	b, _ := json.Marshal(cbody)
 	os.WriteFile(filepath.Join(e.out, "raw", slug+".confirm1.json"), b, 0o644)
-	add("persistence", "confirm_http_200", cs == 200, fmt.Sprintf("HTTP %d action=%s", cs, sval(cbody, "action")))
-	post1 := e.snapshot(ctx)
-	e.persistenceChecks(g, pre, post1, byName, sval(cbody, "caseId"), add, ne)
+	sn.CS1, sn.Action1, sn.Case1 = cs, sval(cbody, "action"), sval(cbody, "caseId")
+	sn.Post1 = e.snapshot(ctx)
 
+	e.cur = slug + ": confirm retry"
 	cctx, cancel = withTO(ctx, e.stepTO)
-	cs2, _ := e.confirm(cctx, intakeID)
+	sn.CS2, _ = e.confirm(cctx, intakeID)
 	cancel()
-	post2 := e.snapshot(ctx)
-	d := diffSnap(post1, post2)
-	add("idempotency", "confirm_retry", cs2 == 200 && !structural(d), fmt.Sprintf("HTTP %d; changes: %s", cs2, summarize(d)))
+	sn.Post2 = e.snapshot(ctx)
 
 	// re-ingest: same folder again (checkpoints unless -reingest-force)
+	e.cur = slug + ": re-ingest analyze"
 	var proc []string
 	if e.reForce {
 		proc = shas
@@ -800,19 +833,54 @@ func (e *env) runPatient(ctx context.Context, slug string, pr *PatientRun) {
 		return
 	}
 	if err3 != nil || st3 != 200 {
-		add("idempotency", "reingest_no_duplicates", false, fmt.Sprintf("analyze %d %v", st3, err3))
-		return
+		sn.ReingestErr = fmt.Sprintf("analyze %d %v", st3, err3)
+	} else {
+		os.WriteFile(filepath.Join(e.out, "raw", slug+".reingest.analyze.json"), raw3, 0o644)
+		id3, _ := p3["intakeId"].(string)
+		cctx, cancel = withTO(ctx, e.stepTO)
+		var cb3 map[string]any
+		sn.CS3, cb3 = e.confirm(cctx, id3)
+		cancel()
+		sn.Action3 = sval(cb3, "action")
+		sn.Post3 = e.snapshot(ctx)
 	}
-	os.WriteFile(filepath.Join(e.out, "raw", slug+".reingest.analyze.json"), raw3, 0o644)
-	id3, _ := p3["intakeId"].(string)
-	cctx, cancel = withTO(ctx, e.stepTO)
-	cs3, cb3 := e.confirm(cctx, id3)
-	cancel()
-	post3 := e.snapshot(ctx)
-	d3 := diffSnap(post2, post3)
-	pr.Changes = d3
-	add("idempotency", "reingest_no_duplicates", cs3 == 200 && !structural(d3),
-		fmt.Sprintf("HTTP %d action=%s; changes: %s", cs3, sval(cb3, "action"), summarize(d3)))
+	b, _ = json.Marshal(sn)
+	os.WriteFile(filepath.Join(e.out, "raw", slug+".snapshots.json"), b, 0o644)
+	cks, changes := evalPersistence(g, sn)
+	pr.Checks = append(pr.Checks, cks...)
+	pr.Changes = changes
+}
+
+// Snaps is everything needed to (re)evaluate persistence without touching SQL/Garage.
+type Snaps struct {
+	Pre, Post1, Post2, Post3 *Snap
+	ByName                   map[string]string
+	CS1, CS2, CS3            int
+	Action1, Case1, Action3  string
+	ReingestErr              string
+}
+
+func evalPersistence(g *GT, sn *Snaps) ([]Check, []string) {
+	var out []Check
+	add := func(group, name string, ok bool, detail string) {
+		out = append(out, Check{Group: group, Name: name, OK: ok, Kind: "app_failure", Info: strings.HasPrefix(name, "info_"), Detail: detail})
+	}
+	ne := func(group, name, detail string) {
+		out = append(out, Check{Group: group, Name: name, NE: true, Kind: "app_failure", Detail: detail})
+	}
+	add("persistence", "confirm_http_200", sn.CS1 == 200, fmt.Sprintf("HTTP %d action=%s", sn.CS1, sn.Action1))
+	persistenceChecks(g, sn.Pre, sn.Post1, sn.ByName, sn.Case1, add, ne)
+	d := diffSnap(sn.Post1, sn.Post2)
+	add("idempotency", "confirm_retry", sn.CS2 == 200 && !structural(d), fmt.Sprintf("HTTP %d; changes: %s", sn.CS2, summarize(d)))
+	var d3 []string
+	if sn.Post3 == nil {
+		add("idempotency", "reingest_no_duplicates", false, sn.ReingestErr)
+	} else {
+		d3 = diffSnap(sn.Post2, sn.Post3)
+		add("idempotency", "reingest_no_duplicates", sn.CS3 == 200 && !structural(d3),
+			fmt.Sprintf("HTTP %d action=%s; changes: %s", sn.CS3, sn.Action3, summarize(d3)))
+	}
+	return out, d3
 }
 
 // structural: a duplicate = added patient row, exam row, case prefix or object. Content changes of the compiled marker/receipt and removals are recorded as info only.
@@ -890,7 +958,7 @@ func identityChecks(g *GT, analysis any) []Check {
 	return out
 }
 
-func (e *env) persistenceChecks(g *GT, pre, post *Snap, shaByName map[string]string, confirmCase string, add func(string, string, bool, string), ne func(string, string, string)) {
+func persistenceChecks(g *GT, pre, post *Snap, shaByName map[string]string, confirmCase string, add func(string, string, bool, string), ne func(string, string, string)) {
 	np := newRows(pre.Patients, post.Patients)
 	nx := newRows(pre.Exams, post.Exams)
 	add("persistence", "exactly_one_new_patient_row", len(np) == 1, fmt.Sprintf("%d new patient rows", len(np)))
@@ -984,16 +1052,13 @@ func (e *env) persistenceChecks(g *GT, pre, post *Snap, shaByName map[string]str
 		}
 	}
 
-	// objects in Garage
+	// objects in Garage (from the post-confirm listing of the cases prefix)
 	missing := 0
 	for _, r := range nx {
-		k := sval(r, "object_key")
-		out, err := e.s3.HeadObject(context.Background(), &s3.HeadObjectInput{Bucket: aws.String(benchBucket), Key: aws.String(k)})
-		if err != nil {
+		sz, ok := post.Objects[sval(r, "object_key")]
+		if !ok {
 			missing++
-			continue
-		}
-		if sz, ok := r["size"].(float64); ok && sz > 0 && int64(sz) != aws.ToInt64(out.ContentLength) {
+		} else if rs, ok := r["size"].(float64); ok && rs > 0 && int64(rs) != sz {
 			missing++
 		}
 	}
@@ -1003,8 +1068,8 @@ func (e *env) persistenceChecks(g *GT, pre, post *Snap, shaByName map[string]str
 		add("persistence", "exam_objects_exist_with_size", missing == 0, fmt.Sprintf("%d rows whose object is missing or has a different size", missing))
 	}
 	if caseID != "" {
-		_, err := e.s3.HeadObject(context.Background(), &s3.HeadObjectInput{Bucket: aws.String(benchBucket), Key: aws.String(casesPrefix + caseID + "/paciente_compilado.json")})
-		add("persistence", "marker_exists", err == nil, "case "+map[bool]string{true: "found", false: "marker object missing"}[err == nil])
+		_, ok := post.Objects[casesPrefix+caseID+"/paciente_compilado.json"]
+		add("persistence", "marker_exists", ok, "case "+map[bool]string{true: "found", false: "marker object missing"}[ok])
 	} else {
 		add("persistence", "marker_exists", false, "no caseId in the confirm response and no case_id on the patient row")
 	}

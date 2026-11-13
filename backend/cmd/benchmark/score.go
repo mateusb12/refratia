@@ -96,6 +96,7 @@ type FieldRes struct {
 	Got       string `json:"got"`
 	Stage     string `json:"stage,omitempty"`
 	StageFrom string `json:"stage_from,omitempty"`      // diagnostics|inferred
+	PathSeen  bool   `json:"path_seen,omitempty"`       // an app path for this field exists in the output (even if null)
 	Diag      string `json:"app_diagnostics,omitempty"` // app-reported status/stage; shown next to the score, never the score
 }
 
@@ -260,9 +261,20 @@ func scorePatient(slug string, g *GT, spec *Spec, analysis any, classOK map[stri
 						}
 					}
 					v, ok := walk(analysis, pp)
+					if ok {
+						r.PathSeen = true
+					}
 					if ok && !isEmpty(v) {
 						got, exists = v, true
 						break
+					}
+				}
+				if !exists && key == "abcd_staging" { // adapter: the app stores numeric a/b/c/d, the printed summary is "A0 B0 C0 D"
+					if v, ok := walk(analysis, []string{"exams", *keyPtr, "eyes", eye, "abcd_keratoconus_staging"}); ok {
+						r.PathSeen = true
+						if c := composeABCD(v); c != "" {
+							got, exists = c, true
+						}
 					}
 				}
 				r.Got = "null"
@@ -300,7 +312,7 @@ func scorePatient(slug string, g *GT, spec *Spec, analysis any, classOK map[stri
 				}
 				if r.Outcome != "pass" {
 					switch {
-					case hasDiag && dg.Stage != "":
+					case hasDiag && dg.Stage != "" && dg.Status != "valid":
 						r.Stage, r.StageFrom = dg.Stage, "diagnostics"
 					default:
 						r.StageFrom = "inferred"
@@ -375,4 +387,51 @@ func ageViolations(analysis any) []string {
 	}
 	rec(analysis, "analysis")
 	return out
+}
+
+// composeABCD builds the printed Belin ABCD summary ("A0 B0 C0 D") from the app's numeric a/b/c/d
+// (benchmark-side adapter: grades are the rounded values; an empty d prints as bare "D").
+func composeABCD(v any) string {
+	m, ok := v.(map[string]any)
+	if !ok {
+		return ""
+	}
+	out := ""
+	for _, k := range []string{"a", "b", "c"} {
+		f, ok := m[k].(float64)
+		if !ok {
+			return ""
+		}
+		out += fmt.Sprintf("%s%d ", strings.ToUpper(k), int(math.Round(f)))
+	}
+	if f, ok := m["d"].(float64); ok {
+		return out + fmt.Sprintf("D%d", int(math.Round(f)))
+	}
+	return out + "D"
+}
+
+// markContractMismatch flags fields whose app path exists in NO patient's output while the exam type is present
+// elsewhere: a spec/app contract difference, reported apart from genuine app "missing".
+func markContractMismatch(ps []*PatientRun) {
+	seen := map[string]bool{}
+	typeSeen := map[string]bool{}
+	for _, p := range ps {
+		for _, f := range p.Fields {
+			if f.PathSeen {
+				seen[f.ExamType+"|"+f.Field] = true
+				typeSeen[f.ExamType] = true
+			}
+		}
+	}
+	for _, p := range ps {
+		for i, f := range p.Fields {
+			if (f.Outcome == "missing" || f.Outcome == "contract_mismatch") && typeSeen[f.ExamType] && !seen[f.ExamType+"|"+f.Field] {
+				p.Fields[i].Outcome, p.Fields[i].Stage, p.Fields[i].StageFrom = "contract_mismatch", "contract", "path absent in every patient"
+			}
+		}
+	}
+}
+
+func scored(r FieldRes) bool {
+	return r.Outcome != "not_in_app" && r.Outcome != "unverified" && r.Outcome != "contract_mismatch"
 }

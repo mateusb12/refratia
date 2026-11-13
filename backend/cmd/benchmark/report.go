@@ -19,8 +19,6 @@ func (t tally) String() string {
 	return fmt.Sprintf("%d/%d (%.1f%%)", t.pass, t.total, 100*float64(t.pass)/float64(t.total))
 }
 
-func scored(r FieldRes) bool { return r.Outcome != "not_in_app" && r.Outcome != "unverified" }
-
 type CmpField struct {
 	ID       string `json:"id"`
 	Category string `json:"category"`
@@ -30,6 +28,7 @@ type CmpField struct {
 
 type Compare struct {
 	Against string                    `json:"against"`
+	Partial bool                      `json:"partial"`
 	Counts  map[string]map[string]int `json:"counts"` // scope (all, patient:x, type:y) -> category -> n
 	Fields  []CmpField                `json:"fields"` // everything except unchanged passes
 }
@@ -73,6 +72,12 @@ func compareRuns(run *Run, prevPath string) *Compare {
 			pv, ok := po[f.ID]
 			if !ok || pv == "not_in_app" || f.Outcome == "not_in_app" {
 				continue
+			}
+			if pv == "contract_mismatch" { // a field the app did not emit before counts as missing, so newly emitted fields show as fixed
+				pv = "missing"
+			}
+			if f.Outcome == "contract_mismatch" {
+				f.Outcome = "missing"
 			}
 			cat := cmpCategory(pv, f.Outcome)
 			for _, sc := range []string{"all", "patient:" + p.Slug, "type:" + f.ExamType} {
@@ -119,13 +124,14 @@ func writeReports(run *Run, out string) {
 }
 
 // conclude finalizes the run: failures by kind, regressions, completeness, reports, exit code (0 ok, 1 app failures, 2 infra/incomplete).
-func conclude(run *Run, e *env, baselinePath string, update bool, compareArg, outBase string, t0 time.Time) int {
+func conclude(run *Run, e *env, baselinePath string, update bool, compareArg, outBase string, t0 time.Time, final bool) int {
+	markContractMismatch(run.Patients)
 	run.Seconds = time.Since(t0).Seconds()
 	passed := map[string]bool{}
 	ran := map[string]bool{}
 	run.Failures, run.Why = nil, nil
 	run.Failures = nil
-	infra := append([]string{}, run.InfraFails...)
+	infra := append([]string{}, run.RunInfra...)
 	for _, p := range run.Patients {
 		ran[p.Slug] = true
 		if p.Incomplete != "" {
@@ -154,11 +160,18 @@ func conclude(run *Run, e *env, baselinePath string, update bool, compareArg, ou
 	run.InfraFails = infra
 	for _, s := range run.Requested {
 		if !ran[s] {
-			run.Why = append(run.Why, s+": not run")
+			if final {
+				run.InfraFails = append(run.InfraFails, s+": not run")
+				run.Why = append(run.Why, s+": not run")
+			} else {
+				run.Why = append(run.Why, s+": pending")
+			}
 		}
 	}
 	for _, f := range run.InfraFails {
-		run.Why = append(run.Why, "infra: "+f)
+		if !strings.HasSuffix(f, ": not run") {
+			run.Why = append(run.Why, "infra: "+f)
+		}
 	}
 	run.Complete = len(run.Why) == 0
 
@@ -181,6 +194,9 @@ func conclude(run *Run, e *env, baselinePath string, update bool, compareArg, ou
 		}
 		if prev != "" {
 			run.Compare = compareRuns(run, prev)
+			if run.Compare != nil {
+				run.Compare.Partial = !final || len(run.Why) > 0
+			}
 			if run.Compare == nil {
 				run.InfraFails = append(run.InfraFails, "compare: cannot read previous report "+prev)
 				run.Why = append(run.Why, "infra: compare: cannot read previous report "+prev)
@@ -193,6 +209,10 @@ func conclude(run *Run, e *env, baselinePath string, update bool, compareArg, ou
 				}
 			}
 		}
+	}
+	if !final {
+		writeReports(run, e.out)
+		return 0
 	}
 	if update && run.Complete {
 		set := map[string]bool{}
@@ -234,7 +254,7 @@ func conclude(run *Run, e *env, baselinePath string, update bool, compareArg, ou
 func (e *env) rescoreRun(dir string, run *Run) *Run {
 	old := &Run{}
 	must(loadJSON(filepath.Join(dir, "report.json"), old))
-	run.Note = "Rescored offline from " + filepath.Base(dir) + ": field and identity scoring recomputed from raw analyze responses; persistence/idempotency results carried over from the live run (SQL and Garage not re-queried) with the current rules applied; marker_exists not re-evaluated."
+	run.Note = "Rescored offline from " + filepath.Base(dir) + ": field and identity scoring recomputed from raw analyze responses; persistence/idempotency re-evaluated from saved SQL/Garage snapshots when present (raw/<slug>.snapshots.json), otherwise carried over from the live run with the current rules applied (marker_exists then not re-evaluated)."
 	run.BackendDir = old.BackendDir
 	run.Started = old.Started
 	for _, p := range old.Patients {
@@ -254,6 +274,24 @@ func (e *env) rescoreRun(dir string, run *Run) *Run {
 		}
 		analysis := payload["analysis"]
 		np.Fields = scorePatient(p.Slug, g, e.spec, analysis, classOK)
+		if sb, err := os.ReadFile(filepath.Join(dir, "raw", p.Slug+".snapshots.json")); err == nil {
+			sn := &Snaps{}
+			if json.Unmarshal(sb, sn) == nil && sn.Post1 != nil {
+				for _, c := range p.Checks { // keep non-persistence, non-identity checks (classification, harness)
+					if c.Group != "identity" && c.Group != "persistence" && c.Group != "idempotency" {
+						np.Checks = append(np.Checks, c)
+					}
+				}
+				cks, ch := evalPersistence(g, sn)
+				np.Checks = append(np.Checks, cks...)
+				np.Changes = ch
+				np.Checks = append(np.Checks, identityChecks(g, analysis)...)
+				b, _ := json.MarshalIndent(&np, "", " ")
+				os.WriteFile(filepath.Join(e.out, "patients", p.Slug+".json"), b, 0o644)
+				run.Patients = append(run.Patients, &np)
+				continue
+			}
+		}
 		zeroRows := false
 		for _, c := range p.Checks {
 			if c.Name == "exam_row_count" && strings.HasPrefix(c.Detail, "0 rows") {
@@ -287,7 +325,7 @@ func (e *env) rescoreRun(dir string, run *Run) *Run {
 func perPatient(p *PatientRun) (acc tally, unexpected, notInApp int, persist tally) {
 	for _, f := range p.Fields {
 		switch {
-		case f.Outcome == "not_in_app":
+		case f.Outcome == "not_in_app" || f.Outcome == "contract_mismatch":
 			notInApp++
 		case scored(f):
 			acc.total++
@@ -333,9 +371,9 @@ func render(run *Run) string {
 	if run.Note != "" {
 		w("%s\n\n", run.Note)
 	}
-	w("Started %s, runtime %.0fs. Backend built from `%s`.\n\nCommand: `%s`\n\n", run.Started, run.Seconds, run.BackendDir, run.Command)
+	w("Commit `%s`. Started %s, runtime %.0fs. Backend built from `%s`.\n\nCommand: `%s`\n\n", run.Commit, run.Started, run.Seconds, run.BackendDir, run.Command)
 	w("Patients are referred to by folder slug. Field values are shown; names and birth dates are not.\n\n")
-	w("## Summary per patient\n\n| patient | extraction accuracy | unexpected values | not in app contract | persistence + identity checks | analyze |\n|---|---|---|---|---|---|\n")
+	w("## Summary per patient\n\n| patient | extraction accuracy | unexpected values | not in app / contract mismatch | persistence + identity checks | analyze |\n|---|---|---|---|---|---|\n")
 	byType, byField := map[string]*tally{}, map[string]*tally{}
 	stages := map[string]int{}
 	for _, p := range run.Patients {
@@ -370,7 +408,7 @@ func render(run *Run) string {
 	for _, k := range sortedInts(stages) {
 		w("| %s | %d |\n", k, stages[k])
 	}
-	for _, outcome := range []string{"incorrect", "missing", "conflicting", "unexpected_value"} {
+	for _, outcome := range []string{"incorrect", "missing", "conflicting", "unexpected_value", "contract_mismatch"} {
 		w("\n## %s\n\n| field id | role | expected | got | stage | app diagnostics (not the score) |\n|---|---|---|---|---|---|\n", outcome)
 		n := 0
 		for _, p := range run.Patients {
@@ -427,7 +465,7 @@ func render(run *Run) string {
 	}
 	w("\n%d ground-truth fields have no app JSON path (not scored; see _field_spec.json).\n", nia)
 	if run.Compare != nil {
-		w("\n## Comparison with previous run\n\nAgainst `%s`. Categories: fixed (fail to pass), regressed (pass to fail), still_wrong, still_missing, newly_unverified.\n\n| scope | still_pass | fixed | regressed | still_wrong | still_missing | newly_unverified |\n|---|---|---|---|---|---|---|\n", filepath.Base(filepath.Dir(run.Compare.Against)))
+		w("\n## Comparison with previous run\n\nAgainst `%s`%s. Categories: fixed (fail to pass), regressed (pass to fail), still_wrong, still_missing, newly_unverified.\n\n| scope | still_pass | fixed | regressed | still_wrong | still_missing | newly_unverified |\n|---|---|---|---|---|---|---|\n", filepath.Base(filepath.Dir(run.Compare.Against)), map[bool]string{true: " (PARTIAL: only the patients finished so far)", false: ""}[run.Compare.Partial])
 		var sc []string
 		for k := range run.Compare.Counts {
 			sc = append(sc, k)
