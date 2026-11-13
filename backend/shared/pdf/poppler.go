@@ -153,6 +153,16 @@ func RenderPageAtDPI(
 	return image, nil
 }
 
+// RenderAllPagesAtDPI renders pages 1..pages with a single pdftoppm call.
+func RenderAllPagesAtDPI(
+	ctx context.Context,
+	data []byte,
+	pages,
+	dpi int,
+) ([][]byte, error) {
+	return renderPagesAtDPI(ctx, data, pages, dpi)
+}
+
 func renderPagesAtDPI(
 	ctx context.Context,
 	data []byte,

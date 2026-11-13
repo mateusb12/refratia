@@ -35,6 +35,7 @@ type FileInspection struct {
 	Height             int             `json:"height,omitempty"`
 	RecognizedExamType string          `json:"recognizedExamType,omitempty"`
 	RecognizedEye      string          `json:"recognizedEye,omitempty"`
+	FilenameConflict   bool            `json:"filenameConflict,omitempty"`
 	Candidates         []ExamCandidate `json:"candidates"`
 }
 
@@ -73,8 +74,30 @@ func InspectFile(
 
 		if err == nil {
 			item.Pages = pages
-			item.Candidates =
-				prefilterPDFCandidates(pages)
+		}
+
+		// O tipo vem do conteúdo impresso (título do aparelho), não da
+		// contagem de páginas nem do nome do arquivo.
+		if examType, _ := ClassifyContent(
+			ctx,
+			file.ContentType,
+			file.Data,
+		); examType != "" {
+			item.Candidates = append(
+				item.Candidates,
+				ExamCandidate{
+					ExamType: examType,
+					Score:    95,
+					Reason:   "título do aparelho reconhecido no conteúdo do PDF",
+				},
+			)
+
+			if item.RecognizedExamType != examType {
+				// Conteúdo prevalece sobre o nome; o frontend vê a divergência.
+				item.FilenameConflict = item.RecognizedExamType != ""
+				item.RecognizedExamType = examType
+				item.RecognizedEye = ""
+			}
 		}
 
 		return item
@@ -122,6 +145,26 @@ func InspectFile(
 		}
 	}
 
+	if item.RecognizedExamType == "" &&
+		strings.HasPrefix(strings.ToLower(file.ContentType), "image/") {
+		if examType, _ := ClassifyContent(
+			ctx,
+			file.ContentType,
+			file.Data,
+		); examType != "" {
+			item.RecognizedExamType = examType
+			item.RecognizedEye = ""
+			item.Candidates = append(
+				item.Candidates,
+				ExamCandidate{
+					ExamType: examType,
+					Score:    85,
+					Reason:   "conteúdo da imagem reconhecido por OCR",
+				},
+			)
+		}
+	}
+
 	return item
 }
 
@@ -144,7 +187,7 @@ func CanonicalClassificationFromFilename(
 	}
 
 	stem := strings.TrimSuffix(filename, fileExtension(filename))
-	examMatch := regexp.MustCompile(`(?i)(^|[[:space:]_-])(PENTACAM|EYESUITE|BIOMETRIA|AUTO|RETINA|OCT|MICROSCOPIA([_[:space:]]+ESPECULAR)?)([[:space:]_-]|$)`).FindStringSubmatch(stem)
+	examMatch := regexp.MustCompile(`(?i)(^|[[:space:]_-])(PENTACAM|EYESUITE|BIOMETRIA|AUTO|RETINA|OCT|CORNEA|TOPOGRAFIA|TOPO|MICROSCOPIA([_[:space:]]+ESPECULAR)?)([[:space:]_-]|$)`).FindStringSubmatch(stem)
 	if len(examMatch) != 5 {
 		return "", "", false
 	}
@@ -181,6 +224,10 @@ func examTypeFromFilenameLabel(label string) (string, bool) {
 		return "fundus_retinography", true
 	case "OCT":
 		return "oct_retina", true
+	case "CORNEA":
+		return "anterior_segment_photo", true
+	case "TOPO", "TOPOGRAFIA":
+		return "corneal_topography_other", true
 	default:
 		return "", false
 	}
@@ -233,7 +280,7 @@ func ParseClassifications(
 			}
 
 			examType, ok :=
-				ExamTypeFromContract(
+				ContractExamType(
 					classification.ExamType,
 				)
 
@@ -252,7 +299,7 @@ func ParseClassifications(
 					),
 				)
 
-			if examType == "MICROSCOPIA_ESPECULAR" {
+			if examType == "specular_microscopy" {
 				eye = "AO"
 			} else if !validEye(eye) {
 				return nil,
@@ -274,6 +321,25 @@ func ParseClassifications(
 	return result, nil
 }
 
+// ContractExamType is the single exam-type vocabulary of the pipeline: the
+// contract key (ground truth `exam_type`). It also accepts the legacy upper
+// case labels that older callers and stored checkpoints carry, and the
+// out-of-protocol types that are recognised for identity only.
+func ContractExamType(value string) (string, bool) {
+	value = strings.TrimSpace(value)
+	switch value {
+	case "pentacam_corneal_tomography", "iol_calculation",
+		"refractometry", "specular_microscopy", "fundus_retinography",
+		"oct_retina", "anterior_segment_photo", "corneal_topography_other":
+		return value, true
+	}
+	return examTypeFromFilenameLabel(value)
+}
+
+// ExamTypeFromContract returns the legacy upper case label of a contract key.
+//
+// Deprecated: use ContractExamType; kept for callers that still switch on
+// labels.
 func ExamTypeFromContract(
 	value string,
 ) (string, bool) {
@@ -306,6 +372,7 @@ func CanonicalExamFilename(
 	examType string,
 	eye string,
 	extension string,
+	sha256 string,
 ) string {
 	labels :=
 		map[string]string{
@@ -317,6 +384,9 @@ func CanonicalExamFilename(
 
 			"specular_microscopy":   "MICROSCOPIA_ESPECULAR",
 			"MICROSCOPIA_ESPECULAR": "MICROSCOPIA_ESPECULAR",
+
+			"refractometry": "AUTO",
+			"AUTO":          "AUTO",
 
 			"fundus_retinography": "RETINA",
 			"RETINA":              "RETINA",
@@ -355,11 +425,18 @@ func CanonicalExamFilename(
 		eye = "AO"
 	}
 
+	// O prefixo do SHA-256 mantém únicas duas fotos do mesmo exame+olho no
+	// mesmo lote (antes sobrescreviam-se) sem quebrar o parse do nome canônico.
+	if len(sha256) > 8 {
+		sha256 = sha256[:8]
+	}
+
 	return fmt.Sprintf(
-		"%s__%s__%s__%s.%s",
+		"%s__%s__%s__%s__%s.%s",
 		label,
 		eye,
 		patient,
+		sha256,
 		time.Now().UTC().
 			Format("20060102_150405"),
 		extension,
@@ -392,28 +469,4 @@ func fileExtension(
 	}
 
 	return filename[index:]
-}
-
-// Regra operacional validada com os Pentacam reais recebidos:
-//
-//   - os relatórios completos observados chegam com 9 páginas;
-//   - usamos 8–10 páginas como faixa de pré-filtro;
-//   - isto é somente uma sugestão inicial e pode ser corrigido pelo usuário.
-//
-// Não inferimos exames de imagem por resolução ou aspect ratio.
-func prefilterPDFCandidates(
-	pages int,
-) []ExamCandidate {
-	if pages < 8 || pages > 10 {
-		return []ExamCandidate{}
-	}
-
-	return []ExamCandidate{
-		{
-			ExamType: "pentacam_corneal_tomography",
-			Score:    75,
-			Reason: "PDF com 8–10 páginas, " +
-				"padrão compatível com Pentacam",
-		},
-	}
 }

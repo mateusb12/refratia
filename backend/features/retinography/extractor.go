@@ -171,13 +171,18 @@ func Extract(
 		"Interpretando ID, olho e horário",
 	)
 
+	// The same camera also shoots the anterior segment ("Mode Cornea"). That
+	// is a recognised out-of-protocol image, not a retinography and not an
+	// extraction failure: report the mode so the caller can classify it.
+	if mode := strings.ToLower(firstGroup(modePattern, text)); strings.HasPrefix(mode, "cornea") {
+		return Result{Mode: "Cornea"}, nil
+	}
+
+	// err carries only the names of the missing legend fields, never OCR text
+	// (the legend holds the patient id).
 	record, err := ParseText(text)
 	if err != nil {
-		return Result{}, fmt.Errorf(
-			"%w; OCR=%q",
-			err,
-			compactText(text),
-		)
+		return Result{}, err
 	}
 
 	eyePayload := map[string]any{

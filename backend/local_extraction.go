@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -21,19 +22,10 @@ func localExamTypeFromFilename(
 	filename string,
 ) string {
 	if examType, _, ok := intakefeature.CanonicalClassificationFromFilename(filename); ok {
-		label, _ := intakefeature.ExamTypeFromContract(examType)
-		return label
+		return examType
 	}
 
-	parts := strings.Split(filename, "__")
-
-	if len(parts) < 2 {
-		return ""
-	}
-
-	return strings.ToUpper(
-		strings.TrimSpace(parts[0]),
-	)
+	return ""
 }
 
 func localExamEyeFromFilename(
@@ -113,11 +105,15 @@ func emitLocalFileResult(
 	)
 }
 
+// errAnteriorSegmentPhoto marks a retina-camera image shot in "Mode Cornea".
+var errAnteriorSegmentPhoto = errors.New("foto de segmento anterior")
+
 func tryExtractEyeSuiteLocal(
 	ctx context.Context,
 	file uploadedFile,
 	analysis map[string]any,
 ) bool {
+	defer validateTouchedEyes(analysis, file, snapshotEyes(analysis))
 	bundle, err := eyesuite.ExtractPDF(
 		ctx,
 		file.Data,
@@ -178,6 +174,7 @@ func tryExtractRetinographyLocal(
 	file uploadedFile,
 	analysis map[string]any,
 ) (bool, error) {
+	defer validateTouchedEyes(analysis, file, snapshotEyes(analysis))
 	result, err := retinography.Extract(
 		ctx,
 		file.Data,
@@ -186,11 +183,12 @@ func tryExtractRetinographyLocal(
 		return false, err
 	}
 
+	if result.Mode == "Cornea" {
+		return false, errAnteriorSegmentPhoto
+	}
+
 	if result.Eye != "OD" && result.Eye != "OS" {
-		return false, fmt.Errorf(
-			"retinografia: lateralidade OCR inválida: %q",
-			result.Eye,
-		)
+		return false, errors.New("retinografia: lateralidade OCR inválida")
 	}
 
 	exams, _ := analysis["exams"].(map[string]any)
@@ -214,10 +212,8 @@ func tryExtractRetinographyLocal(
 				strings.TrimSpace(result.PatientID),
 			) {
 
-			return false, fmt.Errorf(
-				"retinografia: divergência de identidade entre imagens: %q != %q",
-				existing,
-				result.PatientID,
+			return false, errors.New(
+				"retinografia: divergência de identidade entre imagens",
 			)
 		}
 	}
@@ -306,6 +302,7 @@ func tryExtractRetinographyLocal(
 }
 
 func tryExtractSpecularMicroscopyLocal(ctx context.Context, file uploadedFile, analysis map[string]any) (bool, error) {
+	defer validateTouchedEyes(analysis, file, snapshotEyes(analysis))
 	result, err := specularmicroscopy.Extract(ctx, file.Data)
 	if err != nil {
 		return false, err
@@ -339,7 +336,14 @@ func tryExtractRefractometryLocal(
 	file uploadedFile,
 	analysis map[string]any,
 ) bool {
-	exam, err := refractometry.ExtractPDF(ctx, file.Data)
+	defer validateTouchedEyes(analysis, file, snapshotEyes(analysis))
+	var exam map[string]any
+	var err error
+	if file.Metadata.ContentType == "application/pdf" {
+		exam, err = refractometry.ExtractPDF(ctx, file.Data)
+	} else {
+		exam, err = refractometry.ExtractImage(ctx, file.Data)
+	}
 	if err != nil {
 		return false
 	}
@@ -446,17 +450,7 @@ func extractPatientLocal(
 			continue
 		}
 
-		examType :=
-			file.Metadata.ExamType
-		if examType == "" {
-			examType = localExamTypeFromFilename(file.Metadata.Filename)
-		}
-
-		examEye :=
-			file.Metadata.Eye
-		if examEye == "" {
-			examEye = localExamEyeFromFilename(file.Metadata.Filename)
-		}
+		examType, examEye := resolveLocalClassification(fileCtx, file, analysis)
 
 		progress.Report(
 			fileCtx,
@@ -469,375 +463,12 @@ func extractPatientLocal(
 			),
 		)
 
-		if examType == "RETINA" {
-			progress.Report(
-				fileCtx,
-				8,
-				"retinography_preprocess",
-				"Extraindo retinografia",
-			)
-
-			ok, err := tryExtractRetinographyLocal(
-				progress.WithRange(
-					fileCtx,
-					8,
-					96,
-				),
-				file,
-				analysis,
-			)
-
-			if ok {
-				emitLocalPartial(
-					fileCtx,
-					file.Metadata.Filename,
-					"Retinografia concluída",
-					analysis,
-				)
-
-				emitLocalFileResult(
-					fileCtx,
-					file.Metadata.Filename,
-					examType,
-					examEye,
-					"extracted",
-					"Retinografia extraída por OCR local",
-					analysis,
-				)
-
-				continue
-			}
-
-			message :=
-				"retinografia: extração local falhou"
-
-			if err != nil {
-				message = err.Error()
-			}
-
-			progress.Report(
-				fileCtx,
-				96,
-				"retinography_parse",
-				"Retinografia não pôde ser extraída localmente",
-			)
-
-			emitLocalFileResult(
-				fileCtx,
-				file.Metadata.Filename,
-				examType,
-				examEye,
-				"failed",
-				message,
-				nil,
-			)
-
-			continue
-		}
-
-		if examType == "MICROSCOPIA_ESPECULAR" {
-			progress.Report(fileCtx, 8, "microscopy_preprocess", "Extraindo microscopia especular")
-			ok, err := tryExtractSpecularMicroscopyLocal(progress.WithRange(fileCtx, 8, 96), file, analysis)
-			if ok {
-				status := "extracted"
-				message :=
-					"Microscopia especular extraída"
-				partialMessage :=
-					"Microscopia especular concluída"
-
-				if specularMicroscopyFileNeedsFallback(
-					analysis,
-					file,
-				) {
-					status = "partial"
-					message =
-						"Microscopia especular parcialmente extraída"
-					partialMessage =
-						"Microscopia especular parcial"
-				}
-
-				emitLocalPartial(
-					fileCtx,
-					file.Metadata.Filename,
-					partialMessage,
-					analysis,
-				)
-
-				emitLocalFileResult(
-					fileCtx,
-					file.Metadata.Filename,
-					examType,
-					examEye,
-					status,
-					message,
-					analysis,
-				)
-
-				continue
-			}
-			progress.Report(fileCtx, 96, "microscopy_parse", "Microscopia especular não pôde ser extraída localmente")
-			emitLocalFileResult(fileCtx, file.Metadata.Filename, examType, examEye, "failed", err.Error(), nil)
-			continue
-		}
-
-		// Arquivos de imagem já são identificados
-		// pelo filename, mas ainda não possuem todos
-		// os extratores locais implementados.
-		if file.Metadata.ContentType != "application/pdf" {
-			progress.Report(
-				fileCtx,
-				96,
-				strings.ToLower(examType),
-				"Arquivo identificado pelo nome",
-			)
-
-			emitLocalFileResult(
-				fileCtx,
-				file.Metadata.Filename,
-				examType,
-				examEye,
-				"identified",
-				"Identificado pelo filename; extrator clínico específico ainda não implementado",
-				nil,
-			)
-
-			continue
-		}
-
-		switch examType {
-		case "AUTO":
-			progress.Report(
-				fileCtx,
-				8,
-				"refractometry",
-				"Extraindo refratometria",
-			)
-
-			if tryExtractRefractometryLocal(
-				progress.WithRange(fileCtx, 8, 96),
-				file,
-				analysis,
-			) {
-				emitLocalPartial(
-					fileCtx,
-					file.Metadata.Filename,
-					"Refratometria concluída",
-					analysis,
-				)
-				emitLocalFileResult(
-					fileCtx,
-					file.Metadata.Filename,
-					"AUTO",
-					examEye,
-					"extracted",
-					"Refratometria extraída localmente",
-					analysis,
-				)
-				continue
-			}
-
-			progress.Report(
-				fileCtx,
-				96,
-				"refractometry",
-				"Refratometria não pôde ser extraída localmente",
-			)
-			emitLocalFileResult(
-				fileCtx,
-				file.Metadata.Filename,
-				"AUTO",
-				examEye,
-				"failed",
-				"Falha na extração de refratometria",
-				nil,
-			)
-			continue
-
-		case "EYESUITE":
-			progress.Report(
-				fileCtx,
-				8,
-				"eyesuite",
-				"Extraindo biometria EyeSuite",
-			)
-
-			if tryExtractEyeSuiteLocal(
-				fileCtx,
-				file,
-				analysis,
-			) {
-				progress.Report(
-					fileCtx,
-					96,
-					"eyesuite",
-					"EyeSuite extraído localmente",
-				)
-
-				emitLocalPartial(
-					fileCtx,
-					file.Metadata.Filename,
-					"EyeSuite concluído",
-					analysis,
-				)
-
-				emitLocalFileResult(
-					fileCtx,
-					file.Metadata.Filename,
-					"EYESUITE",
-					examEye,
-					"extracted",
-					"EyeSuite extraído",
-					analysis,
-				)
-
-				continue
-			}
-
-			progress.Report(
-				fileCtx,
-				96,
-				"eyesuite",
-				"EyeSuite não pôde ser extraído localmente",
-			)
-
-			emitLocalFileResult(
-				fileCtx,
-				file.Metadata.Filename,
-				"EYESUITE",
-				examEye,
-				"failed",
-				"Falha na extração EyeSuite",
-				nil,
-			)
-
-			continue
-
-		case "PENTACAM":
-			progress.Report(
-				fileCtx,
-				8,
-				"pentacam",
-				"Extraindo Pentacam",
-			)
-
-			if tryExtractPentacamLocal(
-				progress.WithRange(
-					fileCtx,
-					8,
-					96,
-				),
-				file,
-				analysis,
-			) {
-				emitLocalPartial(
-					fileCtx,
-					file.Metadata.Filename,
-					"Pentacam concluído",
-					analysis,
-				)
-
-				emitLocalFileResult(
-					fileCtx,
-					file.Metadata.Filename,
-					"PENTACAM",
-					examEye,
-					"extracted",
-					"Pentacam extraído",
-					analysis,
-				)
-
-				continue
-			}
-
-			progress.Report(
-				fileCtx,
-				96,
-				"pentacam",
-				"Pentacam não pôde ser extraído localmente",
-			)
-
-			emitLocalFileResult(
-				fileCtx,
-				file.Metadata.Filename,
-				"PENTACAM",
-				examEye,
-				"failed",
-				"Falha na extração Pentacam",
-				nil,
-			)
-
-			continue
-
-		case "RETINA",
-			"CORNEA",
-			"MICROSCOPIA_ESPECULAR":
-
-			progress.Report(
-				fileCtx,
-				100,
-				strings.ToLower(examType),
-				"Arquivo identificado; extrator local específico ainda não configurado",
-			)
-
-			continue
-		}
-
-		// Compatibilidade com arquivos antigos ainda
-		// não padronizados: mantém o comportamento
-		// heurístico anterior.
-		progress.Report(
-			fileCtx,
-			8,
-			"eyesuite",
-			"Verificando biometria EyeSuite",
-		)
-
-		if tryExtractEyeSuiteLocal(
+		dispatchLocalFile(
 			fileCtx,
 			file,
+			examType,
+			examEye,
 			analysis,
-		) {
-			emitLocalPartial(
-				fileCtx,
-				file.Metadata.Filename,
-				"EyeSuite concluído",
-				analysis,
-			)
-
-			continue
-		}
-
-		progress.Report(
-			fileCtx,
-			14,
-			"pentacam",
-			"Verificando Pentacam",
-		)
-
-		if tryExtractPentacamLocal(
-			progress.WithRange(
-				fileCtx,
-				14,
-				100,
-			),
-			file,
-			analysis,
-		) {
-			emitLocalPartial(
-				fileCtx,
-				file.Metadata.Filename,
-				"Pentacam concluído",
-				analysis,
-			)
-
-			continue
-		}
-
-		progress.Report(
-			fileCtx,
-			100,
-			"document",
-			"Documento reservado para fallback",
 		)
 	}
 
@@ -1408,4 +1039,163 @@ func stripLocallyResolvedExams(
 	}
 
 	notes["invalid_exams"] = filtered
+}
+
+// resolveLocalClassification returns the contract exam type and eye of a
+// file. The declared classification (frontend or file name) is a hint; for
+// PDFs the device title printed on the page decides, and a disagreement is
+// recorded as a classification diagnostic.
+func resolveLocalClassification(
+	ctx context.Context,
+	file uploadedFile,
+	analysis map[string]any,
+) (string, string) {
+	examType, _ := intakefeature.ContractExamType(file.Metadata.ExamType)
+	if examType == "" {
+		examType = localExamTypeFromFilename(file.Metadata.Filename)
+	}
+
+	eye := strings.ToUpper(strings.TrimSpace(file.Metadata.Eye))
+	if eye == "" {
+		eye = localExamEyeFromFilename(file.Metadata.Filename)
+	}
+
+	// Content decides when it recognises the device; otherwise the declared
+	// type stands. Images are only inspected when nothing was declared, to
+	// avoid an extra OCR pass over every photo.
+	isPDF := file.Metadata.ContentType == "application/pdf"
+	if isPDF || examType == "" {
+		if byContent, _ := intakefeature.ClassifyContent(
+			ctx,
+			file.Metadata.ContentType,
+			file.Data,
+		); byContent != "" && byContent != examType {
+			if examType != "" {
+				recordClassificationConflict(analysis, file, byContent)
+			}
+			examType = byContent
+		}
+	}
+
+	return examType, eye
+}
+
+func recordClassificationConflict(
+	analysis map[string]any,
+	file uploadedFile,
+	byContent string,
+) {
+	diagnostics, _ := analysis["extraction_diagnostics"].([]any)
+	analysis["extraction_diagnostics"] = append(diagnostics, map[string]any{
+		"file_sha256": file.Metadata.SHA256,
+		"exam_type":   byContent,
+		"eye":         file.Metadata.Eye,
+		"field":       "exam_type",
+		"status":      "conflicting",
+		"stage":       "classification",
+		"strategy":    "device_title",
+		"error":       "tipo informado diverge do conteúdo do documento",
+	})
+}
+
+// dispatchLocalFile runs the extractor for the contract exam type and emits
+// exactly one file_result for the file, whatever happens.
+func dispatchLocalFile(
+	ctx context.Context,
+	file uploadedFile,
+	examType, eye string,
+	analysis map[string]any,
+) {
+	filename := file.Metadata.Filename
+	isPDF := file.Metadata.ContentType == "application/pdf"
+
+	finish := func(status, message string, withAnalysis bool) {
+		var payload map[string]any
+		if withAnalysis {
+			payload = analysis
+		}
+		emitLocalFileResult(ctx, filename, examType, eye, status, message, payload)
+	}
+	failed := func(stage, message string) {
+		progress.Report(ctx, 96, stage, message)
+		finish("failed", message, false)
+	}
+	partialThenDone := func(stage, partialMessage, message string) {
+		progress.Report(ctx, 96, stage, partialMessage)
+		emitLocalPartial(ctx, filename, partialMessage, analysis)
+		finish("extracted", message, true)
+	}
+
+	switch examType {
+	case "fundus_retinography":
+		progress.Report(ctx, 8, "retinography_preprocess", "Extraindo retinografia")
+		ok, err := tryExtractRetinographyLocal(progress.WithRange(ctx, 8, 96), file, analysis)
+		switch {
+		case ok:
+			emitLocalPartial(ctx, filename, "Retinografia concluída", analysis)
+			finish("extracted", "Retinografia extraída por OCR local", true)
+		case errors.Is(err, errAnteriorSegmentPhoto):
+			// Same camera, "Mode Cornea": recognised, out of protocol.
+			examType = "anterior_segment_photo"
+			progress.Report(ctx, 96, examType, "Foto de segmento anterior identificada")
+			finish("identified", "Foto de segmento anterior (fora do protocolo): identificada, sem extração clínica", false)
+		default:
+			failed("retinography_parse", "Retinografia não pôde ser extraída localmente")
+		}
+
+	case "specular_microscopy":
+		progress.Report(ctx, 8, "microscopy_preprocess", "Extraindo microscopia especular")
+		ok, _ := tryExtractSpecularMicroscopyLocal(progress.WithRange(ctx, 8, 96), file, analysis)
+		if !ok {
+			failed("microscopy_parse", "Microscopia especular não pôde ser extraída localmente")
+			return
+		}
+		status, message, partialMessage := "extracted", "Microscopia especular extraída", "Microscopia especular concluída"
+		if specularMicroscopyFileNeedsFallback(analysis, file) {
+			status, message, partialMessage = "partial", "Microscopia especular parcialmente extraída", "Microscopia especular parcial"
+		}
+		emitLocalPartial(ctx, filename, partialMessage, analysis)
+		finish(status, message, true)
+
+	case "refractometry":
+		progress.Report(ctx, 8, "refractometry", "Extraindo refratometria")
+		if tryExtractRefractometryLocal(progress.WithRange(ctx, 8, 96), file, analysis) {
+			partialThenDone("refractometry", "Refratometria concluída", "Refratometria extraída localmente")
+		} else {
+			failed("refractometry", "Refratometria não pôde ser extraída localmente")
+		}
+
+	case "iol_calculation":
+		if !isPDF {
+			failed("eyesuite", "EyeSuite exige PDF")
+			return
+		}
+		progress.Report(ctx, 8, "eyesuite", "Extraindo biometria EyeSuite")
+		if tryExtractEyeSuiteLocal(ctx, file, analysis) {
+			partialThenDone("eyesuite", "EyeSuite concluído", "EyeSuite extraído")
+		} else {
+			failed("eyesuite", "EyeSuite não pôde ser extraído localmente")
+		}
+
+	case "pentacam_corneal_tomography":
+		if !isPDF {
+			failed("pentacam", "Pentacam exige PDF")
+			return
+		}
+		progress.Report(ctx, 8, "pentacam", "Extraindo Pentacam")
+		if tryExtractPentacamLocal(progress.WithRange(ctx, 8, 96), file, analysis) {
+			partialThenDone("pentacam", "Pentacam concluído", "Pentacam extraído")
+		} else {
+			failed("pentacam", "Pentacam não pôde ser extraído localmente")
+		}
+
+	case "anterior_segment_photo", "corneal_topography_other", "oct_retina":
+		// Recognised, out of the extraction protocol: kept for identity and
+		// record counting only.
+		progress.Report(ctx, 96, examType, "Arquivo identificado; sem extrator clínico no protocolo")
+		finish("identified", "Documento identificado (fora do protocolo de extração)", false)
+
+	default:
+		failed("classification", "Tipo de documento não reconhecido; classifique manualmente")
+	}
 }

@@ -19,6 +19,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/smithy-go"
 
+	intakefeature "refratia/backend/features/intake"
 	patientfeature "refratia/backend/features/patient"
 	progress "refratia/backend/shared/progress"
 )
@@ -533,20 +534,8 @@ func cloneCheckpointValue(
 func checkpointExamKey(
 	examType string,
 ) string {
-	switch strings.ToUpper(
-		strings.TrimSpace(examType),
-	) {
-	case "PENTACAM":
-		return "pentacam_corneal_tomography"
-	case "EYESUITE":
-		return "iol_calculation"
-	case "MICROSCOPIA_ESPECULAR":
-		return "specular_microscopy"
-	case "RETINA":
-		return "fundus_retinography"
-	default:
-		return ""
-	}
+	key, _ := intakefeature.ContractExamType(examType)
+	return key
 }
 
 func identityEntriesForCheckpointFile(

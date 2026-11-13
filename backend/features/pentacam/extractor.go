@@ -18,6 +18,9 @@ type pentacamDocumentField struct {
 	Decimal bool
 }
 
+// pentacamPageLayout holds, per field group, the page of the screen that
+// carries it. 0 means the report has no such screen: the fields stay missing
+// ("not_applicable") and no other page is read in its place.
 type pentacamPageLayout struct {
 	anteriorCornea int
 	pachymetry     int
@@ -28,29 +31,18 @@ type pentacamPageLayout struct {
 	z31            int
 }
 
-func pentacamPageLayoutFor(pageCount int) pentacamPageLayout {
-	layout := pentacamPageLayout{
-		anteriorCornea: 4,
-		pachymetry:     8,
-		topometric:     9,
-		badd:           11,
-		z40:            10,
-		acd:            10,
-		z31:            12,
+// pentacamPageLayoutFromScreens derives the layout from the detected screens
+// instead of the page count (9, 11 and 12 page reports all exist).
+func pentacamPageLayoutFromScreens(screens map[Screen]int) pentacamPageLayout {
+	return pentacamPageLayout{
+		anteriorCornea: screens[ScreenRefractive],
+		pachymetry:     screens[ScreenPachymetry],
+		topometric:     screens[ScreenTopometric],
+		badd:           screens[ScreenBelin],
+		z40:            screens[ScreenCataract],
+		acd:            screens[ScreenCataract],
+		z31:            screens[ScreenRings],
 	}
-
-	// Some Pentacam exports omit one of the aberrometry pages. In those
-	// reports every page after the anterior-cornea summary shifts one slot.
-	if pageCount == 11 {
-		layout.pachymetry--
-		layout.topometric--
-		layout.badd--
-		layout.z40--
-		layout.acd--
-		layout.z31--
-	}
-
-	return layout
 }
 
 func ExtractPDF(executionContext context.Context, data []byte) (map[string]any, error) {
@@ -74,8 +66,14 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 		return nil, errorValue
 	}
 
-	layout := pentacamPageLayoutFor(pageCount)
-	renderPages := []int{
+	screens, errorValue := DetectScreens(executionContext, data, pageCount)
+	if errorValue != nil {
+		return nil, errorValue
+	}
+	layout := pentacamPageLayoutFromScreens(screens)
+	renderPages := []int{}
+	seenPage := map[int]bool{}
+	for _, page := range []int{
 		layout.anteriorCornea,
 		layout.pachymetry,
 		layout.topometric,
@@ -83,14 +81,12 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 		layout.z40,
 		layout.acd,
 		layout.z31,
-	}
-	availablePages := renderPages[:0]
-	for _, page := range renderPages {
-		if page <= pageCount {
-			availablePages = append(availablePages, page)
+	} {
+		if page > 0 && page <= pageCount && !seenPage[page] {
+			seenPage[page] = true
+			renderPages = append(renderPages, page)
 		}
 	}
-	renderPages = availablePages
 
 	if parallelRender {
 		rendered, errorValue := parallelwork.Map(executionContext, renderPages, 3, func(executionContext context.Context, page int) ([]byte, error) {
@@ -228,11 +224,14 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 	)
 
 	// Página 9 — índices topométricos.
-	topometricOCRTexts, _ := extractOCRTextsFromRegion(
-		executionContext,
-		pages[layout.topometric],
-		pentacamOCRRegion{X: 730, Y: 2160, W: 450, H: 330},
-	)
+	var topometricOCRTexts []string
+	if len(pages[layout.topometric]) > 0 {
+		topometricOCRTexts, _ = extractOCRTextsFromRegion(
+			executionContext,
+			pages[layout.topometric],
+			pentacamOCRRegion{X: 730, Y: 2160, W: 450, H: 330},
+		)
+	}
 
 	topometricDocumentFields := []pentacamDocumentField{
 		{"isv", `\b(?:isv|15v)\b`, false},

@@ -16,6 +16,7 @@ func tryExtractPentacamLocal(
 	file uploadedFile,
 	analysis map[string]any,
 ) bool {
+	defer validateTouchedEyes(analysis, file, snapshotEyes(analysis))
 	progress.Report(
 		ctx,
 		2,

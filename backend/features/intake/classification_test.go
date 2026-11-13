@@ -25,7 +25,7 @@ func TestParseClassificationsNormalizesContractKeys(
 	classification :=
 		classifications["abc"]
 
-	if classification.ExamType != "PENTACAM" ||
+	if classification.ExamType != "pentacam_corneal_tomography" ||
 		classification.Eye != "OD" {
 		t.Fatalf(
 			"classification was not normalized: %+v",
@@ -46,7 +46,7 @@ func TestParseClassificationsAcceptsRefractometry(
 	}
 
 	classification := classifications["auto-file"]
-	if classification.ExamType != "AUTO" || classification.Eye != "AO" {
+	if classification.ExamType != "refractometry" || classification.Eye != "AO" {
 		t.Fatalf("refractometry classification was not normalized: %+v", classification)
 	}
 }
@@ -61,7 +61,7 @@ func TestParseClassificationsForcesSpecularMicroscopyToAO(t *testing.T) {
 	}
 
 	classification := classifications["micro-file"]
-	if classification.ExamType != "MICROSCOPIA_ESPECULAR" || classification.Eye != "AO" {
+	if classification.ExamType != "specular_microscopy" || classification.Eye != "AO" {
 		t.Fatalf("specular microscopy was not forced to AO: %+v", classification)
 	}
 }
@@ -109,6 +109,7 @@ func TestCanonicalExamFilename(
 			"PENTACAM",
 			"OD",
 			"pdf",
+			"0123456789abcdef",
 		)
 
 	if !strings.HasPrefix(
@@ -192,45 +193,33 @@ func TestClassificationFromFlexibleFilenameFormat(t *testing.T) {
 	}
 }
 
-func TestPrefilterPDFCandidatesSuggestsPentacamForNinePages(
-	t *testing.T,
-) {
-	candidates :=
-		prefilterPDFCandidates(9)
-
-	if len(candidates) != 1 {
-		t.Fatalf(
-			"expected one candidate, got %d",
-			len(candidates),
-		)
+func TestClassifyTextByDeviceTitle(t *testing.T) {
+	cases := map[string]string{
+		"OCULUS - PENTACAM Geral":           "pentacam_corneal_tomography",
+		"EyeSuite IOL, V4.12.0":             "iol_calculation",
+		"Calculation ID (CID): 12":          "iol_calculation",
+		"@@TP-15 simK 3mm":                  "corneal_topography_other",
+		"PRK-6808 [REF] <R> SPH CYL AX":     "refractometry",
+		"nothing recognisable here at all":  "",
+		"PENTACAM and EyeSuite on one page": "",
 	}
-
-	if candidates[0].ExamType !=
-		"pentacam_corneal_tomography" {
-		t.Fatalf(
-			"unexpected candidate: %+v",
-			candidates[0],
-		)
-	}
-
-	if candidates[0].Score <= 0 {
-		t.Fatalf(
-			"expected positive Pentacam score: %+v",
-			candidates[0],
-		)
+	for text, want := range cases {
+		if got := ClassifyText(text); got != want {
+			t.Errorf("ClassifyText(%q) = %q, want %q", text, got, want)
+		}
 	}
 }
 
-func TestPrefilterPDFCandidatesDoesNotGuessOnePagePDF(
-	t *testing.T,
-) {
-	candidates :=
-		prefilterPDFCandidates(1)
-
-	if len(candidates) != 0 {
-		t.Fatalf(
-			"one-page PDF should not be guessed: %+v",
-			candidates,
-		)
+func TestCanonicalExamFilenameIsUniquePerFileAndReparses(t *testing.T) {
+	a := CanonicalExamFilename("Ana", "fundus_retinography", "OD", "jpeg", "aaaaaaaa11")
+	b := CanonicalExamFilename("Ana", "fundus_retinography", "OD", "jpeg", "bbbbbbbb22")
+	if a == b {
+		t.Fatal("same exam+eye with different content must not share a draft key")
+	}
+	if !strings.HasPrefix(CanonicalExamFilename("Ana", "refractometry", "AO", "jpeg", "cc"), "AUTO__AO__ANA__") {
+		t.Fatal("refractometry must be labelled AUTO")
+	}
+	if exam, eye, ok := CanonicalClassificationFromFilename(a); !ok || exam != "fundus_retinography" || eye != "OD" {
+		t.Fatalf("canonical name must reparse, got %q %q %v", exam, eye, ok)
 	}
 }

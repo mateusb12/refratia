@@ -5,10 +5,10 @@ import (
 	"context"
 	"fmt"
 	"image"
-	"image/color"
 	"image/png"
 	"os"
 	"os/exec"
+	"refratia/backend/shared/ocr"
 	"regexp"
 	"strconv"
 	"strings"
@@ -278,6 +278,10 @@ func pentacamParseCellNumber(
 	return value, true
 }
 
+// pentacamBinaryUpscale upscales a cell and binarizes it. Grey is the darkest
+// colour channel, so red/blue (out-of-norm) text keeps its contrast, and a
+// cell whose background is darker than its text (white digits on a red box)
+// is inverted so the digits are always dark on light.
 func pentacamBinaryUpscale(
 	data []byte,
 	scale int,
@@ -288,28 +292,31 @@ func pentacamBinaryUpscale(
 		return nil, err
 	}
 
-	b := src.Bounds()
-	dst := image.NewGray(
-		image.Rect(0, 0, b.Dx()*scale, b.Dy()*scale),
-	)
+	gray := ocr.PrepareGray(src, src.Bounds(), scale, 0)
 
-	for y := 0; y < dst.Bounds().Dy(); y++ {
-		for x := 0; x < dst.Bounds().Dx(); x++ {
-			sx := b.Min.X + x/scale
-			sy := b.Min.Y + y/scale
+	// Polarity: most pixels are background. A dark majority means light text
+	// on a dark fill.
+	var dark int
+	for _, v := range gray.Pix {
+		if v < 128 {
+			dark++
+		}
+	}
+	invert := dark*2 > len(gray.Pix)
 
-			g := color.GrayModel.Convert(src.At(sx, sy)).(color.Gray).Y
-
-			if g < threshold {
-				dst.SetGray(x, y, color.Gray{Y: 0})
-			} else {
-				dst.SetGray(x, y, color.Gray{Y: 255})
-			}
+	for i, v := range gray.Pix {
+		if invert {
+			v = 255 - v
+		}
+		if v < threshold {
+			gray.Pix[i] = 0
+		} else {
+			gray.Pix[i] = 255
 		}
 	}
 
 	var buf bytes.Buffer
-	if err := png.Encode(&buf, dst); err != nil {
+	if err := png.Encode(&buf, gray); err != nil {
 		return nil, err
 	}
 
