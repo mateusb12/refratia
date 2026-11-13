@@ -22,3 +22,6 @@ Overlay/crop rendering (needs `extraction_diagnostics` page+bbox from the OCR ag
 
 ## Out-of-protocol documents
 Fields on exam types with `in_protocol: false` in `_field_spec.json` (e.g. `anterior_segment_photo`, `corneal_topography_other`) are still extracted, persisted and scored, but are always optional (role `optional_out_of_protocol`): they never count as required failures or block a run. Product decision, 2026-11-13.
+
+## Reference state
+Engineering reference: `cac8a1b` (gate `out/20261113-150559`, scorer `048e9b6`); `last_pass.json` = its 509 passing fields. Known non-passing fields that stay in the benchmark (regressions vs option A, unresolved required fields, the one wrong informative value) are listed in `final-report.md`.
