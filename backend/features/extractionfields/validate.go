@@ -219,3 +219,31 @@ func ValidateEyes(fileSHA256, examKey string, exam map[string]any, eyeNames []st
 	}
 	return out
 }
+
+// Rule is the printed format of one field, for extractors that need to
+// normalise raw OCR text (how many decimals the device prints, the plausible
+// range, whether it is an integer).
+type Rule struct {
+	Kind     string // "num" | "int" | "str" | "date"
+	Decimals int    // printed decimals; 0 for int, -1 when unknown
+	Min, Max float64
+	HasRange bool
+}
+
+// RuleFor returns the printed-format rule of a spec field.
+func RuleFor(examKey, field string) (Rule, bool) {
+	for _, l := range locations[examKey] {
+		if l.field != field {
+			continue
+		}
+		r := Rule{Kind: l.spec.Kind, Decimals: decimals(l.spec)}
+		if l.spec.Kind == "int" {
+			r.Decimals = 0
+		}
+		if l.spec.PlausibleRange != nil {
+			r.Min, r.Max, r.HasRange = l.spec.PlausibleRange[0], l.spec.PlausibleRange[1], true
+		}
+		return r, true
+	}
+	return Rule{}, false
+}

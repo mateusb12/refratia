@@ -149,3 +149,68 @@ Scratch scripts and raw responses are in `/tmp/claude-1000/-home-mateus-Desktop-
 
 ## Processes
 - None left running. The backend I started (PID 43640, `PORT=3100 ./refratia` in scratchpad/persist, log `scratchpad/persist/backend.log`) was stopped after the runs finished, along with my monitors. Docker containers `refratia-test-pg` and `refratia-test-garage` were started by the lead and were not touched.
+
+## Implementation log
+
+Phase 2, 2026-11-12/13. All tests green (`go build ./... && go test ./...`, 153 tests; integration tests in `backend/confirm_integration_test.go` run only with `testinfra/test.env` sourced, they skip otherwise). Evidence runs: backend built from the working tree on `:3101` against `refratia_test`/`refratia-test` (wiped first), local OCR, all 5 folders analyze → confirm → confirm(retry), then a re-analyze (`force=1`) + confirm of francisco.
+
+### Evidence summary (SQL after the 5-folder run, expected = ground truth `expected_exam_records.count`)
+| folder | expected | rows | docs | empty exam_type | patients row |
+|---|---|---|---|---|---|
+| creso-aversa | 6 | 6 | 4 | 0 | `aversa creso martinelli\|1979-12-14`, case_id set |
+| francisco | 10 | 10 | 8 | 0 | `aguiar de francisco joao\|1969-08-05` (Pentacam reading), warning `data_nascimento_invertida` |
+| maria-gorete | 8 | 8 | 5 | 0 | `carvalho de gorete maria\|1962-03-21` |
+| rolmey | 8 | 8 | 6 | 0 | `arantes rolmey silva\|1967-05-12` (was 422) |
+| daniela-nogueira | 8 | 8 | 5 | 0 | OCR name garbage, flagged `nome_suspeito` (OCR-owned defect) |
+
+Re-analyze + confirm of francisco: `patientMatch=existing` (found through `patients.case_id`, no Garage scan), confirm `updated`, same caseId, still 10 rows and 1 patient, 8 case objects (no duplicates), `paciente_compilado.json` `patient.birth_date=1969-08-05` equal to SQL. `go run ./cmd/reconcile`: 0 findings. Retry of confirm returned the receipt (200, same case) for all five.
+
+### D5 per-document birth date (+C2 inversion warning)
+- Root cause: one global DMY/MDY hint from any Pentacam timestamp applied to every document.
+- Change: `features/patient/identity.go` `ResolveBirthDate`: order per document (own conclusive slash timestamp; else slash timestamp = Pentacam style MDY; else ISO timestamp = EyeSuite style DMY; else only unambiguous dates). Two documents may disagree only by a day/month swap: the Pentacam (reference) reading wins and `IdentityWarnings` emits `data_nascimento_invertida`. Any other disagreement stays unresolved (422). `analyze` puts warnings in `analysis.identity_warnings` (list of `{code, ...}`) and calls `NormalizeIdentityFields` so `patient.birth_date` is the final canonical value.
+- Age: the backend computes no age anywhere (the only age code is `frontend/src/utils/date.ts`, which returns `null` for a missing/invalid date). Nothing to change; age 0 cannot come from the backend.
+- Tests: `TestBirthDateDayMonthInversionKeepsPentacamAndWarns` (francisco), `TestBirthDatePerDocumentOrderAgrees` (rolmey), `TestBirthDateRealConflictIsUnresolved`, existing identity tests.
+- Evidence: rolmey 422 → 200 with 1967-05-12; francisco 1969-08-05 + warning.
+- Side effect: partial analyses of one patient (an EyeSuite-only and a Pentacam-only checkpoint) now resolve to different dates. `file_checkpoints.go:939` compares them with `!=` and fails ("arquivos pertencem a pacientes diferentes") on re-analyze without `force`. OPEN, OCR-owned: use the new `patientfeature.SameIdentity(a, b)` there.
+
+### D2 identity before any Garage write
+- Root cause: identity was checked only in the SQL upsert at the end.
+- Change: `confirmIntakeHandler` validates `patientIdentity` and file classification before `commitIntake` (422 with no copy/marker/receipt); `confirmSavedExam` validates the case identity before SQL and answers 422 (was 500), reverting the just-uploaded object.
+- Tests: `TestConfirmRejectsUnresolvedIdentityBeforeAnyGarageWrite` (no case objects, no receipt), `TestSavedExamConfirmIdentityFailureIs422AndRevertsObject`.
+
+### D3/D13 unique draft keys, refractometry label
+- Root cause: name = label+eye+patient+second; two same-type files in a batch collided; no `refractometry` label.
+- Change: `CanonicalExamFilename(..., sha256)` returns `LABEL__EYE__PATIENT__{sha8}__{ts}.ext` (the canonical-name parser still accepts it) and labels refractometry `AUTO`.
+- Test: `TestCanonicalExamFilenameIsUniquePerFileAndReparses`. Evidence: francisco case holds both CORNEA files as distinct objects.
+
+### D1/D8/C1 one SQL transaction, row per (document, eye)
+- Root cause: confirm wrote no exam rows; patient upsert was find-then-create outside a transaction; `UNIQUE(object_key)`.
+- Change: `commitIntake` (`intake_handlers.go`): single `Gorm.Transaction`: lock patient, Garage copy + marker, then `savePatient` + `upsertExamRows` (`ON CONFLICT (object_key, eye) DO UPDATE`) + prune rows of documents the merge superseded. AO documents give OD+OS rows. `exam_type` uses the contract vocabulary (`examTypeKey`), never `''` (`unclassified` for legacy/manual). `database.Migrate` drops `idx_exams_object_key`, creates `idx_exams_object_eye UNIQUE(object_key, eye)`, rewrites legacy `''` types.
+- Tests: `TestConfirmWritesOneRowPerDocumentAndEyeAndIsIdempotent` (4 rows from AO+OD+OS, retry no change). Evidence: table above.
+- Vocabulary gap (OPEN, needs lead): the app can only classify the 6 `ExamTypeFromContract` types, so `CORNEA` photos and the `TOPO` pdf were classified `oct_retina` in the e2e run (ground truth: `anterior_segment_photo`, `corneal_topography_other`). Counts match, those two types do not. Fixing it means extending `ExamTypeFromContract`/label maps (classification.go logic, OCR-owned) and the frontend list.
+
+### D6/D7/D15 patients.case_id + row lock
+- Root cause: find-then-create and read-merge-write on Garage with no mutex; identity match by scanning every case.
+- Change: `patients.case_id`; `lockPatient` = `INSERT ... ON CONFLICT (identity_key) DO NOTHING` + `SELECT ... FOR UPDATE`; the lock is held through the Garage merge+write, so concurrent confirms serialize. `resolveExistingCase` (analyze) and `commitIntake` use `patients.case_id`; the Garage scan stays only as fallback for legacy cases without a row (it still runs for brand-new patients: `ponytail` comment, drop after backfill).
+- Tests: `TestConcurrentConfirmsOfSamePatientShareOneCase` (3 concurrent intakes, one case, 4 rows, none lost), second-intake "updated" in the idempotency test. Evidence: francisco re-analyze matched `existing` via SQL.
+
+### D4 identity name rule
+- Rule (`NameKey`): lowercase, accent/punctuation/whitespace stripped, tokens sorted and joined, so `SURNAME, NAME` and `NAME SURNAME` give the same key. identity_key = `NameKey|YYYY-MM-DD`. (Legacy rows keep their old key text; the Garage fallback re-matches them by the new key, `savePatient` then links the case.)
+- Not merged automatically, but flagged (`analysis.identity_warnings`, non-blocking, persisted in the compiled JSON): `nome_divergente` (a document's name is not compatible with `patient.full_name`: compatible = every token of the shorter name appears in the longer one, whole or as a 1-letter initial, covering `MARIA GORETE DE C`), `nome_suspeito` (name has digits/symbols, OCR garbage), `nome_divergente_paciente_existente` (new identity but another patient has the same birth date: possible OCR typo or namesake; includes that patient's caseId; never merged or guessed).
+- Tests: `TestNameKeyIgnoresOrderAccentsAndWhitespace`, `TestNameWarningForIncompatibleDocumentName`, `TestSuspiciousNameIsFlagged`. Evidence: francisco/maria/rolmey runs carry `nome_divergente` for the `jJO40`/`JDE`/`JROLMEY` Pentacam reads. OPEN (OCR): daniela's `patient.full_name` was `° 2/25 Segmento: 294° 114° \ NOGUEIRA ROCHA` in this run (only flagged).
+
+### D9, D10, D14, D11
+- D9: `deleteCaseRows` (exams then patient by `case_id`, one transaction) runs before the Garage deletes, so a retry after a partial Garage failure still cleans. Test `TestDeleteCaseRemovesSQLRows`.
+- D10: `cleanupObjects` (`storage.go`, owner not listed, tiny edit) logs failures (counts only, keys carry patient names); the identity scan skips only not-found/corrupt manifests (logged by case id) and returns storage errors; `examMetadataFromManifest` returns its error (404/502, not a misleading 500). Not changed: `casesHandler` still skips unreadable cases in the listing.
+- D14: `logger.Silent` in `database.Open` (identity_key no longer printed). Verified: backend log of the 5-folder run holds only the start line.
+- D11: analyze answers 422 listing files without exam+eye (before OCR); confirm rejects drafts with unclassified files. Manual `exams/confirm` accepts optional `examType`/`eye` for files not in the manifest, else `unclassified`. Verified with a real call: 422. OPEN for the frontend: for files the app cannot classify (see vocabulary gap) the user must now pick a type.
+
+### Reconcile
+`go run ./cmd/reconcile` (report only, deletes nothing): `garage-case-without-sql`, `sql-case-without-marker`, `unreferenced-object`, `exam-without-object`, `case-without-marker`; prints case ids only. On the old repro debris it listed 9 findings; after the clean run, 0.
+
+### Still open
+1. OCR: `file_checkpoints.go` identity compare must use `patientfeature.SameIdentity` (re-analyze of an inverted-date patient without `force` returns 502).
+2. Lead/OCR/frontend: exam_type vocabulary for out-of-protocol documents (`anterior_segment_photo`, `corneal_topography_other`).
+3. OCR: daniela full_name garbage; Pentacam `nome_lido` garbage (`jJO40 JFRANCISCO`) only flagged.
+4. D12 superseded objects stay in the case folder (SQL rows are pruned, objects not); reconcile reports them as `unreferenced-object`.
+5. Not run: a Postgres outage mid-confirm (by design the SQL transaction rolls back, Garage objects are overwritten by the retry).

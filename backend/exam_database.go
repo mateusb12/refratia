@@ -20,7 +20,7 @@ import (
 )
 
 // examTypeKeys maps the intake label vocabulary to the exam_type stored in SQL
-// (contract C1). Unknown or missing never becomes ''.
+// (contract C1). Unknown or missing never becomes ”.
 var examTypeKeys = map[string]string{
 	"PENTACAM":              "pentacam_corneal_tomography",
 	"EYESUITE":              "iol_calculation",
