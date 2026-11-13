@@ -67,6 +67,7 @@ type SpecField struct {
 type Spec struct {
 	AppExamKey map[string]*string              `json:"app_exam_key"`
 	Fields     map[string]map[string]SpecField `json:"fields"`
+	InProtocol map[string]bool                 `json:"in_protocol"`
 }
 
 func loadJSON(path string, v any) error {
@@ -241,6 +242,11 @@ func scorePatient(slug string, g *GT, spec *Spec, analysis any, classOK map[stri
 				sp, known := spec.Fields[f.ExamType][key]
 				r := FieldRes{ID: strings.Join([]string{slug, f.ExamType, eye, key}, "|"), Patient: slug,
 					ExamType: f.ExamType, Eye: eye, Field: key, Role: fv.ProtocolRole, Expected: show(fv.Value)}
+				// Out-of-protocol documents are still extracted and scored, but never block:
+				// their fields are optional whatever role the ground truth gives them.
+				if in, ok := spec.InProtocol[f.ExamType]; ok && !in && r.Required() {
+					r.Role = "optional_out_of_protocol"
+				}
 				if fv.Verification != "agent_visual" {
 					r.Outcome = "unverified"
 					res = append(res, r)

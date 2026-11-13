@@ -69,3 +69,17 @@ func TestPlaceholderWhereNullIsIncorrect(t *testing.T) {
 		t.Fatal("dash placeholders must count as app values")
 	}
 }
+
+func TestOutOfProtocolFieldsAreOptional(t *testing.T) {
+	g := &GT{Files: []GTFile{
+		{ExamType: "photo", Fields: map[string]map[string]FieldValue{"OD": {"x": {Value: 1, Verification: "agent_visual", ProtocolRole: "decisive"}}}},
+		{ExamType: "topo", Fields: map[string]map[string]FieldValue{"OD": {"x": {Value: 1, Verification: "agent_visual", ProtocolRole: "decisive"}}}},
+	}}
+	spec := &Spec{InProtocol: map[string]bool{"photo": false, "topo": true}}
+	res := scorePatient("p", g, spec, nil, nil)
+	for _, r := range res {
+		if want := r.ExamType == "topo"; r.Required() != want {
+			t.Fatalf("%s: required=%v, want %v (role %s)", r.ExamType, r.Required(), want, r.Role)
+		}
+	}
+}
