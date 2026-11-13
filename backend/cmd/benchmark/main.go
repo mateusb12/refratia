@@ -41,7 +41,9 @@ type Check struct {
 	Group  string `json:"group"`
 	Name   string `json:"name"`
 	OK     bool   `json:"ok"`
-	Info   bool   `json:"info,omitempty"` // informational: reported, never fails the run
+	Info   bool   `json:"info,omitempty"`          // informational: reported, never fails the run
+	NE     bool   `json:"not_evaluable,omitempty"` // cannot be evaluated because of an upstream failure (counted once, at the root check)
+	Kind   string `json:"kind"`                    // app_failure | infra_failure (meaningful when !OK)
 	Detail string `json:"detail,omitempty"`
 }
 
@@ -64,6 +66,7 @@ type PatientRun struct {
 	Checks        []Check    `json:"checks"`
 	Changes       []string   `json:"reingest_changes"`
 	Unverified    []string   `json:"unverified"`
+	Incomplete    string     `json:"incomplete,omitempty"` // set when the patient could not be fully evaluated (infra)
 }
 
 type Run struct {
@@ -74,25 +77,37 @@ type Run struct {
 	Patients    []*PatientRun `json:"patients"`
 	Regressions []string      `json:"regressions"`
 	Failures    []string      `json:"failures"`
+	InfraFails  []string      `json:"infra_failures"`
+	Complete    bool          `json:"complete"`
+	Why         []string      `json:"incomplete_reasons,omitempty"`
+	Requested   []string      `json:"requested_patients"`
+	Compare     *Compare      `json:"compare,omitempty"`
+	Note        string        `json:"note,omitempty"`
 }
 
 type env struct {
-	vars    []string
-	m       map[string]string
-	api     string
-	out     string
-	data    string
-	gtDir   string
-	spec    *Spec
-	s3      *s3.Client
-	pgURL   string
-	httpc   *http.Client
-	reForce bool
+	vars              []string
+	m                 map[string]string
+	api               string
+	out               string
+	data              string
+	gtDir             string
+	spec              *Spec
+	s3                *s3.Client
+	pgURL             string
+	httpc             *http.Client
+	reForce           bool
+	analyzeTO, stepTO time.Duration
+	cmd               *exec.Cmd
+	bin               string
+	backendDir        string
 }
 
 func die(f string, a ...any) { fmt.Fprintf(os.Stderr, "benchmark: "+f+"\n", a...); os.Exit(2) }
 
-func main() {
+func main() { os.Exit(realMain()) }
+
+func realMain() (code int) {
 	cwd, _ := os.Getwd()
 	root := cwd
 	if filepath.Base(cwd) == "backend" {
@@ -107,21 +122,49 @@ func main() {
 	update := flag.Bool("update-baseline", false, "rewrite the baseline with the fields that pass now")
 	envFile := flag.String("env-file", filepath.Join(root, "backend", "testinfra", "test.env"), "testinfra env file (never the repo .env)")
 	reForce := flag.Bool("reingest-force", false, "re-ingest with full re-processing instead of checkpoints")
+	resume := flag.String("resume", "", "resume this out/<ts> dir: patients already in patients/*.json are skipped")
+	compare := flag.String("compare", "", "previous report.json (or run dir) to compare with (default: latest previous run)")
+	rescore := flag.String("rescore", "", "re-score an earlier run dir offline from its raw/ files (no OCR, no backend)")
+	analyzeTO := flag.Duration("analyze-timeout", 25*time.Minute, "per-patient analyze timeout")
+	stepTO := flag.Duration("step-timeout", 5*time.Minute, "inspect/confirm timeout")
 	flag.Parse()
 
 	t0 := time.Now()
 	ctx := context.Background()
-	e := &env{data: *dataDir, gtDir: *gtDir, reForce: *reForce, httpc: &http.Client{}}
-	e.setupEnv(*envFile)
-	e.out = filepath.Join(*outBase, t0.Format("20060102-150405"))
-	must(os.MkdirAll(filepath.Join(e.out, "raw"), 0o755))
+	e := &env{data: *dataDir, gtDir: *gtDir, reForce: *reForce, httpc: &http.Client{}, analyzeTO: *analyzeTO, stepTO: *stepTO}
 	e.spec = &Spec{}
 	must(loadJSON(filepath.Join(e.gtDir, "_field_spec.json"), e.spec))
-
 	slugs := []string{"creso-aversa", "daniela-nogueira", "francisco", "maria-gorete", "rolmey"}
 	if *patients != "" {
 		slugs = strings.Split(*patients, ",")
 	}
+	run := &Run{Started: t0.Format(time.RFC3339), BackendDir: *backendDir, Requested: slugs,
+		Command: "npm run benchmark -- " + strings.Join(os.Args[1:], " ")}
+
+	if *rescore != "" {
+		e.out = filepath.Join(*outBase, t0.Format("20060102-150405")+"-rescore")
+		must(os.MkdirAll(filepath.Join(e.out, "patients"), 0o755))
+		run = e.rescoreRun(*rescore, run)
+		return conclude(run, e, *baseline, false, "-", *outBase, t0)
+	}
+
+	// anything unexpected in setup is an infra failure, reported (INCOMPLETE) with exit code 2
+	defer func() {
+		if r := recover(); r != nil {
+			run.InfraFails = append(run.InfraFails, fmt.Sprint("harness: ", r))
+			code = conclude(run, e, *baseline, *update, *compare, *outBase, t0)
+		}
+	}()
+	e.setupEnv(*envFile)
+	if *resume != "" {
+		e.out = *resume
+		run.Patients = loadDone(e.out)
+	} else {
+		e.out = filepath.Join(*outBase, t0.Format("20060102-150405"))
+	}
+	must(os.MkdirAll(filepath.Join(e.out, "raw"), 0o755))
+	must(os.MkdirAll(filepath.Join(e.out, "patients"), 0o755))
+	defer e.stopBackend()
 
 	// one run at a time: the bench DB and bucket are shared and wiped at start
 	lock, err := os.OpenFile(filepath.Join(os.TempDir(), "refratia-benchmark.lock"), os.O_CREATE|os.O_RDWR, 0o644)
@@ -130,27 +173,84 @@ func main() {
 		die("another benchmark run is in progress (shared refratia_bench DB/bucket); wait for it to finish")
 	}
 	defer lock.Close()
-	e.resetInfra(ctx)
-	stop := e.startBackend(ctx, *backendDir)
-	defer stop()
+	if *resume == "" || !e.dbExists(ctx) {
+		e.resetInfra(ctx)
+	}
+	must(e.buildBackend(*backendDir))
+	must(e.launch())
 
-	run := &Run{Started: t0.Format(time.RFC3339), BackendDir: *backendDir,
-		Command: "npm run benchmark -- " + strings.Join(os.Args[1:], " ")}
+	done := map[string]bool{}
+	for _, p := range run.Patients {
+		done[p.Slug] = true
+	}
 	for _, slug := range slugs {
+		if done[slug] {
+			fmt.Printf("== %s (resumed, skipped)\n", slug)
+			continue
+		}
 		fmt.Printf("== %s\n", slug)
-		run.Patients = append(run.Patients, e.runPatient(ctx, slug))
+		pr := e.safePatient(ctx, slug)
+		run.Patients = append(run.Patients, pr)
+		b, _ := json.MarshalIndent(pr, "", " ")
+		os.WriteFile(filepath.Join(e.out, "patients", slug+".json"), b, 0o644)
+		run.Seconds = time.Since(t0).Seconds()
+		writeReports(run, e.out) // incremental: a crash never loses finished patients
 	}
-	run.Seconds = time.Since(t0).Seconds()
-	finish(run, *baseline, *update, e.out)
-	stop()
-	if len(run.Failures)+len(run.Regressions) > 0 {
-		os.Exit(1)
-	}
+	return conclude(run, e, *baseline, *update, *compare, *outBase, t0)
 }
 
+func loadDone(out string) []*PatientRun {
+	var res []*PatientRun
+	files, _ := filepath.Glob(filepath.Join(out, "patients", "*.json"))
+	for _, f := range files {
+		p := &PatientRun{}
+		if loadJSON(f, p) == nil && p.Incomplete == "" {
+			res = append(res, p)
+		}
+	}
+	return res
+}
+
+func (e *env) dbExists(ctx context.Context) (ok bool) {
+	defer func() {
+		if recover() != nil {
+			ok = false
+		}
+	}()
+	c := e.pg(ctx, benchDB)
+	c.Close(ctx)
+	return true
+}
+
+// safePatient never lets one patient stop the run: panics become infra_failure checks.
+func (e *env) safePatient(ctx context.Context, slug string) (pr *PatientRun) {
+	pr = &PatientRun{Slug: slug}
+	defer func() {
+		for i := range pr.Checks {
+			if pr.Checks[i].Kind == "" {
+				pr.Checks[i].Kind = "app_failure"
+			}
+		}
+	}()
+	defer func() {
+		if r := recover(); r != nil {
+			pr.Checks = append(pr.Checks, Check{Group: "harness", Name: "panic", Kind: "infra_failure", Detail: fmt.Sprint(r)})
+			pr.Incomplete = fmt.Sprint("harness panic: ", r)
+		}
+	}()
+	if err := e.ensureBackend(); err != nil {
+		pr.Checks = append(pr.Checks, Check{Group: "harness", Name: "backend_start", Kind: "infra_failure", Detail: err.Error()})
+		pr.Incomplete = "backend could not be (re)started"
+		return
+	}
+	e.runPatient(ctx, slug, pr)
+	return
+}
+
+// must panics: callers inside a patient run recover it and record an infra_failure.
 func must(err error) {
 	if err != nil {
-		die("%v", err)
+		panic(err)
 	}
 }
 
@@ -233,46 +333,77 @@ func (e *env) listObjects(ctx context.Context, prefix string) (map[string]int64,
 	return out, nil
 }
 
-func (e *env) startBackend(ctx context.Context, backendDir string) func() {
-	bin := filepath.Join(e.out, "backend.bin")
-	build := exec.Command("go", "build", "-o", bin, ".")
+func (e *env) buildBackend(backendDir string) error {
+	e.bin = filepath.Join(e.out, "backend.bin")
+	e.backendDir = backendDir
+	build := exec.Command("go", "build", "-o", e.bin, ".")
 	build.Dir = backendDir
 	if o, err := build.CombinedOutput(); err != nil {
-		die("go build failed in %s:\n%s", backendDir, o)
+		return fmt.Errorf("go build failed in %s: %s", backendDir, o)
 	}
+	return nil
+}
+
+func (e *env) healthy() bool {
+	if e.api == "" {
+		return false
+	}
+	c := http.Client{Timeout: 5 * time.Second}
+	r, err := c.Get(e.api + "/health")
+	if err != nil {
+		return false
+	}
+	r.Body.Close()
+	return r.StatusCode == 200
+}
+
+func (e *env) stopBackend() {
+	if e.cmd != nil && e.cmd.Process != nil {
+		e.cmd.Process.Kill()
+		e.cmd.Wait()
+	}
+	e.cmd = nil
+}
+
+// launch starts the built backend on a free port and waits for /health.
+func (e *env) launch() error {
+	e.stopBackend()
 	l, err := net.Listen("tcp", "127.0.0.1:0")
-	must(err)
+	if err != nil {
+		return err
+	}
 	port := fmt.Sprint(l.Addr().(*net.TCPAddr).Port)
 	l.Close()
-	logf, err := os.Create(filepath.Join(e.out, "backend.log"))
-	must(err)
-	cmd := exec.Command(bin)
-	cmd.Dir = backendDir
+	logf, err := os.OpenFile(filepath.Join(e.out, "backend.log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		return err
+	}
+	cmd := exec.Command(e.bin)
+	cmd.Dir = e.backendDir
 	cmd.Env = append(append([]string{}, e.vars...), "PORT="+port)
 	cmd.Stdout, cmd.Stderr = logf, logf
-	must(cmd.Start())
-	e.api = "http://127.0.0.1:" + port
-	done := false
-	stop := func() {
-		if !done {
-			done = true
-			cmd.Process.Kill()
-			cmd.Wait()
-		}
+	if err := cmd.Start(); err != nil {
+		return err
 	}
+	e.cmd = cmd
+	e.api = "http://127.0.0.1:" + port
 	for i := 0; i < 120; i++ {
-		if r, err := http.Get(e.api + "/health"); err == nil {
-			r.Body.Close()
-			if r.StatusCode == 200 {
-				fmt.Printf("backend up on %s (built from %s)\n", e.api, backendDir)
-				return stop
-			}
+		if e.healthy() {
+			fmt.Printf("backend up on %s (built from %s)\n", e.api, e.backendDir)
+			return nil
 		}
 		time.Sleep(time.Second)
 	}
-	stop()
-	die("backend did not become healthy; see %s/backend.log", e.out)
-	return nil
+	e.stopBackend()
+	return fmt.Errorf("backend did not become healthy; see %s/backend.log", e.out)
+}
+
+func (e *env) ensureBackend() error {
+	if e.healthy() {
+		return nil
+	}
+	fmt.Println("backend not healthy, restarting")
+	return e.launch()
 }
 
 // ---- HTTP ----
@@ -522,15 +653,26 @@ func fileSHA(p string) string {
 	return hex.EncodeToString(h[:])
 }
 
-func (e *env) runPatient(ctx context.Context, slug string) *PatientRun {
-	pr := &PatientRun{Slug: slug}
+func withTO(ctx context.Context, d time.Duration) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(ctx, d)
+}
+
+func (e *env) runPatient(ctx context.Context, slug string, pr *PatientRun) {
 	add := func(group, name string, ok bool, detail string) {
 		pr.Checks = append(pr.Checks, Check{Group: group, Name: name, OK: ok, Info: strings.HasPrefix(name, "info_"), Detail: detail})
 	}
+	ne := func(group, name, detail string) {
+		pr.Checks = append(pr.Checks, Check{Group: group, Name: name, NE: true, Detail: detail})
+	}
+	infra := func(name, detail string) {
+		pr.Checks = append(pr.Checks, Check{Group: "harness", Name: name, Kind: "infra_failure", Detail: detail})
+		pr.Incomplete = name + ": " + detail
+		fmt.Printf("   INFRA FAILURE %s: %s\n", name, detail)
+	}
 	g, err := loadGT(e.gtDir, slug)
 	if err != nil {
-		add("setup", "ground_truth", false, err.Error())
-		return pr
+		infra("ground_truth", err.Error())
+		return
 	}
 	dir := filepath.Join(e.data, slug)
 	ents, _ := os.ReadDir(dir)
@@ -546,15 +688,17 @@ func (e *env) runPatient(ctx context.Context, slug string) *PatientRun {
 		byName[en.Name()] = fileSHA(p)
 	}
 	if len(paths) == 0 {
-		add("setup", "corpus_files", false, "no files in "+dir)
-		return pr
+		infra("corpus_files", "no files in "+dir)
+		return
 	}
 
 	// classification: what the UI would prefill (recognized); unrecognized files get the ground truth (a human would choose)
-	rec, rawInspect, err := e.inspect(ctx, paths)
+	ictx, cancel := withTO(ctx, e.stepTO)
+	rec, rawInspect, err := e.inspect(ictx, paths)
+	cancel()
 	if err != nil {
-		add("setup", "inspect", false, err.Error())
-		return pr
+		infra("inspect", err.Error())
+		return
 	}
 	os.WriteFile(filepath.Join(e.out, "raw", slug+".inspect.json"), rawInspect, 0o644)
 	var cls []map[string]string
@@ -586,80 +730,110 @@ func (e *env) runPatient(ctx context.Context, slug string) *PatientRun {
 
 	pre := e.snapshot(ctx)
 	t := time.Now()
-	status, payload, raw, err := e.analyze(ctx, paths, cls, shas)
+	actx, cancel := withTO(ctx, e.analyzeTO)
+	status, payload, raw, err := e.analyze(actx, paths, cls, shas)
+	cancel()
 	pr.AnalyzeSecs = time.Since(t).Seconds()
 	pr.AnalyzeStatus = status
 	if raw != nil {
 		os.WriteFile(filepath.Join(e.out, "raw", slug+".analyze.json"), raw, 0o644)
 	}
+	if status == 0 { // no HTTP answer: timeout, connection refused, backend died
+		infra("analyze_no_response", fmt.Sprint(err))
+		return
+	}
 	if err != nil || status != 200 {
 		add("analyze", "analyze_http_200", false, fmt.Sprint(status, " ", err))
 		pr.Fields = scorePatient(slug, g, e.spec, nil, classOK)
 		fmt.Printf("   analyze FAILED (%d) after %.0fs\n", status, pr.AnalyzeSecs)
-		return pr
+		return
 	}
 	fmt.Printf("   analyze ok in %.0fs\n", pr.AnalyzeSecs)
 	analysis := payload["analysis"]
 	pr.Fields = scorePatient(slug, g, e.spec, analysis, classOK)
-	for _, n := range g.NeedsHuman {
-		pr.Unverified = append(pr.Unverified, n)
-	}
-	e.identityChecks(g, analysis, add)
+	pr.Unverified = append(pr.Unverified, g.NeedsHuman...)
+	pr.Checks = append(pr.Checks, identityChecks(g, analysis)...)
 
-	// ---- persistence ----
+	// ---- persistence: always asserted on real SQL rows and Garage objects ----
 	intakeID, _ := payload["intakeId"].(string)
-	cs, cbody := e.confirm(ctx, intakeID)
+	cctx, cancel := withTO(ctx, e.stepTO)
+	cs, cbody := e.confirm(cctx, intakeID)
+	cancel()
+	if cs == 0 {
+		infra("confirm_no_response", sval(cbody, "error"))
+		return
+	}
 	b, _ := json.Marshal(cbody)
 	os.WriteFile(filepath.Join(e.out, "raw", slug+".confirm1.json"), b, 0o644)
 	add("persistence", "confirm_http_200", cs == 200, fmt.Sprintf("HTTP %d action=%s", cs, sval(cbody, "action")))
 	post1 := e.snapshot(ctx)
-	e.persistenceChecks(g, pre, post1, byName, add)
+	e.persistenceChecks(g, pre, post1, byName, sval(cbody, "caseId"), add, ne)
 
-	cs2, _ := e.confirm(ctx, intakeID)
+	cctx, cancel = withTO(ctx, e.stepTO)
+	cs2, _ := e.confirm(cctx, intakeID)
+	cancel()
 	post2 := e.snapshot(ctx)
 	d := diffSnap(post1, post2)
-	add("idempotency", "confirm_retry", cs2 == 200 && len(d) == 0, fmt.Sprintf("HTTP %d; changes: %s", cs2, summarize(d)))
+	add("idempotency", "confirm_retry", cs2 == 200 && !structural(d), fmt.Sprintf("HTTP %d; changes: %s", cs2, summarize(d)))
 
 	// re-ingest: same folder again (checkpoints unless -reingest-force)
 	var proc []string
 	if e.reForce {
 		proc = shas
 	}
-	st3, p3, raw3, err3 := e.analyze(ctx, paths, cls, proc)
+	actx, cancel = withTO(ctx, e.analyzeTO)
+	st3, p3, raw3, err3 := e.analyze(actx, paths, cls, proc)
+	cancel()
+	if st3 == 0 {
+		infra("reingest_analyze_no_response", fmt.Sprint(err3))
+		return
+	}
 	if err3 != nil || st3 != 200 {
-		add("idempotency", "reingest", false, fmt.Sprintf("analyze %d %v", st3, err3))
-		return pr
+		add("idempotency", "reingest_no_duplicates", false, fmt.Sprintf("analyze %d %v", st3, err3))
+		return
 	}
 	os.WriteFile(filepath.Join(e.out, "raw", slug+".reingest.analyze.json"), raw3, 0o644)
 	id3, _ := p3["intakeId"].(string)
-	cs3, cb3 := e.confirm(ctx, id3)
+	cctx, cancel = withTO(ctx, e.stepTO)
+	cs3, cb3 := e.confirm(cctx, id3)
+	cancel()
 	post3 := e.snapshot(ctx)
 	d3 := diffSnap(post2, post3)
 	pr.Changes = d3
 	add("idempotency", "reingest_no_duplicates", cs3 == 200 && !structural(d3),
 		fmt.Sprintf("HTTP %d action=%s; changes: %s", cs3, sval(cb3, "action"), summarize(d3)))
-	return pr
 }
 
-// structural: any added/removed patient, row or object (size-only changes, e.g. the merged manifest, are recorded but allowed).
+// structural: a duplicate = added patient row, exam row, case prefix or object. Content changes of the compiled marker/receipt and removals are recorded as info only.
 func structural(d []string) bool {
 	for _, x := range d {
-		if !strings.HasPrefix(x, "object size changed") {
-			return true
+		if strings.HasPrefix(x, "patient id added") || strings.HasPrefix(x, "exam row added") || strings.HasPrefix(x, "object added") {
+			return true // new patient, new exam row, new case prefix or new document object = duplicate
 		}
 	}
 	return false
 }
 
+func tokens(s string) []string {
+	n := strings.Map(func(r rune) rune {
+		if r >= 'a' && r <= 'z' || r >= '0' && r <= '9' {
+			return r
+		}
+		return ' '
+	}, normStr(s))
+	t := strings.Fields(n)
+	sort.Strings(t)
+	return t
+}
+
+// nameCmp compares token multisets (case, accents, punctuation and order insensitive).
 func nameCmp(got, want string) (bool, string) {
-	if normStr(got) == normStr(want) {
-		return true, "match"
-	}
-	a, b := strings.Fields(normStr(got)), strings.Fields(normStr(want))
-	sort.Strings(a)
-	sort.Strings(b)
+	a, b := tokens(got), tokens(want)
 	if strings.Join(a, " ") == strings.Join(b, " ") {
-		return false, "mismatch: same words, different order"
+		if normStr(got) == normStr(want) {
+			return true, "match"
+		}
+		return true, "match (word order differs)"
 	}
 	return false, "mismatch"
 }
@@ -674,42 +848,47 @@ func summarize(d []string) string {
 	return strings.Join(d, "; ")
 }
 
-func (e *env) identityChecks(g *GT, analysis any, add func(string, string, bool, string)) {
+func identityChecks(g *GT, analysis any) []Check {
+	var out []Check
+	add := func(name string, ok bool, detail string) {
+		out = append(out, Check{Group: "identity", Name: name, OK: ok, Kind: "app_failure", Detail: detail})
+	}
 	nm, _ := walk(analysis, []string{"patient", "full_name"})
 	bd, _ := walk(analysis, []string{"patient", "birth_date"})
 	ns, _ := nm.(string)
 	bs, _ := bd.(string)
 	wantName, _ := g.Patient.FullName.Value.(string)
 	nok, nd := nameCmp(ns, wantName)
-	add("identity", "name", nok, nd)
+	add("name", nok, nd)
 	if g.Patient.BirthDate.Verification != "agent_visual" {
-		add("identity", "birth_date", true, "unverified (needs_human in ground truth); value not scored")
+		add("birth_date", true, "unverified (needs_human in ground truth); value not scored")
 	} else {
 		want, _ := g.Patient.BirthDate.Value.(string)
 		ok := normDate(bs) == want
-		add("identity", "birth_date", ok, map[bool]string{true: "match", false: "mismatch"}[ok])
+		add("birth_date", ok, map[bool]string{true: "match", false: "mismatch"}[ok])
 	}
 	v := ageViolations(analysis)
-	add("identity", "age_never_zero_or_from_missing_birthdate", len(v) == 0, strings.Join(v, "; "))
-	wantWarn := false
+	add("age_never_zero_or_from_missing_birthdate", len(v) == 0, strings.Join(v, "; "))
 	for _, c := range g.IdentityChecks {
 		if c.Method == "data_nascimento_invertida" {
-			wantWarn = true
+			b, _ := json.Marshal(analysis)
+			add("warning_data_nascimento_invertida", strings.Contains(string(b), "data_nascimento_invertida"), "required by ground truth (C2)")
+			break
 		}
 	}
-	if wantWarn {
-		b, _ := json.Marshal(analysis)
-		add("identity", "warning_data_nascimento_invertida", strings.Contains(string(b), "data_nascimento_invertida"), "required by ground truth (C2)")
-	}
+	return out
 }
 
-func (e *env) persistenceChecks(g *GT, pre, post *Snap, shaByName map[string]string, add func(string, string, bool, string)) {
+func (e *env) persistenceChecks(g *GT, pre, post *Snap, shaByName map[string]string, confirmCase string, add func(string, string, bool, string), ne func(string, string, string)) {
 	np := newRows(pre.Patients, post.Patients)
 	nx := newRows(pre.Exams, post.Exams)
 	add("persistence", "exactly_one_new_patient_row", len(np) == 1, fmt.Sprintf("%d new patient rows", len(np)))
-	patientID, caseID := "", ""
+	patientID, caseID := "", confirmCase
 	if len(np) == 1 {
-		patientID, caseID = sval(np[0], "id"), sval(np[0], "case_id")
+		patientID = sval(np[0], "id")
+		if caseID == "" {
+			caseID = sval(np[0], "case_id")
+		}
 		wantName, _ := g.Patient.FullName.Value.(string)
 		ok, d := nameCmp(sval(np[0], "full_name"), wantName)
 		add("persistence", "patient_row_name", ok, d)
@@ -760,7 +939,11 @@ func (e *env) persistenceChecks(g *GT, pre, post *Snap, shaByName map[string]str
 	if unknownSrc > 0 {
 		detail += fmt.Sprintf(" (source file not derivable for %d rows; matched on type+eye only)", unknownSrc)
 	}
-	add("persistence", "exam_rows_match_expected", len(problems) == 0, detail)
+	if len(nx) == 0 {
+		ne("persistence", "exam_rows_match_expected", "no exam rows; see exam_row_count")
+	} else {
+		add("persistence", "exam_rows_match_expected", len(problems) == 0, detail)
+	}
 
 	// relationships
 	cases := map[string]bool{}
@@ -777,15 +960,17 @@ func (e *env) persistenceChecks(g *GT, pre, post *Snap, shaByName map[string]str
 		}
 		cases[cid] = true
 	}
-	add("persistence", "exam_patient_id_matches_patient", badFK == 0 && len(nx) > 0, fmt.Sprintf("%d rows with wrong/null patient_id", badFK))
 	ids := keys(cases)
-	if len(ids) == 1 && ids[0] != "" {
-		if caseID == "" {
-			caseID = ids[0]
-		}
-		add("persistence", "case_id_consistent", caseID == ids[0], fmt.Sprintf("patients.case_id vs exams case: consistent=%v", caseID == ids[0]))
+	if len(nx) == 0 {
+		ne("persistence", "exam_patient_id_matches_patient", "no exam rows; see exam_row_count")
+		ne("persistence", "case_id_consistent", "no exam rows; see exam_row_count")
 	} else {
-		add("persistence", "case_id_consistent", false, fmt.Sprintf("%d distinct/empty case ids among exam rows", len(ids)))
+		add("persistence", "exam_patient_id_matches_patient", badFK == 0, fmt.Sprintf("%d rows with wrong/null patient_id", badFK))
+		if len(ids) == 1 && ids[0] != "" {
+			add("persistence", "case_id_consistent", caseID == "" || caseID == ids[0], fmt.Sprintf("exam rows case %v; confirm/patient case consistent=%v", len(ids), caseID == "" || caseID == ids[0]))
+		} else {
+			add("persistence", "case_id_consistent", false, fmt.Sprintf("%d distinct/empty case ids among exam rows", len(ids)))
+		}
 	}
 
 	// objects in Garage
@@ -801,12 +986,16 @@ func (e *env) persistenceChecks(g *GT, pre, post *Snap, shaByName map[string]str
 			missing++
 		}
 	}
-	add("persistence", "exam_objects_exist_with_size", missing == 0 && len(nx) > 0, fmt.Sprintf("%d rows whose object is missing or has a different size", missing))
+	if len(nx) == 0 {
+		ne("persistence", "exam_objects_exist_with_size", "no exam rows; see exam_row_count")
+	} else {
+		add("persistence", "exam_objects_exist_with_size", missing == 0, fmt.Sprintf("%d rows whose object is missing or has a different size", missing))
+	}
 	if caseID != "" {
 		_, err := e.s3.HeadObject(context.Background(), &s3.HeadObjectInput{Bucket: aws.String(benchBucket), Key: aws.String(casesPrefix + caseID + "/paciente_compilado.json")})
-		add("persistence", "marker_exists", err == nil, "")
+		add("persistence", "marker_exists", err == nil, "case "+map[bool]string{true: "found", false: "marker object missing"}[err == nil])
 	} else {
-		add("persistence", "marker_exists", false, "no case id to look up")
+		add("persistence", "marker_exists", false, "no caseId in the confirm response and no case_id on the patient row")
 	}
 	// uncommitted garage garbage: objects under the cases prefix that no exam row or marker references
 	if caseID != "" {

@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 )
 
 type tally struct{ pass, total int }
@@ -20,11 +21,116 @@ func (t tally) String() string {
 
 func scored(r FieldRes) bool { return r.Outcome != "not_in_app" && r.Outcome != "unverified" }
 
-func finish(run *Run, baselinePath string, update bool, out string) {
+type CmpField struct {
+	ID       string `json:"id"`
+	Category string `json:"category"`
+	Prev     string `json:"previous"`
+	Now      string `json:"now"`
+}
+
+type Compare struct {
+	Against string                    `json:"against"`
+	Counts  map[string]map[string]int `json:"counts"` // scope (all, patient:x, type:y) -> category -> n
+	Fields  []CmpField                `json:"fields"` // everything except unchanged passes
+}
+
+func cmpCategory(prev, now string) string {
+	switch {
+	case prev == "pass" && now == "pass":
+		return "still_pass"
+	case prev == "pass":
+		return "regressed"
+	case now == "pass":
+		return "fixed"
+	case now == "unverified" && prev != "unverified":
+		return "newly_unverified"
+	case now == "missing":
+		return "still_missing"
+	}
+	return "still_wrong"
+}
+
+func compareRuns(run *Run, prevPath string) *Compare {
+	prev := &Run{}
+	if loadJSON(prevPath, prev) != nil {
+		return nil
+	}
+	po := map[string]string{}
+	for _, p := range prev.Patients {
+		for _, f := range p.Fields {
+			po[f.ID] = f.Outcome
+		}
+	}
+	c := &Compare{Against: prevPath, Counts: map[string]map[string]int{}}
+	bump := func(scope, cat string) {
+		if c.Counts[scope] == nil {
+			c.Counts[scope] = map[string]int{}
+		}
+		c.Counts[scope][cat]++
+	}
+	for _, p := range run.Patients {
+		for _, f := range p.Fields {
+			pv, ok := po[f.ID]
+			if !ok || pv == "not_in_app" || f.Outcome == "not_in_app" {
+				continue
+			}
+			cat := cmpCategory(pv, f.Outcome)
+			for _, sc := range []string{"all", "patient:" + p.Slug, "type:" + f.ExamType} {
+				bump(sc, cat)
+			}
+			if cat != "still_pass" {
+				c.Fields = append(c.Fields, CmpField{f.ID, cat, pv, f.Outcome})
+			}
+		}
+	}
+	return c
+}
+
+// latestPrevious returns the newest complete report.json in outBase other than current.
+func latestPrevious(outBase, current string) string {
+	dirs, _ := filepath.Glob(filepath.Join(outBase, "*", "report.json"))
+	sort.Sort(sort.Reverse(sort.StringSlice(dirs)))
+	for _, p := range dirs {
+		if filepath.Dir(p) == current {
+			continue
+		}
+		var m map[string]any
+		if loadJSON(p, &m) != nil {
+			continue
+		}
+		if c, ok := m["complete"].(bool); ok && !c {
+			continue // old reports without the key are complete runs
+		}
+		if m["patients"] == nil {
+			continue
+		}
+		return p
+	}
+	return ""
+}
+
+func writeReports(run *Run, out string) {
+	if out == "" {
+		return
+	}
+	b, _ := json.MarshalIndent(run, "", " ")
+	os.WriteFile(filepath.Join(out, "report.json"), b, 0o644)
+	os.WriteFile(filepath.Join(out, "report.md"), []byte(render(run)), 0o644)
+}
+
+// conclude finalizes the run: failures by kind, regressions, completeness, reports, exit code (0 ok, 1 app failures, 2 infra/incomplete).
+func conclude(run *Run, e *env, baselinePath string, update bool, compareArg, outBase string, t0 time.Time) int {
+	run.Seconds = time.Since(t0).Seconds()
 	passed := map[string]bool{}
 	ran := map[string]bool{}
+	run.Failures, run.Why = nil, nil
+	run.Failures = nil
+	infra := append([]string{}, run.InfraFails...)
 	for _, p := range run.Patients {
 		ran[p.Slug] = true
+		if p.Incomplete != "" {
+			run.Why = append(run.Why, p.Slug+": "+p.Incomplete)
+		}
 		for _, f := range p.Fields {
 			if f.Outcome == "pass" {
 				passed[f.ID] = true
@@ -34,21 +140,57 @@ func finish(run *Run, baselinePath string, update bool, out string) {
 			}
 		}
 		for _, c := range p.Checks {
-			if !c.OK && !c.Info && c.Group != "classification" {
-				run.Failures = append(run.Failures, fmt.Sprintf("%s %s/%s: %s", p.Slug, c.Group, c.Name, c.Detail))
+			if c.OK || c.Info || c.NE || c.Group == "classification" {
+				continue
+			}
+			msg := fmt.Sprintf("%s %s/%s: %s", p.Slug, c.Group, c.Name, c.Detail)
+			if c.Kind == "infra_failure" {
+				infra = append(infra, msg)
+			} else {
+				run.Failures = append(run.Failures, msg)
 			}
 		}
 	}
+	run.InfraFails = infra
+	for _, s := range run.Requested {
+		if !ran[s] {
+			run.Why = append(run.Why, s+": not run")
+		}
+	}
+	for _, f := range run.InfraFails {
+		run.Why = append(run.Why, "infra: "+f)
+	}
+	run.Complete = len(run.Why) == 0
+
+	run.Regressions = nil
 	var base struct {
 		Passed []string `json:"passed"`
 	}
 	loadJSON(baselinePath, &base)
 	for _, id := range base.Passed {
 		if ran[strings.SplitN(id, "|", 2)[0]] && !passed[id] {
-			run.Regressions = append(run.Regressions, id)
+			run.Regressions = append(run.Regressions, id+" (last_pass.json)")
 		}
 	}
-	if update {
+	if compareArg != "-" {
+		prev := compareArg
+		if prev == "" {
+			prev = latestPrevious(outBase, e.out)
+		} else if st, err := os.Stat(prev); err == nil && st.IsDir() {
+			prev = filepath.Join(prev, "report.json")
+		}
+		if prev != "" {
+			run.Compare = compareRuns(run, prev)
+			if run.Compare != nil {
+				for _, f := range run.Compare.Fields {
+					if f.Category == "regressed" {
+						run.Regressions = append(run.Regressions, f.ID+" (vs previous run)")
+					}
+				}
+			}
+		}
+	}
+	if update && run.Complete {
 		set := map[string]bool{}
 		for _, id := range base.Passed {
 			if !ran[strings.SplitN(id, "|", 2)[0]] {
@@ -63,14 +205,79 @@ func finish(run *Run, baselinePath string, update bool, out string) {
 		os.WriteFile(baselinePath, append(b, '\n'), 0o644)
 		fmt.Printf("baseline rewritten: %d passing fields -> %s\n", len(ids), baselinePath)
 		run.Regressions = nil
+	} else if update {
+		fmt.Println("baseline NOT rewritten: run is incomplete")
 	}
-	b, _ := json.MarshalIndent(run, "", " ")
-	os.WriteFile(filepath.Join(out, "report.json"), b, 0o644)
-	md := render(run)
-	os.WriteFile(filepath.Join(out, "report.md"), []byte(md), 0o644)
+	writeReports(run, e.out)
 	fmt.Println()
 	fmt.Println(summaryTable(run))
-	fmt.Printf("regressions: %d, failures: %d, report: %s\n", len(run.Regressions), len(run.Failures), out)
+	status := "COMPLETE"
+	if !run.Complete {
+		status = "INCOMPLETE (" + strings.Join(run.Why, "; ") + ")"
+	}
+	fmt.Printf("run %s; app failures: %d, regressions: %d, infra failures: %d; report: %s\n", status, len(run.Failures), len(run.Regressions), len(run.InfraFails), e.out)
+	switch {
+	case !run.Complete:
+		return 2
+	case len(run.Failures)+len(run.Regressions) > 0:
+		return 1
+	}
+	return 0
+}
+
+// rescoreRun re-scores an earlier run offline: fields and identity from the saved analyze responses; persistence
+// checks are carried over (SQL/Garage are not re-queried) with the current duplicate / not_evaluable rules applied.
+func (e *env) rescoreRun(dir string, run *Run) *Run {
+	old := &Run{}
+	must(loadJSON(filepath.Join(dir, "report.json"), old))
+	run.Note = "Rescored offline from " + filepath.Base(dir) + ": field and identity scoring recomputed from raw analyze responses; persistence/idempotency results carried over from the live run (SQL and Garage not re-queried) with the current rules applied; marker_exists not re-evaluated."
+	run.BackendDir = old.BackendDir
+	run.Started = old.Started
+	for _, p := range old.Patients {
+		np := *p
+		np.Checks = nil
+		var payload map[string]any
+		raw, err := os.ReadFile(filepath.Join(dir, "raw", p.Slug+".analyze.json"))
+		g, gerr := loadGT(e.gtDir, p.Slug)
+		if err != nil || gerr != nil || json.Unmarshal(raw, &payload) != nil {
+			np.Incomplete = "rescore: raw analyze response or ground truth unreadable"
+			run.Patients = append(run.Patients, &np)
+			continue
+		}
+		classOK := map[string]bool{}
+		for _, f := range p.Files {
+			classOK[f.File] = f.OK
+		}
+		analysis := payload["analysis"]
+		np.Fields = scorePatient(p.Slug, g, e.spec, analysis, classOK)
+		zeroRows := false
+		for _, c := range p.Checks {
+			if c.Name == "exam_row_count" && strings.HasPrefix(c.Detail, "0 rows") {
+				zeroRows = true
+			}
+		}
+		for _, c := range p.Checks {
+			switch {
+			case c.Group == "identity":
+				continue
+			case zeroRows && (c.Name == "exam_rows_match_expected" || c.Name == "exam_patient_id_matches_patient" || c.Name == "case_id_consistent" || c.Name == "exam_objects_exist_with_size"):
+				c = Check{Group: c.Group, Name: c.Name, NE: true, Detail: "no exam rows; see exam_row_count"}
+			case c.Name == "marker_exists":
+				c = Check{Group: c.Group, Name: c.Name, NE: true, Detail: "not re-evaluated in rescore (Garage not re-queried)"}
+			case c.Name == "reingest_no_duplicates":
+				c.OK = strings.HasPrefix(c.Detail, "HTTP 200") && !structural(p.Changes)
+			}
+			if c.Kind == "" {
+				c.Kind = "app_failure"
+			}
+			np.Checks = append(np.Checks, c)
+		}
+		np.Checks = append(np.Checks, identityChecks(g, analysis)...)
+		b, _ := json.MarshalIndent(&np, "", " ")
+		os.WriteFile(filepath.Join(e.out, "patients", p.Slug+".json"), b, 0o644)
+		run.Patients = append(run.Patients, &np)
+	}
+	return run
 }
 
 func perPatient(p *PatientRun) (acc tally, unexpected, notInApp int, persist tally) {
@@ -89,7 +296,7 @@ func perPatient(p *PatientRun) (acc tally, unexpected, notInApp int, persist tal
 		}
 	}
 	for _, c := range p.Checks {
-		if c.Info || c.Group == "classification" {
+		if c.Info || c.NE || c.Group == "classification" {
 			continue
 		}
 		persist.total++
@@ -113,7 +320,16 @@ func summaryTable(run *Run) string {
 func render(run *Run) string {
 	var b strings.Builder
 	w := func(f string, a ...any) { fmt.Fprintf(&b, f, a...) }
-	w("# RefratIA benchmark report\n\nStarted %s, runtime %.0fs. Backend built from `%s`.\n\nCommand: `%s`\n\n", run.Started, run.Seconds, run.BackendDir, run.Command)
+	w("# RefratIA benchmark report\n\n")
+	if run.Complete {
+		w("**Run COMPLETE**: all %d requested patients evaluated, no infra failures.\n\n", len(run.Requested))
+	} else {
+		w("**Run INCOMPLETE**: %s\n\n", strings.Join(run.Why, "; "))
+	}
+	if run.Note != "" {
+		w("%s\n\n", run.Note)
+	}
+	w("Started %s, runtime %.0fs. Backend built from `%s`.\n\nCommand: `%s`\n\n", run.Started, run.Seconds, run.BackendDir, run.Command)
 	w("Patients are referred to by folder slug. Field values are shown; names and birth dates are not.\n\n")
 	w("## Summary per patient\n\n| patient | extraction accuracy | unexpected values | not in app contract | persistence + identity checks | analyze |\n|---|---|---|---|---|---|\n")
 	byType, byField := map[string]*tally{}, map[string]*tally{}
@@ -151,13 +367,13 @@ func render(run *Run) string {
 		w("| %s | %d |\n", k, stages[k])
 	}
 	for _, outcome := range []string{"incorrect", "missing", "conflicting", "unexpected_value"} {
-		w("\n## %s\n\n| field id | role | expected | got | stage |\n|---|---|---|---|---|\n", outcome)
+		w("\n## %s\n\n| field id | role | expected | got | stage | app diagnostics (not the score) |\n|---|---|---|---|---|---|\n", outcome)
 		n := 0
 		for _, p := range run.Patients {
 			for _, f := range p.Fields {
 				if f.Outcome == outcome {
 					n++
-					w("| %s | %s | %s | %s | %s (%s) |\n", f.ID, f.Role, f.Expected, f.Got, f.Stage, f.StageFrom)
+					w("| %s | %s | %s | %s | %s (%s) | %s |\n", f.ID, f.Role, f.Expected, f.Got, f.Stage, f.StageFrom, f.Diag)
 				}
 			}
 		}
@@ -165,7 +381,7 @@ func render(run *Run) string {
 			w("none\n")
 		}
 	}
-	w("\n## Persistence, identity and idempotency checks\n\n| patient | group | check | result | detail |\n|---|---|---|---|---|\n")
+	w("\n## Persistence, identity and idempotency checks\n\n| patient | group | check | result | kind | detail |\n|---|---|---|---|---|---|\n")
 	for _, p := range run.Patients {
 		for _, c := range p.Checks {
 			if c.Group == "classification" {
@@ -175,7 +391,14 @@ func render(run *Run) string {
 			if c.Info && !c.OK {
 				r = "info"
 			}
-			w("| %s | %s | %s | %s | %s |\n", p.Slug, c.Group, c.Name, r, strings.ReplaceAll(c.Detail, "|", "/"))
+			if c.NE {
+				r = "not_evaluable"
+			}
+			k := ""
+			if !c.OK && !c.NE && !c.Info {
+				k = c.Kind
+			}
+			w("| %s | %s | %s | %s | %s | %s |\n", p.Slug, c.Group, c.Name, r, k, strings.ReplaceAll(c.Detail, "|", "/"))
 		}
 	}
 	w("\n## Classification (informational)\n\n| patient | file | source | recognized | expected | ok |\n|---|---|---|---|---|---|\n")
@@ -199,18 +422,44 @@ func render(run *Run) string {
 		}
 	}
 	w("\n%d ground-truth fields have no app JSON path (not scored; see _field_spec.json).\n", nia)
-	w("\n## Regressions vs last_pass.json\n\n")
+	if run.Compare != nil {
+		w("\n## Comparison with previous run\n\nAgainst `%s`. Categories: fixed (fail to pass), regressed (pass to fail), still_wrong, still_missing, newly_unverified.\n\n| scope | still_pass | fixed | regressed | still_wrong | still_missing | newly_unverified |\n|---|---|---|---|---|---|---|\n", filepath.Base(filepath.Dir(run.Compare.Against)))
+		var sc []string
+		for k := range run.Compare.Counts {
+			sc = append(sc, k)
+		}
+		sort.Strings(sc)
+		for _, k := range sc {
+			c := run.Compare.Counts[k]
+			w("| %s | %d | %d | %d | %d | %d | %d |\n", k, c["still_pass"], c["fixed"], c["regressed"], c["still_wrong"], c["still_missing"], c["newly_unverified"])
+		}
+		w("\n| field id | category | previous | now |\n|---|---|---|---|\n")
+		for _, f := range run.Compare.Fields {
+			if f.Category == "fixed" || f.Category == "regressed" || f.Category == "newly_unverified" {
+				w("| %s | %s | %s | %s |\n", f.ID, f.Category, f.Prev, f.Now)
+			}
+		}
+		w("\n(still_wrong and still_missing field lists are in report.json under compare.fields.)\n")
+	}
+	w("\n## Regressions\n\n")
 	if len(run.Regressions) == 0 {
 		w("none\n")
 	}
 	for _, r := range run.Regressions {
 		w("- %s\n", r)
 	}
-	w("\n## Failures that make the run exit nonzero\n\n")
+	w("\n## App failures (exit 1)\n\n")
 	if len(run.Failures) == 0 {
 		w("none\n")
 	}
 	for _, f := range run.Failures {
+		w("- %s\n", f)
+	}
+	w("\n## Infra failures (exit 2)\n\n")
+	if len(run.InfraFails) == 0 {
+		w("none\n")
+	}
+	for _, f := range run.InfraFails {
 		w("- %s\n", f)
 	}
 	section("Accuracy per field", byField)

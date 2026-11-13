@@ -95,7 +95,8 @@ type FieldRes struct {
 	Expected  string `json:"expected"`
 	Got       string `json:"got"`
 	Stage     string `json:"stage,omitempty"`
-	StageFrom string `json:"stage_from,omitempty"` // diagnostics|inferred
+	StageFrom string `json:"stage_from,omitempty"`      // diagnostics|inferred
+	Diag      string `json:"app_diagnostics,omitempty"` // app-reported status/stage; shown next to the score, never the score
 }
 
 func (f FieldRes) Required() bool {
@@ -293,6 +294,9 @@ func scorePatient(slug string, g *GT, spec *Spec, analysis any, classOK map[stri
 					} else {
 						r.Outcome = "pass"
 					}
+				}
+				if hasDiag {
+					r.Diag = dg.Status + "/" + dg.Stage
 				}
 				if r.Outcome != "pass" {
 					switch {

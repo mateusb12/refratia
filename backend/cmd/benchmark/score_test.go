@@ -19,3 +19,15 @@ func TestCompareAndAge(t *testing.T) {
 		t.Fatal("age 0 must be flagged")
 	}
 }
+
+func TestNameAndDuplicates(t *testing.T) {
+	if ok, _ := nameCmp("AVERSA MARTINELLI CRESO", "Creso Aversa Martinelli"); !ok {
+		t.Fatal("token multiset compare")
+	}
+	if ok, _ := nameCmp("DANIELA JNOGUEIRA ROCHA", "Daniela Nogueira Rocha"); ok {
+		t.Fatal("typo must not match")
+	}
+	if structural([]string{"object size changed: x 1 -> 2"}) || !structural([]string{"object added: y"}) {
+		t.Fatal("duplicate definition")
+	}
+}
