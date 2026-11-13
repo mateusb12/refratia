@@ -37,6 +37,7 @@ export function useIntakeWorkflow({
   const [intakeLocalPreviews, setIntakeLocalPreviews] = useState<Record<string, string>>({})
   const [intakePreview, setIntakePreview] = useState<IntakePreview | null>(null)
   const [intakeBusy, setIntakeBusy] = useState(false)
+  const [identityReview, setIdentityReview] = useState<Array<{ caseId: string; name: string }> | null>(null)
   const intakeAbortController = useRef<AbortController | null>(null)
   const [intakeProgress, setIntakeProgress] = useState(0)
   const [intakeProgressStage, setIntakeProgressStage] = useState('')
@@ -266,7 +267,7 @@ export function useIntakeWorkflow({
     }
   }
 
-  async function confirmIntake() {
+  async function confirmIntake(identityDecision?: { action: 'existing'; caseId: string } | { action: 'new' }) {
     if (!intakePreview) return
     setIntakeBusy(true)
     setIntakeMessage('')
@@ -274,9 +275,14 @@ export function useIntakeWorkflow({
       const response = await fetch(`${apiUrl}/api/intakes/confirm`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ intakeId: intakePreview.intakeId }),
+        body: JSON.stringify({ intakeId: intakePreview.intakeId, identityDecision }),
       })
       const result = await response.json()
+      if (response.status === 409 && result.error === 'identity_review_required') {
+        setIdentityReview(result.candidates ?? [])
+        return
+      }
+      setIdentityReview(null)
       if (!response.ok) throw new Error(result.error ?? 'Falha ao salvar o caso')
       onCaseConfirmed({ caseId: result.caseId, patientName: intakePreview.analysis.patient?.full_name || 'Paciente não identificado', analysisKey: result.analysisKey })
       setIntakeFiles([])
@@ -316,6 +322,7 @@ export function useIntakeWorkflow({
   return {
     intakeAbortController,
     intakeBusy,
+    identityReview,
     intakeCheckpointBusy,
     intakeCheckpointError,
     intakeCheckpointStates,

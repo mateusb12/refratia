@@ -8,6 +8,21 @@ import (
 	"refratia/backend/features/extractionfields"
 )
 
+const fieldHintsKey = "_field_hints"
+
+// setFieldHints stores extractor hints until validateTouchedEyes merges them
+// into the file's diagnostics (and removes them from the analysis).
+func setFieldHints(analysis map[string]any, examKey, eye string, hints []extractionfields.Hint) {
+	store, _ := analysis[fieldHintsKey].(map[string]extractionfields.Hint)
+	if store == nil {
+		store = map[string]extractionfields.Hint{}
+		analysis[fieldHintsKey] = store
+	}
+	for _, h := range hints {
+		store[examKey+"|"+eye+"|"+h.Spec] = h
+	}
+}
+
 // snapshotEyes fingerprints every exam/eye so that we can tell which eyes a
 // file touched (several files merge into one exam).
 func snapshotEyes(analysis map[string]any) map[string]string {
@@ -45,6 +60,8 @@ func validateTouchedEyes(analysis map[string]any, file uploadedFile, before map[
 		touched[key] = append(touched[key], eye)
 	}
 	exams, _ := analysis["exams"].(map[string]any)
+	hints, _ := analysis[fieldHintsKey].(map[string]extractionfields.Hint)
+	delete(analysis, fieldHintsKey)
 	diagnostics, _ := analysis["extraction_diagnostics"].([]any)
 	keys := make([]string, 0, len(touched))
 	for k := range touched {
@@ -59,6 +76,9 @@ func validateTouchedEyes(analysis map[string]any, file uploadedFile, before map[
 		eyes := touched[key]
 		sort.Strings(eyes)
 		for _, d := range extractionfields.ValidateEyes(file.Metadata.SHA256, key, exam, eyes) {
+			if h, ok := hints[key+"|"+d.Eye+"|"+d.Field]; ok {
+				extractionfields.ApplyHint(&d, h)
+			}
 			diagnostics = append(diagnostics, d.Map())
 			if d.Status == "unreadable" {
 				// Enumerations and hash prefix only: no values, no names.

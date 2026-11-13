@@ -132,9 +132,7 @@ func classifySourceFilesFromExams(
 			map[string]examSourceClassification,
 		)
 
-	for examKey,
-		rawExam :=
-		range exams {
+	for examKey, rawExam := range exams {
 
 		exam, ok :=
 			rawExam.(map[string]any)
@@ -144,30 +142,25 @@ func classifySourceFilesFromExams(
 			continue
 		}
 
-		for _, filename :=
-			range examSourceNames(
-				exam["source"],
-			) {
+		for _, filename := range examSourceNames(
+			exam["source"],
+		) {
 
 			if filename == "" {
 				continue
 			}
 
-			classifications[
-				filename,
-			] =
+			classifications[filename] =
 				examSourceClassification{
 					Exam: examKey,
-					Eye:
-						localExamEyeFromFilename(
-							filename,
-						),
+					Eye: localExamEyeFromFilename(
+						filename,
+					),
 				}
 		}
 	}
 
-	for _, rawSource :=
-		range sourceFiles {
+	for _, rawSource := range sourceFiles {
 
 		source, ok :=
 			rawSource.(map[string]any)
@@ -199,9 +192,7 @@ func classifySourceFilesFromExams(
 			continue
 		}
 
-		for originalFilename,
-			classification :=
-			range classifications {
+		for originalFilename, classification := range classifications {
 
 			if !sourceFilenameMatches(
 				path,

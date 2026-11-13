@@ -28,6 +28,7 @@ func fillPentacamFocusedCells(
 	pages map[int][]byte,
 	values map[string]any,
 	layout pentacamPageLayout,
+	anchored map[string]anchoredValue,
 ) {
 	specs := []pentacamCellSpec{
 		{"k1_d", 4, pentacamOCRRegion{535, 1270, 180, 70}, true, 20, 70},
@@ -61,6 +62,9 @@ func fillPentacamFocusedCells(
 	}
 
 	for _, spec := range specs {
+		if _, byAnchor := anchored[spec.Key]; byAnchor {
+			continue // read by its label; the fixed box is only a fallback
+		}
 		_, hasExtractedDocumentValue := values[spec.Key]
 		focusedValueShouldOverride := spec.Key == "k1_d" ||
 			spec.Key == "thinnest_um" || spec.Key == "iha" ||

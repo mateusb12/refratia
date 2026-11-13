@@ -522,3 +522,43 @@ func SameIdentity(a, b map[string]any) bool {
 	nameB, dateB, _ := strings.Cut(keyB, "|")
 	return nameA == nameB && swapDayMonth(dateA) == dateB
 }
+
+// NamesSimilar: compatible names (nome_parcial) or the same number of name
+// tokens where each sorted token differs by at most 2 edits (OCR typos such as
+// a stray leading letter). Used only to ask for a human decision, never to merge.
+func NamesSimilar(a, b string) bool {
+	if NamesCompatible(a, b) {
+		return true
+	}
+	ta, tb := strings.Fields(NameKey(a)), strings.Fields(NameKey(b))
+	if len(ta) != len(tb) || len(ta) == 0 {
+		return false
+	}
+	for i := range ta {
+		if editDistance(ta[i], tb[i]) > 2 {
+			return false
+		}
+	}
+	return true
+}
+
+func editDistance(a, b string) int {
+	ra, rb := []rune(a), []rune(b)
+	prev := make([]int, len(rb)+1)
+	for j := range prev {
+		prev[j] = j
+	}
+	for i := 1; i <= len(ra); i++ {
+		cur := make([]int, len(rb)+1)
+		cur[0] = i
+		for j := 1; j <= len(rb); j++ {
+			cost := 1
+			if ra[i-1] == rb[j-1] {
+				cost = 0
+			}
+			cur[j] = min(prev[j]+1, cur[j-1]+1, prev[j-1]+cost)
+		}
+		prev = cur
+	}
+	return prev[len(rb)]
+}

@@ -111,6 +111,7 @@ export default function NewAnalysisPage({
 
   const {
     intakeBusy,
+    identityReview,
     intakeCheckpointBusy,
     intakeCheckpointError,
     intakeCheckpointStates,
@@ -430,7 +431,7 @@ export default function NewAnalysisPage({
                       <pre className="m-0 max-h-[520px] overflow-auto border-t border-border p-3 text-xs leading-relaxed text-text-secondary">{JSON.stringify(intakePreview.analysis, null, 2)}</pre>
                     </details>
                     <div className="mt-5">
-                      <PrimaryButton className="min-h-16 w-full max-w-md !bg-[#287f69] px-8 py-4 text-xl font-extrabold tracking-wide hover:enabled:!bg-[#1f6d5a]" disabled={intakeBusy} onClick={confirmIntake}>
+                      <PrimaryButton className="min-h-16 w-full max-w-md !bg-[#287f69] px-8 py-4 text-xl font-extrabold tracking-wide hover:enabled:!bg-[#1f6d5a]" disabled={intakeBusy} onClick={() => confirmIntake()}>
                         {intakeBusy
                           ? 'Salvando…'
                           : intakePreview.patientMatch.status === 'existing'
@@ -440,6 +441,18 @@ export default function NewAnalysisPage({
                               : 'Revisar identidade'}
                       </PrimaryButton>
                     </div>
+                    {identityReview && (
+                      <div className="mt-4 rounded-lg border border-warning/40 bg-warning-soft p-4 text-sm" role="alert">
+                        <p className="m-0 font-bold">Já existe paciente com a mesma data de nascimento e nome parecido. É a mesma pessoa?</p>
+                        {identityReview.map((candidate) => (
+                          <div key={candidate.caseId} className="mt-2 flex flex-wrap items-center gap-3">
+                            <span>{candidate.name} · {candidate.caseId}</span>
+                            <button className="rounded border border-border px-3 py-1 font-bold" disabled={intakeBusy} onClick={() => confirmIntake({ action: 'existing', caseId: candidate.caseId })} type="button">Mesma pessoa: incorporar</button>
+                          </div>
+                        ))}
+                        <button className="mt-3 rounded border border-border px-3 py-1 font-bold" disabled={intakeBusy} onClick={() => confirmIntake({ action: 'new' })} type="button">Pessoa diferente: criar novo paciente</button>
+                      </div>
+                    )}
                   </div>
                 )}
                 {intakeMessage && <p aria-live="assertive" className="mb-0 mt-3 whitespace-pre-wrap rounded-lg border border-danger/30 bg-danger-soft p-3 text-sm font-semibold text-danger">{intakeMessage}</p>}

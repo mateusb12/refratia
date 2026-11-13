@@ -40,6 +40,14 @@ type storedIntake struct {
 type intakeError struct {
 	status  int
 	message string
+	body    map[string]any // optional structured response (409 identity_review_required)
+}
+
+// identityDecision answers an identity_review_required (409): merge into the
+// candidate patient ("existing" + caseId) or knowingly create another ("new").
+type identityDecision struct {
+	Action string `json:"action"`
+	CaseID string `json:"caseId"`
 }
 
 func inspectIntakeHandler(w http.ResponseWriter, r *http.Request) {
@@ -545,7 +553,8 @@ func confirmIntakeHandler(w http.ResponseWriter, r *http.Request) {
 
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	var request struct {
-		IntakeID string `json:"intakeId"`
+		IntakeID         string            `json:"intakeId"`
+		IdentityDecision *identityDecision `json:"identityDecision"`
 	}
 	if json.NewDecoder(r.Body).Decode(&request) != nil || !intakefeature.ValidID(request.IntakeID) {
 		writeError(w, http.StatusBadRequest, "rascunho inválido")
@@ -614,10 +623,14 @@ func confirmIntakeHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	receipt, commitErr := commitIntake(r.Context(), client, bucket, draft, defaultCaseID)
+	receipt, commitErr := commitIntake(r.Context(), client, bucket, draft, defaultCaseID, request.IdentityDecision)
 	if commitErr != nil {
 		var httpErr *intakeError
 		switch {
+		case errors.As(commitErr, &httpErr) && httpErr.body != nil:
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(httpErr.status)
+			json.NewEncoder(w).Encode(httpErr.body)
 		case errors.As(commitErr, &httpErr):
 			writeError(w, httpErr.status, httpErr.message)
 		case errors.Is(commitErr, errPatientIdentity):
@@ -671,6 +684,7 @@ func commitIntake(
 	bucket string,
 	draft storedIntake,
 	defaultCaseID string,
+	decision *identityDecision,
 ) (confirmationReceipt, error) {
 	identityKey, fullName, birthDate, err := patientIdentity(draft.Analysis)
 	if err != nil {
@@ -680,6 +694,58 @@ func commitIntake(
 		return confirmationReceipt{}, errors.New("database is not initialized")
 	}
 	patientfeature.NormalizeIdentityFields(draft.Analysis)
+
+	// C2: same birth date + similar-but-different name and no exact match is a
+	// possible OCR typo: ask for a decision, write nothing (no Garage, no SQL).
+	var exact int64
+	if err := appDatabase.Gorm.Model(&database.Patient{}).Where("identity_key = ?", identityKey).Count(&exact).Error; err != nil {
+		return confirmationReceipt{}, err
+	}
+	if exact == 0 {
+		similar, err := similarPatientsByBirthDate(appDatabase.Gorm, identityKey, birthDate)
+		if err != nil {
+			return confirmationReceipt{}, err
+		}
+		candidates := make([]database.Patient, 0)
+		for _, other := range similar {
+			if patientfeature.NamesSimilar(other.FullName, fullName) {
+				candidates = append(candidates, other)
+			}
+		}
+		if len(candidates) > 0 {
+			switch {
+			case decision != nil && decision.Action == "new":
+			case decision != nil && decision.Action == "existing":
+				var chosen *database.Patient
+				for i := range candidates {
+					if candidates[i].CaseID == decision.CaseID {
+						chosen = &candidates[i]
+					}
+				}
+				if chosen == nil {
+					return confirmationReceipt{}, &intakeError{status: http.StatusBadRequest, message: "caseId da decisão não é um candidato"}
+				}
+				// Keeps the existing identity_key/name; records the new reading.
+				warnings, _ := draft.Analysis["identity_warnings"].([]any)
+				draft.Analysis["identity_warnings"] = append(warnings, map[string]any{
+					"code":   "nome_variante",
+					"name":   fullName,
+					"detail": "leitura de nome diferente mesclada ao paciente existente por decisão do revisor",
+				})
+				identityKey, fullName = chosen.IdentityKey, chosen.FullName
+			default:
+				list := make([]map[string]any, 0, len(candidates))
+				for _, c := range candidates {
+					list = append(list, map[string]any{"caseId": c.CaseID, "name": c.FullName})
+				}
+				return confirmationReceipt{}, &intakeError{
+					status:  http.StatusConflict,
+					message: "identity_review_required",
+					body:    map[string]any{"error": "identity_review_required", "candidates": list},
+				}
+			}
+		}
+	}
 
 	var receipt confirmationReceipt
 	err = appDatabase.Gorm.Transaction(func(tx *gorm.DB) error {
@@ -697,14 +763,14 @@ func commitIntake(
 			case loadErr == nil:
 				caseID, existingAnalysis, action = patient.CaseID, stored, "updated"
 			case !isNotFound(loadErr):
-				return &intakeError{http.StatusBadGateway, "não foi possível verificar pacientes existentes"}
+				return &intakeError{status: http.StatusBadGateway, message: "não foi possível verificar pacientes existentes"}
 			}
 		}
 		if existingAnalysis == nil {
 			// Fallback legado: case sem linha/case_id em SQL.
 			legacyID, legacy, found, findErr := findExistingPatientCase(ctx, client, bucket, draft.Analysis)
 			if findErr != nil {
-				return &intakeError{http.StatusBadGateway, "não foi possível verificar pacientes existentes"}
+				return &intakeError{status: http.StatusBadGateway, message: "não foi possível verificar pacientes existentes"}
 			}
 			if found {
 				caseID, existingAnalysis, action = legacyID, legacy, "updated"
@@ -725,7 +791,7 @@ func commitIntake(
 			})
 			if copyErr != nil {
 				cleanupObjects(ctx, client, copiedKeys)
-				return &intakeError{http.StatusBadGateway, "não foi possível confirmar os arquivos"}
+				return &intakeError{status: http.StatusBadGateway, message: "não foi possível confirmar os arquivos"}
 			}
 			copiedKeys = append(copiedKeys, key)
 			file.Key = key
@@ -742,7 +808,7 @@ func commitIntake(
 		compiled, marshalErr := json.MarshalIndent(finalAnalysis, "", "  ")
 		if marshalErr != nil {
 			cleanupObjects(ctx, client, copiedKeys)
-			return &intakeError{http.StatusInternalServerError, "não foi possível montar o JSON compilado"}
+			return &intakeError{status: http.StatusInternalServerError, message: "não foi possível montar o JSON compilado"}
 		}
 		if _, putErr := client.PutObject(ctx, &s3.PutObjectInput{
 			Bucket:      aws.String(bucket),
@@ -751,7 +817,7 @@ func commitIntake(
 			ContentType: aws.String("application/json"),
 		}); putErr != nil {
 			cleanupObjects(ctx, client, copiedKeys)
-			return &intakeError{http.StatusBadGateway, "não foi possível armazenar o JSON compilado"}
+			return &intakeError{status: http.StatusBadGateway, message: "não foi possível armazenar o JSON compilado"}
 		}
 
 		// Se exatamente o mesmo arquivo for reenviado, source_files é deduplicado
@@ -864,25 +930,25 @@ func writeConfirmation(w http.ResponseWriter, caseID, analysisKey, action string
 func intakeHeaders(w http.ResponseWriter, r *http.Request) ([]*multipart.FileHeader, *intakeError) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxIntakeSize+maxAnalysisSize+(1<<20))
 	if err := r.ParseMultipartForm(maxFileSize); err != nil {
-		return nil, &intakeError{http.StatusBadRequest, "arquivos excedem o limite ou são inválidos"}
+		return nil, &intakeError{status: http.StatusBadRequest, message: "arquivos excedem o limite ou são inválidos"}
 	}
 	headers := r.MultipartForm.File["files"]
 	if len(headers) == 0 {
-		return nil, &intakeError{http.StatusBadRequest, "envie ao menos um arquivo no campo files"}
+		return nil, &intakeError{status: http.StatusBadRequest, message: "envie ao menos um arquivo no campo files"}
 	}
 	var totalSize int64
 	for _, header := range headers {
 		contentType := header.Header.Get("Content-Type")
 		if !allowedTypes[contentType] {
-			return nil, &intakeError{http.StatusBadRequest, "tipo de arquivo não permitido: " + header.Filename}
+			return nil, &intakeError{status: http.StatusBadRequest, message: "tipo de arquivo não permitido: " + header.Filename}
 		}
 		if header.Size > maxFileSize {
-			return nil, &intakeError{http.StatusRequestEntityTooLarge, "arquivo excede o limite de 20 MB: " + header.Filename}
+			return nil, &intakeError{status: http.StatusRequestEntityTooLarge, message: "arquivo excede o limite de 20 MB: " + header.Filename}
 		}
 		totalSize += header.Size
 	}
 	if totalSize > maxIntakeSize {
-		return nil, &intakeError{http.StatusRequestEntityTooLarge, "o conjunto de arquivos excede o limite de 50 MB"}
+		return nil, &intakeError{status: http.StatusRequestEntityTooLarge, message: "o conjunto de arquivos excede o limite de 50 MB"}
 	}
 	return headers, nil
 }

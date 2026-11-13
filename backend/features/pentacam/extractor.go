@@ -2,10 +2,12 @@ package pentacam
 
 import (
 	"context"
+	"image"
 	"regexp"
 	"strconv"
 	"strings"
 
+	"refratia/backend/shared/ocr"
 	"refratia/backend/shared/parallelwork"
 	pdfutil "refratia/backend/shared/pdf"
 
@@ -46,12 +48,19 @@ func pentacamPageLayoutFromScreens(screens map[Screen]int) pentacamPageLayout {
 }
 
 func ExtractPDF(executionContext context.Context, data []byte) (map[string]any, error) {
+	exam, _, err := ExtractPDFWithHints(executionContext, data)
+	return exam, err
+}
+
+// ExtractPDFWithHints is ExtractPDF plus the per-field extractor hints that
+// feed the C4 diagnostics (strategy, screen, page, bbox, not_applicable).
+func ExtractPDFWithHints(executionContext context.Context, data []byte) (map[string]any, []FieldHint, error) {
 	return extractPDF(executionContext, data, true)
 }
 
 // extractPDF is kept behind the same parser interface so benchmarks can
 // compare an experimental execution strategy without creating a second parser.
-func extractPDF(executionContext context.Context, data []byte, parallelRender bool) (map[string]any, error) {
+func extractPDF(executionContext context.Context, data []byte, parallelRender bool) (map[string]any, []FieldHint, error) {
 	pages := map[int][]byte{}
 
 	progress.Report(
@@ -63,12 +72,12 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 
 	pageCount, _, errorValue := pdfutil.Inspect(executionContext, data)
 	if errorValue != nil {
-		return nil, errorValue
+		return nil, nil, errorValue
 	}
 
 	screens, errorValue := DetectScreens(executionContext, data, pageCount)
 	if errorValue != nil {
-		return nil, errorValue
+		return nil, nil, errorValue
 	}
 	layout := pentacamPageLayoutFromScreens(screens)
 	renderPages := []int{}
@@ -121,7 +130,7 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 			return renderedPage, nil
 		})
 		if errorValue != nil {
-			return nil, errorValue
+			return nil, nil, errorValue
 		}
 		for index, page := range renderPages {
 			pages[page] = rendered[index]
@@ -143,7 +152,7 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 			)
 
 			if errorValue != nil {
-				return nil, errorValue
+				return nil, nil, errorValue
 			}
 
 			pages[page] = image
@@ -157,10 +166,39 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 		"Páginas renderizadas",
 	)
 
+	// Primary strategy: locate every value through its printed label.
+	progress.Report(executionContext, 27, "pentacam", "Localizando campos por rótulo")
+	pageImages := map[int]image.Image{}
+	for page, encoded := range pages {
+		if decoded, err := ocr.DecodeImage(encoded); err == nil {
+			pageImages[page] = decoded
+		}
+	}
+	anchored := readAnchored(executionContext, screensToPages(screens), pageImages)
+
 	values := map[string]any{}
+	for key, found := range anchored {
+		values[key] = found.Value
+	}
+	// The fixed-box readers below only fill what the anchors did not read.
+	hasAll := func(keys ...string) bool {
+		for _, key := range keys {
+			if _, ok := values[key]; !ok {
+				return false
+			}
+		}
+		return true
+	}
 
 	read := func(page int, ocrRegion pentacamOCRRegion, documentFields []pentacamDocumentField) error {
 		if pages[page] == nil {
+			return nil
+		}
+		allRead := true
+		for _, field := range documentFields {
+			allRead = allRead && hasAll(field.Key)
+		}
+		if allRead && len(documentFields) > 0 {
 			return nil
 		}
 
@@ -225,7 +263,7 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 
 	// Página 9 — índices topométricos.
 	var topometricOCRTexts []string
-	if len(pages[layout.topometric]) > 0 {
+	if len(pages[layout.topometric]) > 0 && !hasAll("isv", "iva", "iha", "ki", "cki", "tkc") {
 		topometricOCRTexts, _ = extractOCRTextsFromRegion(
 			executionContext,
 			pages[layout.topometric],
@@ -242,6 +280,9 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 	}
 
 	for _, field := range topometricDocumentFields {
+		if hasAll(field.Key) {
+			continue
+		}
 		for _, text := range topometricOCRTexts {
 			if value, ok := parsePentacamFieldNumber(text, field.Label, field.Decimal); ok {
 				values[field.Key] = value
@@ -250,8 +291,10 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 		}
 	}
 
-	if value, ok := readPentacamIHDFromRenderedPage(executionContext, pages[layout.topometric]); ok {
-		values["ihd"] = value
+	if !hasAll("ihd") {
+		if value, ok := readPentacamIHDFromRenderedPage(executionContext, pages[layout.topometric]); ok {
+			values["ihd"] = value
+		}
 	}
 
 	if tkc, ok := pentacamFocusedTKC(topometricOCRTexts); ok {
@@ -328,7 +371,7 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 		"Lendo células numéricas",
 	)
 
-	fillPentacamFocusedCells(executionContext, pages, values, layout)
+	fillPentacamFocusedCells(executionContext, pages, values, layout, anchored)
 
 	if _, hasThinnestPachymetry := values["thinnest_um"]; !hasThinnestPachymetry {
 		if value, ok := readPentacamThinnestPachymetryFromRenderedPage(executionContext, pages[layout.pachymetry]); ok {
@@ -342,8 +385,10 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 		}
 	}
 
-	if value, ok := readPentacamACDFromPage(executionContext, pages[layout.acd]); ok {
-		values["acd_internal_mm"] = value
+	if !hasAll("acd_internal_mm") {
+		if value, ok := readPentacamACDFromPage(executionContext, pages[layout.acd]); ok {
+			values["acd_internal_mm"] = value
+		}
 	}
 
 	progress.Report(
@@ -429,10 +474,13 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 			"k2_d":          values["k2_d"],
 			"km_d":          values["km_d"],
 			"astigmatism_d": values["astigmatism_d"],
+			"axis_deg":      values["axis_deg"],
 			"kmax_d":        values["kmax_d"],
 		},
 		"pachymetry": map[string]any{
-			"thinnest_um": values["thinnest_um"],
+			"thinnest_um":      values["thinnest_um"],
+			"pupil_center_um":  values["pupil_center_um"],
+			"vertex_normal_um": values["vertex_normal_um"],
 		},
 		"belin_ambrosio": map[string]any{
 			"d":       values["bad_d"],
@@ -456,11 +504,32 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 		},
 		"anterior_segment": map[string]any{
 			"internal_anterior_chamber_depth_mm": values["acd_internal_mm"],
+			"external_anterior_chamber_depth_mm": values["acd_external_mm"],
 		},
 		"cataract_preop": map[string]any{
 			"total_corneal_z40_6mm_um": values["z40_6mm_um"],
 		},
-	}, nil
+	}, buildHints(screens, anchored), nil
+}
+
+func screensToPages(screens map[Screen]int) map[Screen]int { return screens }
+
+// buildHints reports, for the C4 diagnostics, which strategy read each field
+// and which fields cannot exist because their screen is absent.
+func buildHints(screens map[Screen]int, anchored map[string]anchoredValue) []FieldHint {
+	var hints []FieldHint
+	for _, found := range anchored {
+		hints = append(hints, found.Hint)
+	}
+	for screen, fields := range screenSpecFields {
+		if screens[screen] != 0 {
+			continue
+		}
+		for _, field := range fields {
+			hints = append(hints, FieldHint{Spec: field, Status: "not_applicable", Stage: "region", Screen: string(screen)})
+		}
+	}
+	return hints
 }
 
 func parsePentacamZ31(text string) (float64, bool) {

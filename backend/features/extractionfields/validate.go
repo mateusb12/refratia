@@ -49,6 +49,9 @@ type Diagnostic struct {
 	Screen     string `json:"screen,omitempty"`
 	Strategy   string `json:"strategy,omitempty"`
 	BBox       []int  `json:"bbox,omitempty"`
+	BBoxUnits  string `json:"bbox_units,omitempty"`
+	Votes      int    `json:"votes,omitempty"`
+	Candidates int    `json:"candidates,omitempty"`
 	RawText    string `json:"raw_text,omitempty"`
 	Error      string `json:"error,omitempty"`
 }
@@ -246,4 +249,38 @@ func RuleFor(examKey, field string) (Rule, bool) {
 		return r, true
 	}
 	return Rule{}, false
+}
+
+// Hint is what an extractor knows about how it read (or why it could not read)
+// a field; ApplyHint merges it into the validation diagnostic of that field.
+type Hint struct {
+	Spec       string // field name in _field_spec.json
+	Status     string // "valid" | "not_applicable" (others come from validation)
+	Stage      string
+	Screen     string
+	Page       int
+	Strategy   string
+	BBox       [4]int // x, y, w, h in px at 300 dpi
+	Votes      int
+	Candidates int
+}
+
+// ApplyHint enriches d with the extractor's hint. A hint can turn a missing
+// field into not_applicable (its screen is absent from the report); it never
+// turns a failed validation into a success.
+func ApplyHint(d *Diagnostic, h Hint) {
+	switch {
+	case h.Status == "not_applicable" && d.Status == "missing":
+		d.Status, d.Stage = "not_applicable", h.Stage
+		d.Screen = h.Screen
+	case d.Status == "valid" || d.Status == "unreadable":
+		d.Screen, d.Page, d.Strategy = h.Screen, h.Page, h.Strategy
+		d.Votes, d.Candidates = h.Votes, h.Candidates
+		if h.BBox != [4]int{} {
+			d.BBox, d.BBoxUnits = h.BBox[:], "px@300dpi"
+		}
+		if d.Status == "unreadable" {
+			d.Stage = "validation"
+		}
+	}
 }

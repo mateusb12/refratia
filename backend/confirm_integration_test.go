@@ -275,3 +275,69 @@ func TestSavedExamConfirmIdentityFailureIs422AndRevertsObject(t *testing.T) {
 		t.Fatal("uncommitted object must be reverted")
 	}
 }
+
+func confirmWith(t *testing.T, id string, decision map[string]string) (int, map[string]any) {
+	t.Helper()
+	payload := map[string]any{"intakeId": id}
+	if decision != nil {
+		payload["identityDecision"] = decision
+	}
+	body, _ := json.Marshal(payload)
+	rec := httptest.NewRecorder()
+	confirmIntakeHandler(rec, httptest.NewRequest(http.MethodPost, "/api/intakes/confirm", bytes.NewReader(body)))
+	var out map[string]any
+	_ = json.Unmarshal(rec.Body.Bytes(), &out)
+	return rec.Code, out
+}
+
+func TestNameTypoVariantRequiresIdentityDecision(t *testing.T) {
+	ctx, client, bucket := integrationSetup(t)
+	stamp := uniqueName()[len("TESTE PERSIST "):]
+	typo := "DANIELA J" + stamp + " ROCHA"
+	clean := "DANIELA " + stamp + " ROCHA"
+	status, first := confirm(t, putDraft(t, ctx, client, bucket, typo, "1973-07-08", testDocs[:1]))
+	if status != 200 {
+		t.Fatalf("seed: %d %v", status, first)
+	}
+	caseID := first["caseId"].(string)
+	cleanupCase(t, ctx, client, bucket, caseID)
+
+	// No decision: 409, nothing written.
+	id := putDraft(t, ctx, client, bucket, clean, "1973-07-08", testDocs[1:2])
+	status, out := confirmWith(t, id, nil)
+	candidates, _ := out["candidates"].([]any)
+	if status != http.StatusConflict || out["error"] != "identity_review_required" || len(candidates) != 1 {
+		t.Fatalf("want 409 with candidate, got %d %v", status, out)
+	}
+	newCase := "case-" + strings.TrimPrefix(id, "intake-")
+	if n := countKeys(t, ctx, client, bucket, refratiaCasesPrefix+newCase+"/"); n != 0 {
+		t.Fatalf("409 must write no objects, found %d", n)
+	}
+	var patients int64
+	appDatabase.Gorm.Model(&database.Patient{}).Where("birth_date = ?", "1973-07-08").Count(&patients)
+	if patients != 1 {
+		t.Fatalf("409 must write no rows, patients=%d", patients)
+	}
+
+	// existing: merged, still one patient, original identity kept.
+	status, out = confirmWith(t, id, map[string]string{"action": "existing", "caseId": caseID})
+	if status != 200 || out["caseId"] != caseID || out["action"] != "updated" {
+		t.Fatalf("existing: %d %v", status, out)
+	}
+	appDatabase.Gorm.Model(&database.Patient{}).Where("birth_date = ?", "1973-07-08").Count(&patients)
+	if patients != 1 {
+		t.Fatalf("want 1 patient after merge, got %d", patients)
+	}
+
+	// new: a second patient, knowingly.
+	id2 := putDraft(t, ctx, client, bucket, "DANIELA K"+stamp+" ROCHA", "1973-07-08", testDocs[2:3])
+	status, out = confirmWith(t, id2, map[string]string{"action": "new"})
+	if status != 200 || out["action"] != "created" {
+		t.Fatalf("new: %d %v", status, out)
+	}
+	cleanupCase(t, ctx, client, bucket, out["caseId"].(string))
+	appDatabase.Gorm.Model(&database.Patient{}).Where("birth_date = ?", "1973-07-08").Count(&patients)
+	if patients != 2 {
+		t.Fatalf("want 2 patients after explicit new, got %d", patients)
+	}
+}

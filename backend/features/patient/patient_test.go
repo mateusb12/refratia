@@ -854,3 +854,12 @@ func TestGarbageNameNeverBecomesIdentity(t *testing.T) {
 		t.Fatal("garbage must be replaced in patient.full_name")
 	}
 }
+
+func TestNamesSimilarCatchesOCRTypoButNotOtherPeople(t *testing.T) {
+	if !NamesSimilar("DANIELA JNOGUEIRA ROCHA", "Daniela Nogueira Rocha") || !NamesSimilar("MARIA GORETE DE C", "MARIA GORETE DE CARVALHO") {
+		t.Fatal("typo/partial variants must be similar")
+	}
+	if NamesSimilar("DANIELA NOGUEIRA ROCHA", "CARLOS ANDRADE LIMA") {
+		t.Fatal("different people must not be similar")
+	}
+}

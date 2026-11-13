@@ -214,3 +214,16 @@ Re-analyze + confirm of francisco: `patientMatch=existing` (found through `patie
 3. OCR: daniela full_name garbage; Pentacam `nome_lido` garbage (`jJO40 JFRANCISCO`) only flagged.
 4. D12 superseded objects stay in the case folder (SQL rows are pruned, objects not); reconcile reports them as `unreferenced-object`.
 5. Not run: a Postgres outage mid-confirm (by design the SQL transaction rolls back, Garage objects are overwritten by the retry).
+
+### Evidence run 2 (daniela-nogueira, real OCR, no force): analyze → confirm → confirm retry → re-analyze → confirm
+After wiping `refratia_test`/`refratia-test`. Backend built after the name-plausibility and out-of-protocol fixes.
+- analyze: `status=new`, `patient.full_name="DANIELA JNOGUEIRA ROCHA"` (the plausible OCR variant; the garbage `° 2/25 Segmento…` read was rejected and only reported as `nome_divergente`), birth 2001-01-28. confirm #1 `created`, confirm #2 receipt (same case).
+- `patients`: 1 row `daniela jnogueira rocha|2001-01-28`, `case_id=case-20261113T001524Z-411ea140`.
+- `exams` (8 rows, ids 1-8, all `patient_id=1`, same `case_id`): `corneal_topography_other` OD+OS (548345 bytes), `refractometry` OD+OS (124525), `specular_microscopy` OD+OS (511253), `pentacam_corneal_tomography` OD (3392460) and OS (3397551). No `oct_retina`, no empty type.
+- Garage `cases/<case>/`: `TOPO__AO__…__6eb3a5f1__…pdf` 548345, `AUTO__AO__…30e84a93…jpeg` 124525, `MICROSCOPIA_ESPECULAR__AO__…2967b9a9…jpg` 511253, `PENTACAM__OD__…934368e1…pdf` 3392460, `PENTACAM__OS__…5aea700a…pdf` 3397551, `paciente_compilado.json` 32849; receipt 148 bytes; drafts emptied.
+- re-analyze without force: `status=existing` (via `patients.case_id`), confirm `updated`, same caseId; afterwards still 1 patient, 8 rows, 8 distinct (object_key, eye), same 5 documents, 0 drafts left, `cmd/reconcile` 0 findings.
+
+### Near-duplicate identity decision (C2)
+- Rule: at confirm, if no patient has the exact `identity_key` but another has the same birth date and a `NamesSimilar` name (compatible/partial, or same token count with at most 2 edits per sorted token), confirm answers `409 {"error":"identity_review_required","candidates":[{caseId,name}]}` before any Garage or SQL write. The body may carry `identityDecision`: `{"action":"existing","caseId":…}` merges into that patient (keeps its identity_key and name, adds an `nome_variante` warning to the analysis) or `{"action":"new"}` creates another patient knowingly. A caseId that is not a candidate gives 400.
+- Test (synthetic drafts against testinfra): `TestNameTypoVariantRequiresIdentityDecision`: typo seed, clean variant with no decision gives 409 with 1 candidate, no case objects, 1 patient; "existing" gives `updated` same case, 1 patient; "new" gives a second patient (2). Unit: `TestNamesSimilarCatchesOCRTypoButNotOtherPeople`.
+- Frontend: `useIntakeWorkflow.ts` (`identityReview` state, `confirmIntake(decision)`) and the confirm block in `NewAnalysisPage.tsx` (candidate list, two buttons). `tsc --noEmit` clean.

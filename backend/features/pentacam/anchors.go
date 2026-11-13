@@ -2,6 +2,7 @@ package pentacam
 
 import (
 	"context"
+	"fmt"
 	"image"
 	"regexp"
 	"strings"
@@ -66,19 +67,8 @@ var screenSpecFields = map[Screen][]string{
 	ScreenRings:    {"coma_z31_5mm_um"},
 }
 
-// FieldHint is the extractor-side half of a C4 diagnostic; the app merges it
-// with the validation result. Spec is the _field_spec.json field name.
-type FieldHint struct {
-	Spec       string
-	Status     string // "valid" | "missing" | "unreadable" | "not_applicable"
-	Stage      string
-	Screen     Screen
-	Page       int
-	Strategy   string
-	BBox       [4]int // x, y, w, h in px at 300 dpi (A4 width 2480)
-	Votes      int
-	Candidates int
-}
+// FieldHint is the extractor-side half of a C4 diagnostic.
+type FieldHint = extractionfields.Hint
 
 type anchoredValue struct {
 	Value float64
@@ -99,6 +89,15 @@ type labelSpan struct {
 
 // labelSpans returns, per row, every run of horizontally adjacent words (up to
 // five) as one candidate label.
+func hasAlnum(s string) bool {
+	for _, r := range s {
+		if r >= '0' && r <= '9' || r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r > 127 {
+			return true
+		}
+	}
+	return false
+}
+
 func labelSpans(words []ocr.Word, rowTolerance int) []labelSpan {
 	var spans []labelSpan
 	for _, row := range ocr.GroupRows(words, rowTolerance) {
@@ -107,8 +106,14 @@ func labelSpans(words []ocr.Word, rowTolerance int) []labelSpan {
 			first := row.Words[i]
 			left, right := first.Left, first.Left+first.Width
 			top, bottom := first.Top, first.Top+first.Height
+			if !hasAlnum(first.Text) {
+				continue
+			}
 			for j := i; j < len(row.Words) && j < i+5; j++ {
 				w := row.Words[j]
+				if !hasAlnum(w.Text) {
+					continue // icons and box borders between label words
+				}
 				if j > i && w.Left-right > 2*first.Height {
 					break
 				}
@@ -176,16 +181,22 @@ func readAnchored(
 			}
 			sw := load(screen)
 			span, found := pickLabel(sw.spans, field, located)
+			if debugAnchors {
+				println("DBG", field.Key, found, span.text, span.left, span.top)
+			}
 			if !found {
 				continue
 			}
 			located[field.Key] = span
 			value, votes, candidates, rect, ok := readValueBox(ctx, img, sw.words, span, rule)
+			if debugAnchors {
+				println("DBG  ->", field.Key, value, votes, candidates, ok)
+			}
 			if !ok {
 				continue
 			}
 			out[field.Key] = anchoredValue{Value: value, Hint: FieldHint{
-				Spec: field.Spec, Status: "valid", Stage: "recognition", Screen: screen, Page: page,
+				Spec: field.Spec, Status: "valid", Stage: "recognition", Screen: string(screen), Page: page,
 				Strategy: "label_anchor", BBox: to300dpi(rect, img.Bounds()), Votes: votes, Candidates: candidates,
 			}}
 			break
@@ -243,19 +254,31 @@ func readValueBox(
 	h := label.height
 	rect := image.Rect(label.right+h/4, label.cy-h, label.right+h/4+7*h/2, label.cy+h)
 
-	// Use the page-OCR word to the right, when close, to size the box.
+	// The value cell is the first numeric word to the right of the label within
+	// the row band; a word with letters in between is the next label, so stop.
 	var tokenValue *float64
+	variants := []image.Rectangle{rect}
 	best := -1
 	for i, w := range words {
 		cy := w.Top + w.Height/2
-		if w.Left >= label.right-h/4 && w.Left <= label.right+5*h/2 && abs(cy-label.cy) <= max(h, w.Height) &&
-			(best < 0 || w.Left < words[best].Left) {
-			best = i
+		if w.Left < label.right-h/4 || w.Left > label.right+8*h || abs(cy-label.cy) > h*3/4 ||
+			!strings.ContainsAny(w.Text, "0123456789") {
+			continue
 		}
+		if best >= 0 && w.Left >= words[best].Left {
+			continue
+		}
+		best = i
 	}
 	if best >= 0 {
 		w := words[best]
-		rect = image.Rect(w.Left-h/8, min(w.Top, label.top)-h/4, w.Left+w.Width+h/8, max(w.Top+w.Height, label.bottom)+h/4)
+		// The OCR word still carries the cell border on its left and the unit
+		// on its right; both are cut off by character proportion.
+		extents := trimWordBox(w)
+		for _, e := range extents {
+			variants = append(variants, image.Rect(e[0]-h/6, min(w.Top, label.top)-h/4, e[1]+h/6, max(w.Top+w.Height, label.bottom)+h/4).Intersect(img.Bounds()))
+		}
+		rect = variants[0]
 		if v, ok := normalizePrinted(w.Text, rule); ok {
 			tokenValue = &v
 		}
@@ -266,36 +289,56 @@ func readValueBox(
 	}
 
 	votes := map[float64]int{}
-	reads := 0
 	if tokenValue != nil {
 		votes[*tokenValue]++
-		reads++
 	}
-	for _, threshold := range []uint8{0, 130, 160, 190} {
-		gray := ocr.PrepareGray(img, rect, 3, 0)
-		ocr.AutoContrast(gray)
-		encoded, err := ocr.EncodePNG(gray)
+	for _, variant := range variants {
+		if variant.Empty() {
+			continue
+		}
+		cell := frameWithMargin(darkOnLight(ocr.PrepareGray(img, variant, 1, 0)), 10)
+		cellPNG, err := ocr.EncodePNG(cell)
 		if err != nil {
 			continue
 		}
-		if threshold > 0 {
-			encoded, err = pentacamBinaryUpscale(mustPNG(img, rect), 3, threshold)
-			if err != nil {
-				continue
-			}
-		}
-		for _, psm := range []int{7, 13} {
-			text, err := ocr.RunTesseractText(ctx, encoded, psm, "0123456789.,+-")
-			if err != nil {
-				continue
-			}
-			if v, ok := normalizePrinted(text, rule); ok {
-				votes[v]++
-				reads++
+		// Scale and threshold are varied on purpose: pixel-font digits such as
+		// 3/9 flip with the geometry, and a value is only accepted when the
+		// reads agree across those variations.
+		for _, scale := range []int{2, 3, 4} {
+			for _, threshold := range []uint8{0, 150} {
+				var encoded []byte
+				if threshold == 0 {
+					gray := ocr.PrepareGray(cell, cell.Bounds(), scale, 0)
+					ocr.AutoContrast(gray)
+					encoded, err = ocr.EncodePNG(gray)
+				} else {
+					encoded, err = pentacamBinaryUpscale(cellPNG, scale, threshold)
+				}
+				if err != nil {
+					continue
+				}
+				// Without the whitelist a unit glued to the cell ("D", "mm")
+				// stays letters and is dropped by normalizePrinted instead
+				// of becoming "0".
+				for _, mode := range []struct {
+					psm       int
+					whitelist string
+				}{{7, ""}, {7, "0123456789.,+-"}, {13, "0123456789.,+-"}} {
+					text, err := ocr.RunTesseractText(ctx, encoded, mode.psm, mode.whitelist)
+					if err != nil {
+						continue
+					}
+					if v, ok := normalizePrinted(text, rule); ok {
+						votes[v]++
+					}
+				}
 			}
 		}
 	}
 
+	if debugAnchors {
+		println("DBG   votes", label.text, fmt.Sprint(votes))
+	}
 	bestValue, bestVotes, rival := 0.0, 0, false
 	for v, n := range votes {
 		switch {
@@ -305,15 +348,97 @@ func readValueBox(
 			rival = true
 		}
 	}
-	if bestVotes < 2 || rival {
+	total := 0
+	for _, n := range votes {
+		total += n
+	}
+	// A competing reading (3 vs 9 in a pixel font) must not be outvoted by a
+	// small margin: with rivals the winner needs 80% of the valid reads.
+	if bestVotes < 2 || rival || (len(votes) > 1 && bestVotes*5 < total*4) {
 		return 0, bestVotes, len(votes), rect, false
 	}
 	return bestValue, bestVotes, len(votes), rect, true
 }
 
-func mustPNG(img image.Image, r image.Rectangle) []byte {
-	encoded, _ := ocr.EncodePNG(ocr.PrepareGray(img, r, 1, 0))
-	return encoded
+// trimWordBox returns two horizontal extents of the numeric core of an OCR
+// word (a tight and a loose one). Leading box-border glyphs ("[", "|", "}")
+// and trailing unit letters ("D", "mm", "°") are cut proportionally to their
+// share of the characters; the exact glyph widths are unknown, so both
+// extents are read and voted.
+func trimWordBox(w ocr.Word) [2][2]int {
+	text := []rune(w.Text)
+	start, end := 0, len(text)
+	for start < end && !strings.ContainsRune("0123456789+-−–", text[start]) {
+		start++
+	}
+	for end > start && !strings.ContainsRune("0123456789", text[end-1]) {
+		end--
+	}
+	if end <= start {
+		return [2][2]int{{w.Left, w.Left + w.Width}, {w.Left, w.Left + w.Width}}
+	}
+	char := float64(w.Width) / float64(len(text))
+	at := func(chars float64) int { return w.Left + int(chars*char) }
+	return [2][2]int{
+		{at(float64(start) * 0.9), at(float64(end) + 0.5)},
+		{at(float64(start) * 0.5), at(float64(end) + 0.1)},
+	}
+}
+
+// darkOnLight inverts a cell whose background is darker than its text (white
+// digits on a red out-of-norm box) so every cell is dark digits on light.
+func darkOnLight(g *image.Gray) *image.Gray {
+	dark := 0
+	for _, v := range g.Pix {
+		if v < 128 {
+			dark++
+		}
+	}
+	if dark*2 <= len(g.Pix) {
+		return g
+	}
+	out := image.NewGray(g.Bounds())
+	for i, v := range g.Pix {
+		out.Pix[i] = 255 - v
+	}
+	return trimDarkEdges(out)
+}
+
+// trimDarkEdges drops outer columns/rows that are mostly black: after the
+// inversion of a coloured cell these are the page area around the cell, which
+// the OCR would otherwise read as a glyph.
+func trimDarkEdges(g *image.Gray) *image.Gray {
+	b := g.Bounds()
+	colMean := func(x int) int {
+		sum := 0
+		for y := b.Min.Y; y < b.Max.Y; y++ {
+			sum += int(g.GrayAt(x, y).Y)
+		}
+		return sum / b.Dy()
+	}
+	left, right := b.Min.X, b.Max.X
+	for left < right-4 && colMean(left) < 80 {
+		left++
+	}
+	for right > left+4 && colMean(right-1) < 80 {
+		right--
+	}
+	return g.SubImage(image.Rect(left, b.Min.Y, right, b.Max.Y)).(*image.Gray)
+}
+
+// frameWithMargin returns g on a white canvas with margin pixels around it.
+func frameWithMargin(g *image.Gray, margin int) *image.Gray {
+	b := g.Bounds()
+	out := image.NewGray(image.Rect(0, 0, b.Dx()+2*margin, b.Dy()+2*margin))
+	for i := range out.Pix {
+		out.Pix[i] = 255
+	}
+	for y := 0; y < b.Dy(); y++ {
+		for x := 0; x < b.Dx(); x++ {
+			out.SetGray(x+margin, y+margin, g.GrayAt(b.Min.X+x, b.Min.Y+y))
+		}
+	}
+	return out
 }
 
 func abs(v int) int {
@@ -323,3 +448,4 @@ func abs(v int) int {
 	return v
 }
 
+var debugAnchors = false

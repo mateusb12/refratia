@@ -23,7 +23,7 @@ var (
 //     decimals, otherwise digits were lost and the cell is unreadable;
 //   - a token without a separator (the OCR often drops the tiny dot) gets the
 //     separator re-inserted at the printed decimals, but only if enough digits
-//     remain (a lost leading zero of 0.xyz is restored) and the result is inside the field's plausible range;
+//     remain and the result is inside the field's plausible range;
 //   - integer fields must not carry a separator at all.
 func normalizePrinted(raw string, rule extractionfields.Rule) (float64, bool) {
 	text := strings.NewReplacer("−", "-", "–", "-", ",", ".").Replace(raw)
@@ -44,11 +44,8 @@ func normalizePrinted(raw string, rule extractionfields.Rule) (float64, bool) {
 			return 0, false
 		}
 	} else if rule.Decimals > 0 {
-		if len(token) < rule.Decimals {
+		if len(token) <= rule.Decimals {
 			return 0, false
-		}
-		if len(token) == rule.Decimals {
-			token = "0" + token // lost leading zero of 0.xyz
 		}
 		cut := len(token) - rule.Decimals
 		token = token[:cut] + "." + token[cut:]

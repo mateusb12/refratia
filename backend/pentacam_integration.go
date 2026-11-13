@@ -45,7 +45,7 @@ func tryExtractPentacamLocal(
 		"Pentacam — "+eyeLabel,
 	)
 
-	exam, err := pentacam.ExtractPDF(
+	exam, hints, err := pentacam.ExtractPDFWithHints(
 		progress.WithRange(ctx, 8, 96),
 		file.Data,
 	)
@@ -70,6 +70,7 @@ func tryExtractPentacamLocal(
 		file.Metadata.Filename,
 		exam,
 	)
+	setFieldHints(analysis, "pentacam_corneal_tomography", eye, hints)
 
 	progress.Report(
 		ctx,

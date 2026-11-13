@@ -13,11 +13,11 @@ func BenchmarkExtractPDFStrategies(b *testing.B) {
 		b.Fatal(errorValue)
 	}
 
-	serial, errorValue := extractPDF(context.Background(), data, false)
+	serial, _, errorValue := extractPDF(context.Background(), data, false)
 	if errorValue != nil {
 		b.Fatal(errorValue)
 	}
-	parallel, errorValue := extractPDF(context.Background(), data, true)
+	parallel, _, errorValue := extractPDF(context.Background(), data, true)
 	if errorValue != nil {
 		b.Fatal(errorValue)
 	}
@@ -35,7 +35,7 @@ func BenchmarkExtractPDFStrategies(b *testing.B) {
 		b.Run(strategy.name, func(b *testing.B) {
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
-				if _, errorValue := extractPDF(context.Background(), data, strategy.parallelRender); errorValue != nil {
+				if _, _, errorValue := extractPDF(context.Background(), data, strategy.parallelRender); errorValue != nil {
 					b.Fatal(errorValue)
 				}
 			}

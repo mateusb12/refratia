@@ -23,7 +23,8 @@ func TestNormalizePrinted(t *testing.T) {
 		{"5.55", d1, 0, false}, // wrong number of decimals
 		{"0173", d3signed, 0.173, true},
 		{"-0.173", d3signed, -0.173, true},
-		{"-173", d3signed, -0.173, true}, // sign preserved through re-insertion
+		{"-0173", d3signed, -0.173, true}, // sign preserved through re-insertion
+		{"-173", d3signed, 0, false},      // too few digits to place the separator
 		{"15", isv, 15, true},
 		{"6.7", isv, 0, false},   // integer field with separator
 		{"12 34", isv, 0, false}, // two numbers

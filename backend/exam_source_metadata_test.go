@@ -33,28 +33,22 @@ func TestClassifySourceFilesFromExamsBackfillsLegacyMetadata(
 			},
 			"source_files": []any{
 				map[string]any{
-					"path":
-						"cases/case-x/aaa11111-EYESUITE__AO__JOAO.pdf",
+					"path": "cases/case-x/aaa11111-EYESUITE__AO__JOAO.pdf",
 				},
 				map[string]any{
-					"path":
-						"cases/case-x/bbb22222-PENTACAM__OD__JOAO.pdf",
+					"path": "cases/case-x/bbb22222-PENTACAM__OD__JOAO.pdf",
 				},
 				map[string]any{
-					"path":
-						"cases/case-x/ccc33333-PENTACAM__OS__JOAO.pdf",
+					"path": "cases/case-x/ccc33333-PENTACAM__OS__JOAO.pdf",
 				},
 				map[string]any{
-					"path":
-						"cases/case-x/ddd44444-RETINA__OD__JOAO.jpeg",
+					"path": "cases/case-x/ddd44444-RETINA__OD__JOAO.jpeg",
 				},
 				map[string]any{
-					"path":
-						"cases/case-x/eee55555-RETINA__OS__JOAO.jpeg",
+					"path": "cases/case-x/eee55555-RETINA__OS__JOAO.jpeg",
 				},
 				map[string]any{
-					"path":
-						"cases/case-x/fff66666-MICROSCOPIA_ESPECULAR__AO__JOAO.jpeg",
+					"path": "cases/case-x/fff66666-MICROSCOPIA_ESPECULAR__AO__JOAO.jpeg",
 				},
 			},
 		}
@@ -149,12 +143,9 @@ func TestClassifySourceFilesFromExamsPreservesExistingMetadata(
 			},
 			"source_files": []any{
 				map[string]any{
-					"path":
-						"cases/case-x/12345678-EYESUITE__AO__PACIENTE.pdf",
-					"exam":
-						"custom_existing_exam",
-					"eye":
-						"OD",
+					"path": "cases/case-x/12345678-EYESUITE__AO__PACIENTE.pdf",
+					"exam": "custom_existing_exam",
+					"eye":  "OD",
 				},
 			},
 		}
@@ -164,9 +155,7 @@ func TestClassifySourceFilesFromExamsPreservesExistingMetadata(
 	)
 
 	source :=
-		analysis["source_files"].
-			([]any)[0].
-			(map[string]any)
+		analysis["source_files"].([]any)[0].(map[string]any)
 
 	if source["exam"] !=
 		"custom_existing_exam" {
