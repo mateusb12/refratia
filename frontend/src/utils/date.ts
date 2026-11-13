@@ -88,7 +88,10 @@ export function calculateAge(birthDate: unknown, referenceDate: unknown) {
 
   let age = reference.year - birth.year
   if (reference.month < birth.month || (reference.month === birth.month && reference.day < birth.day)) age -= 1
-  return age >= 0 ? age : null
+  // ponytail: age 0 here has only ever meant "birth date read as the exam date"
+  // (refractive-surgery exams are not done on infants), so treat it as unknown
+  // instead of a real age. Eligibility bounds (e.g. >=18) belong to the protocol layer.
+  return age >= 1 ? age : null
 }
 
 function parseDateParts(value: unknown) {
