@@ -65,21 +65,6 @@ func TestCrossCheckAstigmatism(t *testing.T) {
 	}
 }
 
-func TestDominantReading(t *testing.T) {
-	mk := func(v float64, votes int) anchoredValue {
-		return anchoredValue{Value: v, Hint: FieldHint{Votes: votes}}
-	}
-	if d := dominant([]anchoredValue{mk(45.3, 19), mk(53.1, 6)}); d == nil || d.Value != 45.3 {
-		t.Fatal("a reading with 3x the votes must win")
-	}
-	if dominant([]anchoredValue{mk(45.3, 19), mk(53.1, 10)}) != nil {
-		t.Fatal("close readings must stay conflicting")
-	}
-	if dominant([]anchoredValue{mk(45.3, 8), mk(53.1, 1)}) != nil {
-		t.Fatal("weak evidence must stay conflicting")
-	}
-}
-
 func TestLeadingNonDigits(t *testing.T) {
 	for text, want := range map[string]int{"[12": 1, "fi2": 2, "}[45.5D": 2, "534": 0, "[aan": 4} {
 		if got := leadingNonDigits(text); got != want {

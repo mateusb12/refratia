@@ -222,6 +222,9 @@ func readAnchored(
 		rule   extractionfields.Rule
 		screen Screen
 		span   labelSpan
+		// fallback jobs (a field's second and later screens) only run for a
+		// field its first screen did not yield.
+		fallback bool
 	}
 	var jobs []job
 	located := map[string]labelSpan{} // Key -> label span, for ColumnOf
@@ -230,7 +233,7 @@ func readAnchored(
 		if !ok {
 			continue
 		}
-		for _, screen := range field.Screens {
+		for index, screen := range field.Screens {
 			if pageImages[pageOf[screen]] == nil {
 				continue
 			}
@@ -239,7 +242,7 @@ func readAnchored(
 				continue
 			}
 			located[field.Key] = span
-			jobs = append(jobs, job{field, rule, screen, span})
+			jobs = append(jobs, job{field, rule, screen, span, index > 0})
 		}
 	}
 	type result struct {
@@ -248,36 +251,66 @@ func readAnchored(
 		suspect bool
 		votes   map[float64]int // all readings, kept for the prior-based tie-break
 	}
-	results, _ := parallelwork.Map(ctx, jobs, readerConcurrency, func(c context.Context, j job) (result, error) {
-		page := pageOf[j.screen]
-		img := pageImages[page]
-		span := j.span
-		if j.field.ValueBelow {
-			// The value sits on the next line, starting under the label.
-			dy := span.height * 17 / 10
-			span.cy += dy
-			span.top += dy
-			span.bottom += dy
-			span.right = span.left - 3*span.height // value starts left of a partly read label
-		}
-		if j.field.Wide {
-			span.wide = true
-		}
-		span.second = j.field.Second
-		var allVotes map[float64]int
-		value, votes, candidates, rect, ok := readValueBox(c, img, cache[j.screen].words, span, j.rule, &allVotes)
-		if !ok {
-			return result{suspect: votes == suspectCell, votes: allVotes}, nil
-		}
-		return result{anchoredValue{Value: value, Hint: FieldHint{
-			Spec: j.field.Spec, Status: "valid", Stage: "recognition", Screen: string(j.screen), Page: page,
-			Strategy: "label_anchor", BBox: to300dpi(rect, img.Bounds()), Votes: votes, Candidates: candidates,
-		}}, true, false, allVotes}, nil
-	})
+	runJobs := func(batch []job) []result {
+		res, _ := parallelwork.Map(ctx, batch, readerConcurrency, func(c context.Context, j job) (result, error) {
+			page := pageOf[j.screen]
+			img := pageImages[page]
+			span := j.span
+			if j.field.ValueBelow {
+				// The value sits on the next line, starting under the label.
+				dy := span.height * 17 / 10
+				span.cy += dy
+				span.top += dy
+				span.bottom += dy
+				span.right = span.left - 3*span.height // value starts left of a partly read label
+			}
+			if j.field.Wide {
+				span.wide = true
+			}
+			span.second = j.field.Second
+			var allVotes map[float64]int
+			value, votes, candidates, rect, ok := readValueBox(c, img, cache[j.screen].words, span, j.rule, &allVotes)
+			if !ok {
+				return result{suspect: votes == suspectCell, votes: allVotes}, nil
+			}
+			return result{anchoredValue{Value: value, Hint: FieldHint{
+				Spec: j.field.Spec, Status: "valid", Stage: "recognition", Screen: string(j.screen), Page: page,
+				Strategy: "label_anchor", BBox: to300dpi(rect, img.Bounds()), Votes: votes, Candidates: candidates,
+			}}, true, false, allVotes}, nil
+		})
+		return res
+	}
 
-	// A field printed on several screens (the cornea box repeats on the
-	// topometric and 4-map screens) is read on each; the readings must agree,
-	// otherwise the field is conflicting and stays empty.
+	// The first screen of a field is read first. The later screens repeat the
+	// same box inside a busier layout (the 4-map screen puts the maps right next
+	// to it and misreads red cells), so they are only a fallback for a field the
+	// first screen did not yield, never a second opinion that can overrule it.
+	var primary, fallbacks []job
+	for _, j := range jobs {
+		if j.fallback {
+			fallbacks = append(fallbacks, j)
+		} else {
+			primary = append(primary, j)
+		}
+	}
+	results := runJobs(primary)
+	have := map[string]bool{}
+	for i, j := range primary {
+		if results[i].ok || results[i].suspect {
+			have[j.field.Key] = true
+		}
+	}
+	var pending []job
+	for _, j := range fallbacks {
+		if !have[j.field.Key] {
+			pending = append(pending, j)
+		}
+	}
+	results = append(results, runJobs(pending)...)
+	jobs = append(primary, pending...)
+
+	// Fields read on more than one screen independently (BAD-D on the Belin and
+	// Cataract screens) must agree, otherwise the field is conflicting.
 	out := map[string]anchoredValue{}
 	var conflicts []FieldHint
 	readings := map[string][]anchoredValue{}
@@ -328,10 +361,6 @@ func readAnchored(
 			}
 		case allEqual(rs):
 			out[key] = rs[0]
-		case dominant(rs) != nil:
-			// One screen's reading is far better supported than the other's
-			// (the 4-map screen has a different layout and misreads): keep it.
-			out[key] = *dominant(rs)
 		default:
 			if os.Getenv("REFRATIA_OCR_DEBUG") == "1" {
 				for _, r := range rs {
@@ -415,26 +444,6 @@ const suspectCell = -1
 // readerConcurrency bounds parallel tesseract processes (they are
 // single-threaded under OMP_THREAD_LIMIT=1).
 const readerConcurrency = 4
-
-// dominant returns the reading with at least 15 votes and at least three times
-// the votes of every other reading, else nil.
-func dominant(rs []anchoredValue) *anchoredValue {
-	best := 0
-	for i := range rs {
-		if rs[i].Hint.Votes > rs[best].Hint.Votes {
-			best = i
-		}
-	}
-	if rs[best].Hint.Votes < 15 {
-		return nil
-	}
-	for i := range rs {
-		if i != best && rs[i].Hint.Votes*3 > rs[best].Hint.Votes {
-			return nil
-		}
-	}
-	return &rs[best]
-}
 
 // fitPrior returns the only reading within tol of the prior that was read at
 // least three times; with zero or several such readings there is no answer.
