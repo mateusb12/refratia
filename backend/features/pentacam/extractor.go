@@ -180,7 +180,11 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 	var extraHints []FieldHint
 	values := map[string]any{}
 	for key, found := range anchored {
-		values[key] = found.Value
+		if found.Text != "" {
+			values[key] = found.Text
+		} else {
+			values[key] = found.Value
+		}
 	}
 	// A conflicting field (two screens disagree) must stay empty: block the
 	// fixed-box readers from filling it with a third, unverified reading.
@@ -492,6 +496,7 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 	conflicts = append(conflicts, crossCheckAstigmatism(values)...)
 
 	return map[string]any{
+		"quality": values["qi"],
 		"anterior_cornea": map[string]any{
 			"k1_d":          values["k1_d"],
 			"k2_d":          values["k2_d"],
@@ -508,7 +513,6 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 		"belin_ambrosio": map[string]any{
 			"d":       values["bad_d"],
 			"art_max": values["art_max"],
-			"kmax_d":  values["kmax_d"],
 		},
 		"topometric_indices_8mm": map[string]any{
 			"isv": values["isv"],
@@ -522,10 +526,12 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 		"corneal_rings": map[string]any{
 			"zernike": map[string]any{
 				"5mm": map[string]any{
-					"z31_coma": values["z31_5mm_um"],
+					"z31_coma":          values["z31_5mm_um"],
+					"z31_coma_axis_deg": values["z31_5mm_axis_deg"],
 				},
 				"6mm": map[string]any{
-					"z31_coma": values["z31_6mm_um"],
+					"z31_coma":          values["z31_6mm_um"],
+					"z31_coma_axis_deg": values["z31_6mm_axis_deg"],
 				},
 			},
 		},
@@ -536,8 +542,6 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 		},
 		"cataract_preop": map[string]any{
 			"total_corneal_z40_6mm_um": values["z40_6mm_um"],
-			"pns":                      values["pns"],
-			"acd_mm":                   values["acd_internal_mm"],
 		},
 	}, append(buildHints(screens, anchored, conflicts), extraHints...), nil
 }

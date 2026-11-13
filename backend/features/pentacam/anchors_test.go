@@ -87,3 +87,15 @@ func TestLeadingNonDigits(t *testing.T) {
 		}
 	}
 }
+
+func TestFitPrior(t *testing.T) {
+	if v, ok := fitPrior(map[float64]int{0.5: 11, 5: 17}, 0.5, 0.3); !ok || v != 0.5 {
+		t.Fatalf("the reading consistent with K2-K1 must win, got %v %v", v, ok)
+	}
+	if _, ok := fitPrior(map[float64]int{0.5: 11, 0.6: 9}, 0.5, 0.3); ok {
+		t.Fatal("two readings near the prior stay unresolved")
+	}
+	if _, ok := fitPrior(map[float64]int{0.5: 2, 5: 17}, 0.5, 0.3); ok {
+		t.Fatal("a rarely read value is not enough")
+	}
+}

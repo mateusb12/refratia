@@ -70,6 +70,16 @@ type located struct {
 	path  []string // below eyes/<EYE>
 }
 
+var specs = loadSpec()
+
+func loadSpec() specFile {
+	var sf specFile
+	if err := json.Unmarshal(specJSON, &sf); err != nil {
+		panic("extractionfields: bad field_spec.json: " + err.Error())
+	}
+	return sf
+}
+
 var locations = buildLocations()
 
 func buildLocations() map[string][]located {
@@ -235,20 +245,18 @@ type Rule struct {
 
 // RuleFor returns the printed-format rule of a spec field.
 func RuleFor(examKey, field string) (Rule, bool) {
-	for _, l := range locations[examKey] {
-		if l.field != field {
-			continue
-		}
-		r := Rule{Kind: l.spec.Kind, Decimals: decimals(l.spec)}
-		if l.spec.Kind == "int" {
-			r.Decimals = 0
-		}
-		if l.spec.PlausibleRange != nil {
-			r.Min, r.Max, r.HasRange = l.spec.PlausibleRange[0], l.spec.PlausibleRange[1], true
-		}
-		return r, true
+	spec, ok := specs.Fields[examKey][field]
+	if !ok {
+		return Rule{}, false
 	}
-	return Rule{}, false
+	r := Rule{Kind: spec.Kind, Decimals: decimals(spec)}
+	if spec.Kind == "int" {
+		r.Decimals = 0
+	}
+	if spec.PlausibleRange != nil {
+		r.Min, r.Max, r.HasRange = spec.PlausibleRange[0], spec.PlausibleRange[1], true
+	}
+	return r, true
 }
 
 // Hint is what an extractor knows about how it read (or why it could not read)

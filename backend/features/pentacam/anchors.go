@@ -38,6 +38,9 @@ type anchorField struct {
 	Rank int
 	// ValueBelow: the value is printed on the line under its label.
 	ValueBelow bool
+	// Second: the value is the second numeric word of the row (the axis printed
+	// after the magnitude, "0.081 µm (199°)").
+	Second bool
 	// Wide: the value box is far from its label (a gap of ~12 label heights).
 	Wide bool
 }
@@ -73,6 +76,8 @@ var anchorFields = []anchorField{
 	// Anéis Corneanos screen: Z31 (Coma) for the 5 mm and 6 mm zones, the value
 	// printed on the line under each label.
 	{Key: "z31_5mm_um", Spec: "coma_z31_5mm_um", Screens: []Screen{ScreenRings}, Label: lbl(`(?:z31 )?coma\w?`), ValueBelow: true},
+	{Key: "z31_5mm_axis_deg", Spec: "coma_z31_5mm_axis_deg", Screens: []Screen{ScreenRings}, Label: lbl(`(?:z31 )?coma\w?`), ValueBelow: true, Second: true},
+	{Key: "z31_6mm_axis_deg", Spec: "coma_z31_5mm_axis_deg", Screens: []Screen{ScreenRings}, Label: lbl(`(?:z31 )?coma\w?`), ValueBelow: true, Rank: 1, Second: true},
 	{Key: "z31_6mm_um", Spec: "coma_z31_6mm_um", Screens: []Screen{ScreenRings}, Label: lbl(`(?:z31 )?coma\w?`), ValueBelow: true, Rank: 1},
 
 	// Cataract Pre-OP screen.
@@ -98,6 +103,7 @@ var screenSpecFields = map[Screen][]string{
 type FieldHint = extractionfields.Hint
 
 type anchoredValue struct {
+	Text  string // text cells (quality indicator); Value is unused then
 	Value float64
 	Hint  FieldHint
 }
@@ -109,7 +115,7 @@ func normLabelWord(s string) string {
 }
 
 type labelSpan struct {
-	wide               bool
+	wide, second       bool
 	text               string
 	left, right, top   int
 	bottom, cy, height int
@@ -159,6 +165,11 @@ func labelSpans(words []ocr.Word, rowTolerance int) []labelSpan {
 	return spans
 }
 
+type screenWords struct {
+	words []ocr.Word
+	spans []labelSpan
+}
+
 // readAnchored reads every anchorField whose screen is present. pageImages maps
 // 1-based page -> decoded 450-dpi render; pageOf maps screen -> page.
 func readAnchored(
@@ -166,10 +177,6 @@ func readAnchored(
 	pageOf map[Screen]int,
 	pageImages map[int]image.Image,
 ) (map[string]anchoredValue, []FieldHint) {
-	type screenWords struct {
-		words []ocr.Word
-		spans []labelSpan
-	}
 	cache := map[Screen]*screenWords{}
 	load := func(screen Screen) *screenWords {
 		sw := &screenWords{}
@@ -239,6 +246,7 @@ func readAnchored(
 		reading anchoredValue
 		ok      bool
 		suspect bool
+		votes   map[float64]int // all readings, kept for the prior-based tie-break
 	}
 	results, _ := parallelwork.Map(ctx, jobs, readerConcurrency, func(c context.Context, j job) (result, error) {
 		page := pageOf[j.screen]
@@ -255,14 +263,16 @@ func readAnchored(
 		if j.field.Wide {
 			span.wide = true
 		}
-		value, votes, candidates, rect, ok := readValueBox(c, img, cache[j.screen].words, span, j.rule)
+		span.second = j.field.Second
+		var allVotes map[float64]int
+		value, votes, candidates, rect, ok := readValueBox(c, img, cache[j.screen].words, span, j.rule, &allVotes)
 		if !ok {
-			return result{suspect: votes == suspectCell}, nil
+			return result{suspect: votes == suspectCell, votes: allVotes}, nil
 		}
 		return result{anchoredValue{Value: value, Hint: FieldHint{
 			Spec: j.field.Spec, Status: "valid", Stage: "recognition", Screen: string(j.screen), Page: page,
 			Strategy: "label_anchor", BBox: to300dpi(rect, img.Bounds()), Votes: votes, Candidates: candidates,
-		}}, true, false}, nil
+		}}, true, false, allVotes}, nil
 	})
 
 	// A field printed on several screens (the cornea box repeats on the
@@ -284,6 +294,27 @@ func readAnchored(
 		readings[j.field.Key] = readings[j.field.Key]
 		if results[i].ok {
 			readings[j.field.Key] = append(readings[j.field.Key], results[i].reading)
+		}
+	}
+	// Tie-break by a physical prior: the anterior astigmatism equals K2 - K1.
+	// When the astigmatism cell's readings disagree (0.5 vs 5: the OCR drops
+	// the "0." of a small value), the one reading within 0.3 of K2 - K1 wins.
+	if _, have := readings["astigmatism_d"]; have && len(readings["astigmatism_d"]) == 0 {
+		k1, ok1 := readings["k1_d"]
+		k2, ok2 := readings["k2_d"]
+		if ok1 && ok2 && len(k1) > 0 && len(k2) > 0 {
+			prior := k2[0].Value - k1[0].Value
+			for i, j := range jobs {
+				if j.field.Key != "astigmatism_d" || results[i].votes == nil {
+					continue
+				}
+				if v, ok := fitPrior(results[i].votes, prior, 0.3); ok {
+					hint := FieldHint{Spec: j.field.Spec, Status: "valid", Stage: "recognition", Screen: string(j.screen),
+						Page: pageOf[j.screen], Strategy: "label_anchor+prior", Votes: results[i].votes[v], Candidates: len(results[i].votes)}
+					readings["astigmatism_d"] = append(readings["astigmatism_d"], anchoredValue{Value: v, Hint: hint})
+					break
+				}
+			}
 		}
 	}
 	for _, key := range order {
@@ -313,7 +344,53 @@ func readAnchored(
 			})
 		}
 	}
+	if qi, hint, ok := readQuality(ctx, pageOf, pageImages, cache); ok {
+		out["qi"] = anchoredValue{Hint: hint, Text: qi}
+	}
 	return out, conflicts
+}
+
+// The "QI:" label itself is routinely garbled; the quality cell is the box to the
+// left of the "Eixo:" label on the same row.
+var qualityLabel = lbl(`eixo`)
+var qualityWord = regexp.MustCompile(`^[A-Z]{2,8}$`)
+
+// readQuality reads the quality indicator text cell of the anterior cornea box
+// on the first screen that carries it: its first word, read as letters by vote.
+// Only a clear majority is accepted.
+func readQuality(
+	ctx context.Context,
+	pageOf map[Screen]int,
+	pageImages map[int]image.Image,
+	cache map[Screen]*screenWords,
+) (string, FieldHint, bool) {
+	for _, screen := range []Screen{ScreenTopometric, ScreenRefractive} {
+		page := pageOf[screen]
+		img, sw := pageImages[page], cache[screen]
+		if img == nil || sw == nil {
+			continue
+		}
+		span, found := pickLabel(sw.spans, anchorField{Label: qualityLabel}, nil)
+		if !found {
+			continue
+		}
+		h := span.height
+		// "Eixo:" is the first line of a two-line label; the box spans both lines.
+		rect := image.Rect(span.left-6*h, span.top, span.left-h/4, span.top+22*h/10).Intersect(img.Bounds())
+		letters := func(t string) string {
+			words := strings.Fields(strings.ToUpper(regexp.MustCompile(`[^A-Za-z ]`).ReplaceAllString(foldAccents(t), " ")))
+			if len(words) == 0 {
+				return ""
+			}
+			return words[0]
+		}
+		text := readTextBox(ctx, img, rect, "", letters, "")
+		if qualityWord.MatchString(text) {
+			return text, FieldHint{Spec: "qi", Status: "valid", Stage: "recognition", Screen: string(screen), Page: page,
+				Strategy: "label_anchor", BBox: to300dpi(rect, img.Bounds())}, true
+		}
+	}
+	return "", FieldHint{}, false
 }
 
 // crossCheckAstigmatism: the anterior astigmatism is the difference between the
@@ -357,6 +434,22 @@ func dominant(rs []anchoredValue) *anchoredValue {
 		}
 	}
 	return &rs[best]
+}
+
+// fitPrior returns the only reading within tol of the prior that was read at
+// least three times; with zero or several such readings there is no answer.
+func fitPrior(votes map[float64]int, prior, tol float64) (float64, bool) {
+	best, found := 0.0, false
+	for v, n := range votes {
+		if n < 3 || math.Abs(v-prior) > tol {
+			continue
+		}
+		if found {
+			return 0, false
+		}
+		best, found = v, true
+	}
+	return best, found
 }
 
 func allEqual(readings []anchoredValue) bool {
@@ -427,6 +520,7 @@ func readValueBox(
 	words []ocr.Word,
 	label labelSpan,
 	rule extractionfields.Rule,
+	keep *map[float64]int,
 ) (float64, int, int, image.Rectangle, bool) {
 	h := label.height
 	boxWidth := 7 * h / 2
@@ -441,16 +535,24 @@ func readValueBox(
 	var tokenValue *float64
 	variants := []image.Rectangle{rect}
 	best := -1
+	var candidates []int
 	for i, w := range words {
 		cy := w.Top + w.Height/2
 		if w.Left < label.right-h/4 || w.Left > label.right+searchReach || abs(cy-label.cy) > h*3/4 ||
 			!strings.ContainsAny(w.Text, "0123456789") {
 			continue
 		}
-		if best >= 0 && w.Left >= words[best].Left {
-			continue
-		}
-		best = i
+		candidates = append(candidates, i)
+	}
+	sort.Slice(candidates, func(a, b int) bool { return words[candidates[a]].Left < words[candidates[b]].Left })
+	pick := 0
+	if label.second {
+		pick = 1
+	}
+	if pick < len(candidates) {
+		best = candidates[pick]
+	} else if label.second {
+		return 0, 0, 0, rect, false // no second number on the row
 	}
 	if best < 0 {
 		// No word with a digit: a fully garbled cell ("[aan" for "44.4 D") still
@@ -557,6 +659,9 @@ func readValueBox(
 		case n == bestVotes:
 			rival = true
 		}
+	}
+	if keep != nil {
+		*keep = votes
 	}
 	total := 0
 	for _, n := range votes {
