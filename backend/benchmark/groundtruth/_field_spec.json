@@ -564,7 +564,7 @@
             "corneal_rings",
             "zernike",
             "5mm",
-            "z31_coma"
+            "z31_coma_axis_deg"
           ]
         ]
       },
