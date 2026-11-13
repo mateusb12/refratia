@@ -27,3 +27,8 @@ dist-ssr
 /.env
 /backend/backend.md
 /frontend/data/*/
+backend/testinfra/test.env
+backend/testinfra/garage.toml
+backend/testinfra/.garage-key
+backend/benchmark/out/
+backend/backend

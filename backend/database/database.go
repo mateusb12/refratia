@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 const (
@@ -64,7 +65,7 @@ func Open(ctx context.Context) (*DB, error) {
 		return nil, err
 	}
 
-	gormDB, err := gorm.Open(postgres.Open(config.dsn()), &gorm.Config{})
+	gormDB, err := gorm.Open(postgres.Open(config.dsn()), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
 	if err != nil {
 		return nil, fmt.Errorf("create postgres ORM connection: %w", err)
 	}
@@ -204,6 +205,11 @@ func envOrDefault(name, fallback string) string {
 }
 
 func loadDotEnv() {
+	// Isolated test/benchmark runs must never inherit credentials from the
+	// developer .env (which may point at production Postgres/Tigris).
+	if os.Getenv("REFRATIA_NO_DOTENV") != "" {
+		return
+	}
 	for _, path := range []string{".env", "../.env", "backend/.env"} {
 		loadDotEnvFile(path)
 	}
