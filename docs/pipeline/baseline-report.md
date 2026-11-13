@@ -1,6 +1,6 @@
 # Baseline report (unmodified code)
 
-Backend: commit `9eb5152` plus only the uncommitted `REFRATIA_NO_DOTENV` guard, built from a separate git worktree. Live run `20261112-213130`, rescored offline with the current scoring rules (name word-set compare, not_evaluable, duplicate definition, abcd adapter, contract_mismatch). Source documents are named `<slug>/<exam_type>.<eye>`; names and birth dates omitted.
+Backend: commit `9eb5152` plus only the uncommitted `REFRATIA_NO_DOTENV` guard, built from a separate git worktree. Live run `20261112-213130`, rescored offline with the current rules (contract_mismatch counts as a failure in the denominator; dash placeholders are app values, not empty). Source documents are named `<slug>/<exam_type>.<eye>`; names and birth dates omitted.
 
 # RefratIA benchmark report
 
@@ -12,53 +12,58 @@ Commit ``. Started 2026-11-12T21:31:30-03:00, runtime 0s. Backend built from `<w
 
 Command: `npm run benchmark -- -rescore benchmark/out/20261112-213130`
 
+Outcome categories: pass; incorrect (value differs from the printed one); missing (app path present, value null); conflicting (app reported conflicting readings and gave no value); unexpected_value (app value where ground truth is missing/not_applicable); contract_mismatch (the field's app path exists in no patient's output: the app never emits it; counts as a FAILURE in the accuracy denominator, listed separately to tell contract gaps from OCR misses); unverified (needs_human: excluded, never a pass); not_in_app (the spec defines no app path at all: excluded from accuracy, its count is shown next to it).
+
 Patients are referred to by folder slug. Field values are shown; names and birth dates are not.
 
 ## Summary per patient
 
-| patient | extraction accuracy | unexpected values | not in app / contract mismatch | persistence + identity checks | analyze |
-|---|---|---|---|---|---|
-| creso-aversa | 56/61 (91.8%) | 0 | 65 | 8/10 (80.0%) | 121s (HTTP 200) |
-| daniela-nogueira | 10/46 (21.7%) | 0 | 66 | 6/10 (60.0%) | 123s (HTTP 200) |
-| francisco | 35/64 (54.7%) | 0 | 68 | 8/10 (80.0%) | 129s (HTTP 200) |
-| maria-gorete | 55/66 (83.3%) | 0 | 76 | 9/10 (90.0%) | 164s (HTTP 200) |
-| rolmey | 34/64 (53.1%) | 0 | 66 | 2/8 (25.0%) | 134s (HTTP 200) |
+| patient | extraction accuracy | unexpected values | not_in_app (excluded) | contract_mismatch (in denominator) | persistence + identity checks | analyze |
+|---|---|---|---|---|---|---|
+| creso-aversa | 56/108 (51.9%) | 0 | 18 | 49 | 8/10 (80.0%) | 121s (HTTP 200) |
+| daniela-nogueira | 10/84 (11.9%) | 0 | 28 | 40 | 6/10 (60.0%) | 123s (HTTP 200) |
+| francisco | 35/112 (31.2%) | 0 | 20 | 50 | 8/10 (80.0%) | 129s (HTTP 200) |
+| maria-gorete | 55/120 (45.8%) | 0 | 22 | 56 | 9/10 (90.0%) | 164s (HTTP 200) |
+| rolmey | 34/112 (30.4%) | 0 | 18 | 50 | 2/8 (25.0%) | 134s (HTTP 200) |
+
+**Overall accuracy** (pass / all scored fields; contract_mismatch counts as non-pass): 190/536 (35.4%)
+
+**Required roles** (decisive, cross_check, identity): 93/172 (54.1%)
+
+**Coverage**: 106 fields have no app path in the spec (not_in_app, excluded from accuracy).
 
 ## Accuracy per exam type
 
 | key | accuracy |
 |---|---|
 | fundus_retinography | 8/8 (100.0%) |
-| iol_calculation | 80/80 (100.0%) |
-| pentacam_corneal_tomography | 89/191 (46.6%) |
-| refractometry | 4/12 (33.3%) |
-| specular_microscopy | 9/10 (90.0%) |
+| iol_calculation | 80/144 (55.6%) |
+| pentacam_corneal_tomography | 89/270 (33.0%) |
+| refractometry | 4/24 (16.7%) |
+| specular_microscopy | 9/90 (10.0%) |
 
 ## Failures by stage
 
 | stage | count |
 |---|---|
-| region (inferred) | 85 |
-| recognition (inferred) | 19 |
+| contract (path absent in every patient) | 245 |
+| region (inferred) | 79 |
+| recognition (inferred) | 15 |
 | mapping (inferred) | 7 |
 
 ## incorrect
 
 | field id | role | expected | got | stage | app diagnostics (not the score) |
 |---|---|---|---|---|---|
-| creso-aversa|pentacam_corneal_tomography|OD|coma_z31_5mm_axis_deg | informative | 207 | 0.09 | recognition (inferred) |  |
 | creso-aversa|pentacam_corneal_tomography|OD|tkc | screening | null | "—" | recognition (inferred) |  |
-| creso-aversa|pentacam_corneal_tomography|OS|coma_z31_5mm_axis_deg | informative | 280 | 0.21 | recognition (inferred) |  |
 | creso-aversa|pentacam_corneal_tomography|OS|isv | screening | 17 | 7 | recognition (inferred) |  |
 | creso-aversa|pentacam_corneal_tomography|OS|tkc | screening | null | "—" | recognition (inferred) |  |
 | daniela-nogueira|pentacam_corneal_tomography|OD|isv | screening | 42 | 44 | recognition (inferred) |  |
 | daniela-nogueira|pentacam_corneal_tomography|OS|isv | screening | 45 | 44 | recognition (inferred) |  |
 | francisco|pentacam_corneal_tomography|OD|isv | screening | 9 | 44 | recognition (inferred) |  |
 | francisco|pentacam_corneal_tomography|OS|isv | screening | 14 | 44 | recognition (inferred) |  |
-| maria-gorete|pentacam_corneal_tomography|OD|coma_z31_5mm_axis_deg | informative | 93 | 0.213 | recognition (inferred) |  |
 | maria-gorete|pentacam_corneal_tomography|OD|ki | screening | 0.97 | 0.9 | recognition (inferred) |  |
 | maria-gorete|pentacam_corneal_tomography|OD|tkc | screening | null | "—" | recognition (inferred) |  |
-| maria-gorete|pentacam_corneal_tomography|OS|coma_z31_5mm_axis_deg | informative | 95 | 0.178 | recognition (inferred) |  |
 | maria-gorete|pentacam_corneal_tomography|OS|isv | screening | 12 | 2 | recognition (inferred) |  |
 | maria-gorete|pentacam_corneal_tomography|OS|tkc | screening | null | "—" | recognition (inferred) |  |
 | maria-gorete|refractometry|OD|axis_deg | decisive | 100 | 188 | recognition (inferred) |  |
@@ -75,7 +80,6 @@ Patients are referred to by folder slug. Field values are shown; names and birth
 | daniela-nogueira|pentacam_corneal_tomography|OD|astig_ant_d | informative | 4.6 | null | region (inferred) |  |
 | daniela-nogueira|pentacam_corneal_tomography|OD|bad_d | screening | 1 | null | region (inferred) |  |
 | daniela-nogueira|pentacam_corneal_tomography|OD|cki | screening | 1 | null | region (inferred) |  |
-| daniela-nogueira|pentacam_corneal_tomography|OD|coma_z31_5mm_axis_deg | informative | 96 | null | region (inferred) |  |
 | daniela-nogueira|pentacam_corneal_tomography|OD|coma_z31_5mm_um | informative | 0.165 | null | region (inferred) |  |
 | daniela-nogueira|pentacam_corneal_tomography|OD|iha | screening | 6.7 | null | region (inferred) |  |
 | daniela-nogueira|pentacam_corneal_tomography|OD|ihd | screening | 0.009 | null | region (inferred) |  |
@@ -88,7 +92,6 @@ Patients are referred to by folder slug. Field values are shown; names and birth
 | daniela-nogueira|pentacam_corneal_tomography|OS|art_max_um | screening | 470 | null | region (inferred) |  |
 | daniela-nogueira|pentacam_corneal_tomography|OS|bad_d | screening | 0.99 | null | region (inferred) |  |
 | daniela-nogueira|pentacam_corneal_tomography|OS|cki | screening | 1.01 | null | region (inferred) |  |
-| daniela-nogueira|pentacam_corneal_tomography|OS|coma_z31_5mm_axis_deg | informative | 82 | null | region (inferred) |  |
 | daniela-nogueira|pentacam_corneal_tomography|OS|coma_z31_5mm_um | informative | 0.163 | null | region (inferred) |  |
 | daniela-nogueira|pentacam_corneal_tomography|OS|iha | screening | 7.2 | null | region (inferred) |  |
 | daniela-nogueira|pentacam_corneal_tomography|OS|ihd | screening | 0.011 | null | region (inferred) |  |
@@ -109,7 +112,6 @@ Patients are referred to by folder slug. Field values are shown; names and birth
 | francisco|pentacam_corneal_tomography|OD|astig_ant_d | informative | 0.5 | null | region (inferred) |  |
 | francisco|pentacam_corneal_tomography|OD|bad_d | screening | 1.15 | null | region (inferred) |  |
 | francisco|pentacam_corneal_tomography|OD|cki | screening | 1 | null | region (inferred) |  |
-| francisco|pentacam_corneal_tomography|OD|coma_z31_5mm_axis_deg | informative | 199 | null | region (inferred) |  |
 | francisco|pentacam_corneal_tomography|OD|coma_z31_5mm_um | informative | 0.081 | null | region (inferred) |  |
 | francisco|pentacam_corneal_tomography|OD|iha | screening | 2.9 | null | region (inferred) |  |
 | francisco|pentacam_corneal_tomography|OD|ihd | screening | 0.006 | null | region (inferred) |  |
@@ -122,7 +124,6 @@ Patients are referred to by folder slug. Field values are shown; names and birth
 | francisco|pentacam_corneal_tomography|OS|art_max_um | screening | 518 | null | region (inferred) |  |
 | francisco|pentacam_corneal_tomography|OS|bad_d | screening | 0.73 | null | region (inferred) |  |
 | francisco|pentacam_corneal_tomography|OS|cki | screening | 1 | null | region (inferred) |  |
-| francisco|pentacam_corneal_tomography|OS|coma_z31_5mm_axis_deg | informative | 316 | null | region (inferred) |  |
 | francisco|pentacam_corneal_tomography|OS|coma_z31_5mm_um | informative | 0.049 | null | region (inferred) |  |
 | francisco|pentacam_corneal_tomography|OS|iha | screening | 1.7 | null | region (inferred) |  |
 | francisco|pentacam_corneal_tomography|OS|ihd | screening | 0.006 | null | region (inferred) |  |
@@ -138,7 +139,6 @@ Patients are referred to by folder slug. Field values are shown; names and birth
 | rolmey|pentacam_corneal_tomography|OD|art_max_um | screening | 416 | null | region (inferred) |  |
 | rolmey|pentacam_corneal_tomography|OD|bad_d | screening | 0.65 | null | region (inferred) |  |
 | rolmey|pentacam_corneal_tomography|OD|cki | screening | 1 | null | region (inferred) |  |
-| rolmey|pentacam_corneal_tomography|OD|coma_z31_5mm_axis_deg | informative | 151 | null | region (inferred) |  |
 | rolmey|pentacam_corneal_tomography|OD|coma_z31_5mm_um | informative | 0.097 | null | region (inferred) |  |
 | rolmey|pentacam_corneal_tomography|OD|iha | screening | 4.2 | null | region (inferred) |  |
 | rolmey|pentacam_corneal_tomography|OD|ihd | screening | 0.006 | null | region (inferred) |  |
@@ -152,7 +152,6 @@ Patients are referred to by folder slug. Field values are shown; names and birth
 | rolmey|pentacam_corneal_tomography|OS|astig_ant_d | informative | 2 | null | region (inferred) |  |
 | rolmey|pentacam_corneal_tomography|OS|bad_d | screening | 2.27 | null | region (inferred) |  |
 | rolmey|pentacam_corneal_tomography|OS|cki | screening | 0.98 | null | region (inferred) |  |
-| rolmey|pentacam_corneal_tomography|OS|coma_z31_5mm_axis_deg | informative | 180 | null | region (inferred) |  |
 | rolmey|pentacam_corneal_tomography|OS|coma_z31_5mm_um | informative | 0.299 | null | region (inferred) |  |
 | rolmey|pentacam_corneal_tomography|OS|iha | screening | 12.8 | null | region (inferred) |  |
 | rolmey|pentacam_corneal_tomography|OS|ihd | screening | 0.017 | null | region (inferred) |  |
@@ -198,6 +197,7 @@ none
 | creso-aversa|pentacam_corneal_tomography|OD|abcd_staging | screening | "A0 B0 C0 D" | null | contract (path absent in every patient) |  |
 | creso-aversa|pentacam_corneal_tomography|OD|acd_ext_mm | cross_check | 3.77 | null | contract (path absent in every patient) |  |
 | creso-aversa|pentacam_corneal_tomography|OD|axis_flat_deg | informative | 174.8 | null | contract (path absent in every patient) |  |
+| creso-aversa|pentacam_corneal_tomography|OD|coma_z31_5mm_axis_deg | informative | 207 | null | contract (path absent in every patient) |  |
 | creso-aversa|pentacam_corneal_tomography|OD|coma_z31_6mm_um | informative | 0.184 | null | contract (path absent in every patient) |  |
 | creso-aversa|pentacam_corneal_tomography|OD|pachy_pupil_center_um | cross_check | 543 | null | contract (path absent in every patient) |  |
 | creso-aversa|pentacam_corneal_tomography|OD|pachy_vertex_um | cross_check | 543 | null | contract (path absent in every patient) |  |
@@ -205,6 +205,7 @@ none
 | creso-aversa|pentacam_corneal_tomography|OS|abcd_staging | screening | "A0 B0 C0 D" | null | contract (path absent in every patient) |  |
 | creso-aversa|pentacam_corneal_tomography|OS|acd_ext_mm | cross_check | 3.79 | null | contract (path absent in every patient) |  |
 | creso-aversa|pentacam_corneal_tomography|OS|axis_flat_deg | informative | 7.7 | null | contract (path absent in every patient) |  |
+| creso-aversa|pentacam_corneal_tomography|OS|coma_z31_5mm_axis_deg | informative | 280 | null | contract (path absent in every patient) |  |
 | creso-aversa|pentacam_corneal_tomography|OS|coma_z31_6mm_um | informative | 0.27 | null | contract (path absent in every patient) |  |
 | creso-aversa|pentacam_corneal_tomography|OS|pachy_pupil_center_um | cross_check | 540 | null | contract (path absent in every patient) |  |
 | creso-aversa|pentacam_corneal_tomography|OS|pachy_vertex_um | cross_check | 539 | null | contract (path absent in every patient) |  |
@@ -229,6 +230,7 @@ none
 | daniela-nogueira|pentacam_corneal_tomography|OD|abcd_staging | screening | "A0 B0 C0 D" | null | contract (path absent in every patient) |  |
 | daniela-nogueira|pentacam_corneal_tomography|OD|acd_ext_mm | cross_check | 3.64 | null | contract (path absent in every patient) |  |
 | daniela-nogueira|pentacam_corneal_tomography|OD|axis_flat_deg | informative | 6 | null | contract (path absent in every patient) |  |
+| daniela-nogueira|pentacam_corneal_tomography|OD|coma_z31_5mm_axis_deg | informative | 96 | null | contract (path absent in every patient) |  |
 | daniela-nogueira|pentacam_corneal_tomography|OD|coma_z31_6mm_um | informative | 0.2 | null | contract (path absent in every patient) |  |
 | daniela-nogueira|pentacam_corneal_tomography|OD|pachy_pupil_center_um | cross_check | 544 | null | contract (path absent in every patient) |  |
 | daniela-nogueira|pentacam_corneal_tomography|OD|pachy_vertex_um | cross_check | 546 | null | contract (path absent in every patient) |  |
@@ -237,6 +239,7 @@ none
 | daniela-nogueira|pentacam_corneal_tomography|OS|abcd_staging | screening | "A0 B0 C0 D" | null | contract (path absent in every patient) |  |
 | daniela-nogueira|pentacam_corneal_tomography|OS|acd_ext_mm | cross_check | 3.65 | null | contract (path absent in every patient) |  |
 | daniela-nogueira|pentacam_corneal_tomography|OS|axis_flat_deg | informative | 173.4 | null | contract (path absent in every patient) |  |
+| daniela-nogueira|pentacam_corneal_tomography|OS|coma_z31_5mm_axis_deg | informative | 82 | null | contract (path absent in every patient) |  |
 | daniela-nogueira|pentacam_corneal_tomography|OS|coma_z31_6mm_um | informative | 0.168 | null | contract (path absent in every patient) |  |
 | daniela-nogueira|pentacam_corneal_tomography|OS|pachy_pupil_center_um | cross_check | 549 | null | contract (path absent in every patient) |  |
 | daniela-nogueira|pentacam_corneal_tomography|OS|pachy_vertex_um | cross_check | 549 | null | contract (path absent in every patient) |  |
@@ -283,6 +286,7 @@ none
 | francisco|pentacam_corneal_tomography|OD|abcd_staging | screening | "A0 B0 C0 D" | null | contract (path absent in every patient) |  |
 | francisco|pentacam_corneal_tomography|OD|acd_ext_mm | cross_check | 3.11 | null | contract (path absent in every patient) |  |
 | francisco|pentacam_corneal_tomography|OD|axis_flat_deg | informative | 174.6 | null | contract (path absent in every patient) |  |
+| francisco|pentacam_corneal_tomography|OD|coma_z31_5mm_axis_deg | informative | 199 | null | contract (path absent in every patient) |  |
 | francisco|pentacam_corneal_tomography|OD|coma_z31_6mm_um | informative | 0.108 | null | contract (path absent in every patient) |  |
 | francisco|pentacam_corneal_tomography|OD|pachy_pupil_center_um | cross_check | 514 | null | contract (path absent in every patient) |  |
 | francisco|pentacam_corneal_tomography|OD|pachy_vertex_um | cross_check | 515 | null | contract (path absent in every patient) |  |
@@ -291,6 +295,7 @@ none
 | francisco|pentacam_corneal_tomography|OS|abcd_staging | screening | "A0 B0 C0 D" | null | contract (path absent in every patient) |  |
 | francisco|pentacam_corneal_tomography|OS|acd_ext_mm | cross_check | 3.07 | null | contract (path absent in every patient) |  |
 | francisco|pentacam_corneal_tomography|OS|axis_flat_deg | informative | 1 | null | contract (path absent in every patient) |  |
+| francisco|pentacam_corneal_tomography|OS|coma_z31_5mm_axis_deg | informative | 316 | null | contract (path absent in every patient) |  |
 | francisco|pentacam_corneal_tomography|OS|coma_z31_6mm_um | informative | 0.1 | null | contract (path absent in every patient) |  |
 | francisco|pentacam_corneal_tomography|OS|pachy_pupil_center_um | cross_check | 528 | null | contract (path absent in every patient) |  |
 | francisco|pentacam_corneal_tomography|OS|pachy_vertex_um | cross_check | 529 | null | contract (path absent in every patient) |  |
@@ -331,6 +336,7 @@ none
 | maria-gorete|pentacam_corneal_tomography|OD|abcd_staging | screening | "A0 B0 C0 D" | null | contract (path absent in every patient) |  |
 | maria-gorete|pentacam_corneal_tomography|OD|acd_ext_mm | cross_check | 3.2 | null | contract (path absent in every patient) |  |
 | maria-gorete|pentacam_corneal_tomography|OD|axis_flat_deg | informative | 108.9 | null | contract (path absent in every patient) |  |
+| maria-gorete|pentacam_corneal_tomography|OD|coma_z31_5mm_axis_deg | informative | 93 | null | contract (path absent in every patient) |  |
 | maria-gorete|pentacam_corneal_tomography|OD|coma_z31_6mm_um | informative | 0.331 | null | contract (path absent in every patient) |  |
 | maria-gorete|pentacam_corneal_tomography|OD|pachy_pupil_center_um | cross_check | 537 | null | contract (path absent in every patient) |  |
 | maria-gorete|pentacam_corneal_tomography|OD|pachy_vertex_um | cross_check | 538 | null | contract (path absent in every patient) |  |
@@ -339,6 +345,7 @@ none
 | maria-gorete|pentacam_corneal_tomography|OS|abcd_staging | screening | "A0 B0 C0 D" | null | contract (path absent in every patient) |  |
 | maria-gorete|pentacam_corneal_tomography|OS|acd_ext_mm | cross_check | 3.25 | null | contract (path absent in every patient) |  |
 | maria-gorete|pentacam_corneal_tomography|OS|axis_flat_deg | informative | 41.4 | null | contract (path absent in every patient) |  |
+| maria-gorete|pentacam_corneal_tomography|OS|coma_z31_5mm_axis_deg | informative | 95 | null | contract (path absent in every patient) |  |
 | maria-gorete|pentacam_corneal_tomography|OS|coma_z31_6mm_um | informative | 0.279 | null | contract (path absent in every patient) |  |
 | maria-gorete|pentacam_corneal_tomography|OS|pachy_pupil_center_um | cross_check | 545 | null | contract (path absent in every patient) |  |
 | maria-gorete|pentacam_corneal_tomography|OS|pachy_vertex_um | cross_check | 545 | null | contract (path absent in every patient) |  |
@@ -385,6 +392,7 @@ none
 | rolmey|pentacam_corneal_tomography|OD|abcd_staging | screening | "A0 B0 C0 D" | null | contract (path absent in every patient) |  |
 | rolmey|pentacam_corneal_tomography|OD|acd_ext_mm | cross_check | 3.9 | null | contract (path absent in every patient) |  |
 | rolmey|pentacam_corneal_tomography|OD|axis_flat_deg | informative | 47.6 | null | contract (path absent in every patient) |  |
+| rolmey|pentacam_corneal_tomography|OD|coma_z31_5mm_axis_deg | informative | 151 | null | contract (path absent in every patient) |  |
 | rolmey|pentacam_corneal_tomography|OD|coma_z31_6mm_um | informative | 0.143 | null | contract (path absent in every patient) |  |
 | rolmey|pentacam_corneal_tomography|OD|pachy_pupil_center_um | cross_check | 534 | null | contract (path absent in every patient) |  |
 | rolmey|pentacam_corneal_tomography|OD|pachy_vertex_um | cross_check | 534 | null | contract (path absent in every patient) |  |
@@ -393,6 +401,7 @@ none
 | rolmey|pentacam_corneal_tomography|OS|abcd_staging | screening | "A0 B0 C0 D" | null | contract (path absent in every patient) |  |
 | rolmey|pentacam_corneal_tomography|OS|acd_ext_mm | cross_check | 3.9 | null | contract (path absent in every patient) |  |
 | rolmey|pentacam_corneal_tomography|OS|axis_flat_deg | informative | 177.9 | null | contract (path absent in every patient) |  |
+| rolmey|pentacam_corneal_tomography|OS|coma_z31_5mm_axis_deg | informative | 180 | null | contract (path absent in every patient) |  |
 | rolmey|pentacam_corneal_tomography|OS|coma_z31_6mm_um | informative | 0.568 | null | contract (path absent in every patient) |  |
 | rolmey|pentacam_corneal_tomography|OS|pachy_pupil_center_um | cross_check | 537 | null | contract (path absent in every patient) |  |
 | rolmey|pentacam_corneal_tomography|OS|pachy_vertex_um | cross_check | 538 | null | contract (path absent in every patient) |  |
@@ -539,12 +548,30 @@ none
 
 ## App failures (exit 1)
 
+- required field creso-aversa|iol_calculation|OD|ad_mm: contract_mismatch
+- required field creso-aversa|iol_calculation|OD|cct_um: contract_mismatch
+- required field creso-aversa|iol_calculation|OS|ad_mm: contract_mismatch
+- required field creso-aversa|iol_calculation|OS|cct_um: contract_mismatch
+- required field creso-aversa|pentacam_corneal_tomography|OD|acd_ext_mm: contract_mismatch
+- required field creso-aversa|pentacam_corneal_tomography|OD|pachy_pupil_center_um: contract_mismatch
+- required field creso-aversa|pentacam_corneal_tomography|OD|pachy_vertex_um: contract_mismatch
+- required field creso-aversa|pentacam_corneal_tomography|OS|acd_ext_mm: contract_mismatch
+- required field creso-aversa|pentacam_corneal_tomography|OS|pachy_pupil_center_um: contract_mismatch
+- required field creso-aversa|pentacam_corneal_tomography|OS|pachy_vertex_um: contract_mismatch
+- required field creso-aversa|specular_microscopy|OD|ct_um: contract_mismatch
+- required field creso-aversa|specular_microscopy|OS|ct_um: contract_mismatch
 - creso-aversa persistence/patient_row_name: mismatch
 - creso-aversa persistence/exam_row_count: 0 rows, expected 6
+- required field daniela-nogueira|pentacam_corneal_tomography|OD|acd_ext_mm: contract_mismatch
 - required field daniela-nogueira|pentacam_corneal_tomography|OD|acd_int_mm: missing
+- required field daniela-nogueira|pentacam_corneal_tomography|OD|pachy_pupil_center_um: contract_mismatch
 - required field daniela-nogueira|pentacam_corneal_tomography|OD|pachy_thinnest_um: missing
+- required field daniela-nogueira|pentacam_corneal_tomography|OD|pachy_vertex_um: contract_mismatch
+- required field daniela-nogueira|pentacam_corneal_tomography|OS|acd_ext_mm: contract_mismatch
 - required field daniela-nogueira|pentacam_corneal_tomography|OS|acd_int_mm: missing
+- required field daniela-nogueira|pentacam_corneal_tomography|OS|pachy_pupil_center_um: contract_mismatch
 - required field daniela-nogueira|pentacam_corneal_tomography|OS|pachy_thinnest_um: missing
+- required field daniela-nogueira|pentacam_corneal_tomography|OS|pachy_vertex_um: contract_mismatch
 - required field daniela-nogueira|refractometry|OD|axis_deg: missing
 - required field daniela-nogueira|refractometry|OD|cylinder_d: missing
 - required field daniela-nogueira|refractometry|OD|sphere_d: missing
@@ -552,25 +579,63 @@ none
 - required field daniela-nogueira|refractometry|OS|cylinder_d: missing
 - required field daniela-nogueira|refractometry|OS|sphere_d: missing
 - required field daniela-nogueira|specular_microscopy|OD|cell_density_cells_mm2: missing
+- required field daniela-nogueira|specular_microscopy|OD|ct_um: contract_mismatch
+- required field daniela-nogueira|specular_microscopy|OS|ct_um: contract_mismatch
 - daniela-nogueira persistence/patient_row_name: mismatch
 - daniela-nogueira persistence/exam_row_count: 0 rows, expected 8
 - daniela-nogueira identity/name: mismatch
 - daniela-nogueira identity/birth_date: mismatch
+- required field francisco|iol_calculation|OD|ad_mm: contract_mismatch
+- required field francisco|iol_calculation|OD|cct_um: contract_mismatch
+- required field francisco|iol_calculation|OS|ad_mm: contract_mismatch
+- required field francisco|iol_calculation|OS|cct_um: contract_mismatch
+- required field francisco|pentacam_corneal_tomography|OD|acd_ext_mm: contract_mismatch
 - required field francisco|pentacam_corneal_tomography|OD|acd_int_mm: missing
+- required field francisco|pentacam_corneal_tomography|OD|pachy_pupil_center_um: contract_mismatch
 - required field francisco|pentacam_corneal_tomography|OD|pachy_thinnest_um: missing
+- required field francisco|pentacam_corneal_tomography|OD|pachy_vertex_um: contract_mismatch
+- required field francisco|pentacam_corneal_tomography|OS|acd_ext_mm: contract_mismatch
 - required field francisco|pentacam_corneal_tomography|OS|acd_int_mm: missing
+- required field francisco|pentacam_corneal_tomography|OS|pachy_pupil_center_um: contract_mismatch
 - required field francisco|pentacam_corneal_tomography|OS|pachy_thinnest_um: missing
+- required field francisco|pentacam_corneal_tomography|OS|pachy_vertex_um: contract_mismatch
+- required field francisco|specular_microscopy|OD|ct_um: contract_mismatch
+- required field francisco|specular_microscopy|OS|ct_um: contract_mismatch
 - francisco persistence/exam_row_count: 0 rows, expected 10
 - francisco identity/warning_data_nascimento_invertida: required by ground truth (C2)
+- required field maria-gorete|iol_calculation|OD|ad_mm: contract_mismatch
+- required field maria-gorete|iol_calculation|OD|cct_um: contract_mismatch
+- required field maria-gorete|iol_calculation|OS|ad_mm: contract_mismatch
+- required field maria-gorete|iol_calculation|OS|cct_um: contract_mismatch
+- required field maria-gorete|pentacam_corneal_tomography|OD|acd_ext_mm: contract_mismatch
 - required field maria-gorete|pentacam_corneal_tomography|OD|km_d: missing
+- required field maria-gorete|pentacam_corneal_tomography|OD|pachy_pupil_center_um: contract_mismatch
+- required field maria-gorete|pentacam_corneal_tomography|OD|pachy_vertex_um: contract_mismatch
+- required field maria-gorete|pentacam_corneal_tomography|OS|acd_ext_mm: contract_mismatch
+- required field maria-gorete|pentacam_corneal_tomography|OS|pachy_pupil_center_um: contract_mismatch
+- required field maria-gorete|pentacam_corneal_tomography|OS|pachy_vertex_um: contract_mismatch
 - required field maria-gorete|refractometry|OD|axis_deg: incorrect
 - required field maria-gorete|refractometry|OD|cylinder_d: incorrect
+- required field maria-gorete|specular_microscopy|OD|ct_um: contract_mismatch
+- required field maria-gorete|specular_microscopy|OS|ct_um: contract_mismatch
 - maria-gorete persistence/exam_row_count: 0 rows, expected 8
+- required field rolmey|iol_calculation|OD|ad_mm: contract_mismatch
+- required field rolmey|iol_calculation|OD|cct_um: contract_mismatch
+- required field rolmey|iol_calculation|OS|ad_mm: contract_mismatch
+- required field rolmey|iol_calculation|OS|cct_um: contract_mismatch
+- required field rolmey|pentacam_corneal_tomography|OD|acd_ext_mm: contract_mismatch
 - required field rolmey|pentacam_corneal_tomography|OD|acd_int_mm: missing
+- required field rolmey|pentacam_corneal_tomography|OD|pachy_pupil_center_um: contract_mismatch
 - required field rolmey|pentacam_corneal_tomography|OD|pachy_thinnest_um: missing
+- required field rolmey|pentacam_corneal_tomography|OD|pachy_vertex_um: contract_mismatch
+- required field rolmey|pentacam_corneal_tomography|OS|acd_ext_mm: contract_mismatch
 - required field rolmey|pentacam_corneal_tomography|OS|acd_int_mm: missing
 - required field rolmey|pentacam_corneal_tomography|OS|k2_d: missing
+- required field rolmey|pentacam_corneal_tomography|OS|pachy_pupil_center_um: contract_mismatch
 - required field rolmey|pentacam_corneal_tomography|OS|pachy_thinnest_um: missing
+- required field rolmey|pentacam_corneal_tomography|OS|pachy_vertex_um: contract_mismatch
+- required field rolmey|specular_microscopy|OD|ct_um: contract_mismatch
+- required field rolmey|specular_microscopy|OS|ct_um: contract_mismatch
 - rolmey persistence/confirm_http_200: HTTP 422 status=
 - rolmey persistence/exactly_one_new_patient_row: 0 new patient rows
 - rolmey persistence/exam_row_count: 0 rows, expected 8
@@ -589,22 +654,34 @@ none
 | fundus_retinography / findings | 4/4 (100.0%) |
 | fundus_retinography / mode | 4/4 (100.0%) |
 | iol_calculation / acd_mm | 8/8 (100.0%) |
+| iol_calculation / ad_mm | 0/8 (0.0%) |
 | iol_calculation / al_mm | 8/8 (100.0%) |
 | iol_calculation / astig_axis_deg | 8/8 (100.0%) |
 | iol_calculation / astig_d | 8/8 (100.0%) |
+| iol_calculation / cct_um | 0/8 (0.0%) |
+| iol_calculation / k1_axis_deg | 0/8 (0.0%) |
 | iol_calculation / k1_d | 8/8 (100.0%) |
+| iol_calculation / k1_radius_mm | 0/8 (0.0%) |
+| iol_calculation / k2_axis_deg | 0/8 (0.0%) |
 | iol_calculation / k2_d | 8/8 (100.0%) |
+| iol_calculation / k2_radius_mm | 0/8 (0.0%) |
 | iol_calculation / k_mean_d | 8/8 (100.0%) |
+| iol_calculation / k_mean_radius_mm | 0/8 (0.0%) |
+| iol_calculation / lens_status | 0/8 (0.0%) |
 | iol_calculation / lt_mm | 8/8 (100.0%) |
 | iol_calculation / target_refraction_d | 8/8 (100.0%) |
 | iol_calculation / wtw_mm | 8/8 (100.0%) |
+| pentacam_corneal_tomography / abcd_staging | 0/10 (0.0%) |
+| pentacam_corneal_tomography / acd_ext_mm | 0/10 (0.0%) |
 | pentacam_corneal_tomography / acd_int_mm | 4/10 (40.0%) |
 | pentacam_corneal_tomography / art_max_um | 4/10 (40.0%) |
 | pentacam_corneal_tomography / astig_ant_d | 6/10 (60.0%) |
+| pentacam_corneal_tomography / axis_flat_deg | 0/10 (0.0%) |
 | pentacam_corneal_tomography / bad_d | 4/10 (40.0%) |
 | pentacam_corneal_tomography / cki | 4/10 (40.0%) |
 | pentacam_corneal_tomography / coma_z31_5mm_axis_deg | 0/10 (0.0%) |
 | pentacam_corneal_tomography / coma_z31_5mm_um | 4/10 (40.0%) |
+| pentacam_corneal_tomography / coma_z31_6mm_um | 0/10 (0.0%) |
 | pentacam_corneal_tomography / iha | 4/10 (40.0%) |
 | pentacam_corneal_tomography / ihd | 4/10 (40.0%) |
 | pentacam_corneal_tomography / isv | 1/10 (10.0%) |
@@ -614,11 +691,25 @@ none
 | pentacam_corneal_tomography / ki | 3/10 (30.0%) |
 | pentacam_corneal_tomography / km_d | 9/10 (90.0%) |
 | pentacam_corneal_tomography / kmax_ant_d | 4/10 (40.0%) |
+| pentacam_corneal_tomography / pachy_pupil_center_um | 0/10 (0.0%) |
 | pentacam_corneal_tomography / pachy_thinnest_um | 4/10 (40.0%) |
-| pentacam_corneal_tomography / pns | 1/1 (100.0%) |
+| pentacam_corneal_tomography / pachy_vertex_um | 0/10 (0.0%) |
+| pentacam_corneal_tomography / pns | 1/10 (10.0%) |
+| pentacam_corneal_tomography / qi | 0/10 (0.0%) |
 | pentacam_corneal_tomography / tkc | 6/10 (60.0%) |
 | pentacam_corneal_tomography / z40_6mm_um | 4/10 (40.0%) |
 | refractometry / axis_deg | 1/4 (25.0%) |
 | refractometry / cylinder_d | 1/4 (25.0%) |
+| refractometry / pd_mm | 0/4 (0.0%) |
+| refractometry / refraction_type | 0/4 (0.0%) |
 | refractometry / sphere_d | 2/4 (50.0%) |
+| refractometry / vertex_distance_mm | 0/4 (0.0%) |
+| specular_microscopy / avg_area_um2 | 0/10 (0.0%) |
 | specular_microscopy / cell_density_cells_mm2 | 9/10 (90.0%) |
+| specular_microscopy / ct_um | 0/10 (0.0%) |
+| specular_microscopy / cv_pct | 0/10 (0.0%) |
+| specular_microscopy / hex_pct | 0/10 (0.0%) |
+| specular_microscopy / max_area_um2 | 0/10 (0.0%) |
+| specular_microscopy / min_area_um2 | 0/10 (0.0%) |
+| specular_microscopy / num_cells | 0/10 (0.0%) |
+| specular_microscopy / sd_um2 | 0/10 (0.0%) |

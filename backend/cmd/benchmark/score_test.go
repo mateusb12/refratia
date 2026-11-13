@@ -63,3 +63,9 @@ func TestContractMismatchCountsInDenominator(t *testing.T) {
 		t.Fatalf("got %+v na=%d", acc, na)
 	}
 }
+
+func TestPlaceholderWhereNullIsIncorrect(t *testing.T) {
+	if isEmpty("—") || isEmpty("-") || isEmpty("–") || !isEmpty(" ") {
+		t.Fatal("dash placeholders must count as app values")
+	}
+}

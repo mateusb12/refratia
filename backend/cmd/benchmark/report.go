@@ -408,6 +408,28 @@ func render(run *Run) string {
 			}
 		}
 	}
+	var all, req tally
+	notIn := 0
+	for _, p := range run.Patients {
+		for _, f := range p.Fields {
+			if f.Outcome == "not_in_app" {
+				notIn++
+			}
+			if scored(f) {
+				all.total++
+				if f.Outcome == "pass" {
+					all.pass++
+				}
+				if f.Required() {
+					req.total++
+					if f.Outcome == "pass" {
+						req.pass++
+					}
+				}
+			}
+		}
+	}
+	w("\n**Overall accuracy** (pass / all scored fields; contract_mismatch counts as non-pass): %s\n\n**Required roles** (decisive, cross_check, identity): %s\n\n**Coverage**: %d fields have no app path in the spec (not_in_app, excluded from accuracy).\n", all, req, notIn)
 	section := func(title string, m map[string]*tally) {
 		w("\n## %s\n\n| key | accuracy |\n|---|---|\n", title)
 		for _, k := range sortedKeys(m) {

@@ -126,7 +126,7 @@ func isEmpty(v any) bool {
 	}
 	if s, ok := v.(string); ok {
 		s = strings.TrimSpace(s)
-		return s == "" || s == "-" || s == "–" || s == "—" // dash variants: the printed "-" normalizes to null
+		return s == "" // a placeholder such as "-" or "—" is a value the app invented where ground truth is null: stays present, hence incorrect
 	}
 	return false
 }
