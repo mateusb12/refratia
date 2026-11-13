@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"refratia/backend/features/extractionfields"
 	"refratia/backend/shared/ocr"
 	"refratia/backend/shared/parallelwork"
 	pdfutil "refratia/backend/shared/pdf"
@@ -176,6 +177,7 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 	}
 	anchored, conflicts := readAnchored(executionContext, screensToPages(screens), pageImages)
 
+	var extraHints []FieldHint
 	values := map[string]any{}
 	for key, found := range anchored {
 		values[key] = found.Value
@@ -222,7 +224,8 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 					break
 				}
 
-				value, ok := parsePentacamFieldNumber(
+				value, ok := parsePentacamFieldTokenFor(
+					field.Key,
 					text,
 					field.Label,
 					field.Decimal,
@@ -293,7 +296,7 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 			continue
 		}
 		for _, text := range topometricOCRTexts {
-			if value, ok := parsePentacamFieldNumber(text, field.Label, field.Decimal); ok {
+			if value, ok := parsePentacamFieldTokenFor(field.Key, text, field.Label, field.Decimal); ok {
 				values[field.Key] = value
 				break
 			}
@@ -307,7 +310,13 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 	}
 
 	if tkc, ok := pentacamFocusedTKC(topometricOCRTexts); ok {
-		values["tkc"] = tkc
+		if tkc == "—" {
+			// A printed dash means "no classification": no value, never the
+			// placeholder as a value.
+			extraHints = append(extraHints, FieldHint{Spec: "tkc", Status: "not_applicable", Stage: "recognition", Strategy: "printed_dash"})
+		} else {
+			values["tkc"] = tkc
+		}
 	}
 
 	progress.Report(
@@ -499,6 +508,7 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 		"belin_ambrosio": map[string]any{
 			"d":       values["bad_d"],
 			"art_max": values["art_max"],
+			"kmax_d":  values["kmax_d"],
 		},
 		"topometric_indices_8mm": map[string]any{
 			"isv": values["isv"],
@@ -514,16 +524,22 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 				"5mm": map[string]any{
 					"z31_coma": values["z31_5mm_um"],
 				},
+				"6mm": map[string]any{
+					"z31_coma": values["z31_6mm_um"],
+				},
 			},
 		},
 		"anterior_segment": map[string]any{
 			"internal_anterior_chamber_depth_mm": values["acd_internal_mm"],
 			"external_anterior_chamber_depth_mm": values["acd_external_mm"],
+			"pns":                                values["pns"],
 		},
 		"cataract_preop": map[string]any{
 			"total_corneal_z40_6mm_um": values["z40_6mm_um"],
+			"pns":                      values["pns"],
+			"acd_mm":                   values["acd_internal_mm"],
 		},
-	}, buildHints(screens, anchored, conflicts), nil
+	}, append(buildHints(screens, anchored, conflicts), extraHints...), nil
 }
 
 func screensToPages(screens map[Screen]int) map[Screen]int { return screens }
@@ -584,6 +600,32 @@ func pentacamRenderTask(page int) (string, string) {
 }
 
 func parsePentacamFieldNumber(text, label string, decimal bool) (float64, bool) {
+	token, ok := parsePentacamFieldToken(text, label, decimal)
+	if !ok {
+		return 0, false
+	}
+	value, errorValue := strconv.ParseFloat(token, 64)
+	return value, errorValue == nil
+}
+
+// parsePentacamFieldTokenFor returns the number printed after label, accepted
+// only in the field's printed format (decimals, range); "0.9" for a field that
+// prints two decimals is a truncated read, not a value.
+func parsePentacamFieldTokenFor(key, text, label string, decimal bool) (float64, bool) {
+	token, ok := parsePentacamFieldToken(text, label, decimal)
+	if !ok {
+		return 0, false
+	}
+	if spec, known := valueKeySpec[key]; known {
+		if rule, found := extractionfields.RuleFor(examKey, spec); found {
+			return normalizePrinted(token, rule)
+		}
+	}
+	value, err := strconv.ParseFloat(token, 64)
+	return value, err == nil
+}
+
+func parsePentacamFieldToken(text, label string, decimal bool) (string, bool) {
 	text = normalizePentacamText(text)
 
 	number := `[+-]?\d+(?:\.\d+)?`
@@ -596,11 +638,9 @@ func parsePentacamFieldNumber(text, label string, decimal bool) (float64, bool) 
 	)
 	match := re.FindStringSubmatch(text)
 	if len(match) != 2 {
-		return 0, false
+		return "", false
 	}
-
-	value, errorValue := strconv.ParseFloat(match[1], 64)
-	return value, errorValue == nil
+	return match[1], true
 }
 
 func pentacamFocusedTKC(ocrTexts []string) (string, bool) {

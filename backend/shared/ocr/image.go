@@ -26,6 +26,14 @@ func DecodeImage(data []byte) (image.Image, error) {
 // (red / blue) text as dark as black text, so out-of-norm coloured values
 // survive binarization. Pass threshold>0 to binarize at that grey level.
 func PrepareGray(src image.Image, r image.Rectangle, scale int, threshold uint8) *image.Gray {
+	return PrepareGrayMode(src, r, scale, threshold, false)
+}
+
+// PrepareGrayMode is PrepareGray with an optional luminance conversion. The
+// darkest channel makes saturated yellow look black; luminance keeps dark text
+// readable on yellow/white fills (and is what PrepareGray's red/blue-safe mode
+// gives up), so cells are read in both modes.
+func PrepareGrayMode(src image.Image, r image.Rectangle, scale int, threshold uint8, luma bool) *image.Gray {
 	r = r.Intersect(src.Bounds())
 	if r.Empty() || scale < 1 {
 		return image.NewGray(image.Rect(0, 0, 1, 1))
@@ -71,11 +79,15 @@ func PrepareGray(src image.Image, r image.Rectangle, scale int, threshold uint8)
 			ch[1] = (g00*(1-tx)+g10*tx)*(1-ty) + (g01*(1-tx)+g11*tx)*ty
 			ch[2] = (b00*(1-tx)+b10*tx)*(1-ty) + (b01*(1-tx)+b11*tx)*ty
 			g := ch[0]
-			if ch[1] < g {
-				g = ch[1]
-			}
-			if ch[2] < g {
-				g = ch[2]
+			if luma {
+				g = 0.299*ch[0] + 0.587*ch[1] + 0.114*ch[2]
+			} else {
+				if ch[1] < g {
+					g = ch[1]
+				}
+				if ch[2] < g {
+					g = ch[2]
+				}
 			}
 			v := uint8(g + 0.5)
 			if threshold > 0 {

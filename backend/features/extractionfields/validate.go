@@ -273,6 +273,10 @@ func ApplyHint(d *Diagnostic, h Hint) {
 	case h.Status == "not_applicable" && d.Status == "missing":
 		d.Status, d.Stage = "not_applicable", h.Stage
 		d.Screen = h.Screen
+	case h.Status == "unreadable" && d.Status == "missing":
+		// The label was found but the cell could not be trusted.
+		d.Status, d.Stage = "unreadable", h.Stage
+		d.Screen, d.Page, d.Strategy = h.Screen, h.Page, h.Strategy
 	case h.Status == "conflicting" && d.Status == "missing":
 		// Two readings (screens/strategies) disagreed: nothing was emitted.
 		d.Status, d.Stage = "conflicting", h.Stage

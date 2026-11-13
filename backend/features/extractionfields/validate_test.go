@@ -107,3 +107,11 @@ func TestApplyHint(t *testing.T) {
 		t.Fatalf("unexpected: %+v", bad)
 	}
 }
+
+func TestApplyHintUnreadableCell(t *testing.T) {
+	d := Diagnostic{Status: "missing", Stage: "mapping"}
+	ApplyHint(&d, Hint{Status: "unreadable", Stage: "recognition", Screen: "topometric"})
+	if d.Status != "unreadable" || d.Stage != "recognition" {
+		t.Fatalf("%+v", d)
+	}
+}

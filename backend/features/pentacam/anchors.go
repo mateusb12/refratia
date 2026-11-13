@@ -7,6 +7,7 @@ import (
 	"math"
 	"os"
 	"regexp"
+	"sort"
 	"strings"
 
 	"refratia/backend/features/extractionfields"
@@ -32,6 +33,13 @@ type anchorField struct {
 	ColumnOf string
 	// Bottom picks the bottom-most match instead of the topmost.
 	Bottom bool
+	// Rank picks the n-th match from the left on the topmost row (the Z31 label
+	// repeats for the 5 mm and 6 mm columns).
+	Rank int
+	// ValueBelow: the value is printed on the line under its label.
+	ValueBelow bool
+	// Wide: the value box is far from its label (a gap of ~12 label heights).
+	Wide bool
 }
 
 func lbl(pattern string) *regexp.Regexp { return regexp.MustCompile(`^(?:` + pattern + `)$`) }
@@ -50,7 +58,7 @@ var anchorFields = []anchorField{
 	{Key: "pupil_center_um", Spec: "pachy_pupil_center_um", Screens: []Screen{ScreenTopometric}, Label: lbl(`centro pupilar`)},
 	{Key: "vertex_normal_um", Spec: "pachy_vertex_um", Screens: []Screen{ScreenTopometric}, Label: lbl(`pachy vertex n`)},
 	{Key: "acd_external_mm", Spec: "acd_ext_mm", Screens: []Screen{ScreenTopometric}, Label: lbl(`prof c.mara ant ext`)},
-	{Key: "isv", Spec: "isv", Screens: []Screen{ScreenTopometric}, Label: lbl(`[i1l][s5][vy]`)},
+	{Key: "isv", Spec: "isv", Screens: []Screen{ScreenTopometric}, Label: lbl(`[i1l][s5][vy]?`)},
 	{Key: "iha", Spec: "iha", Screens: []Screen{ScreenTopometric}, Label: lbl(`iha`)},
 	{Key: "ihd", Spec: "ihd", Screens: []Screen{ScreenTopometric}, Label: lbl(`ihd`)},
 	{Key: "iva", Spec: "iva", Screens: []Screen{ScreenTopometric}, Label: lbl(`iva|[a-z0-9]{2,4}`), ColumnOf: "isv"},
@@ -62,7 +70,14 @@ var anchorFields = []anchorField{
 	{Key: "bad_d", Spec: "bad_d", Screens: []Screen{ScreenBelin}, Label: lbl(`d`), Bottom: true},
 	{Key: "art_max", Spec: "art_max_um", Screens: []Screen{ScreenBelin}, Label: lbl(`art\s?max`)},
 
+	// Anéis Corneanos screen: Z31 (Coma) for the 5 mm and 6 mm zones, the value
+	// printed on the line under each label.
+	{Key: "z31_5mm_um", Spec: "coma_z31_5mm_um", Screens: []Screen{ScreenRings}, Label: lbl(`(?:z31 )?coma\w?`), ValueBelow: true},
+	{Key: "z31_6mm_um", Spec: "coma_z31_6mm_um", Screens: []Screen{ScreenRings}, Label: lbl(`(?:z31 )?coma\w?`), ValueBelow: true, Rank: 1},
+
 	// Cataract Pre-OP screen.
+	{Key: "pns", Spec: "pns", Screens: []Screen{ScreenCataract}, Label: lbl(`pns`), Bottom: true, Wide: true},
+	{Key: "bad_d", Spec: "bad_d", Screens: []Screen{ScreenCataract}, Label: lbl(`bad d`)},
 	{Key: "z40_6mm_um", Spec: "z40_6mm_um", Screens: []Screen{ScreenCataract}, Label: lbl(`z40`)},
 	{Key: "acd_internal_mm", Spec: "acd_int_mm", Screens: []Screen{ScreenCataract}, Label: lbl(`prof c.mara ant int`)},
 }
@@ -74,9 +89,9 @@ var screenSpecFields = map[Screen][]string{
 	ScreenRefractive: {"k1_d", "k2_d", "km_d", "astig_ant_d", "axis_flat_deg"},
 	ScreenTopometric: {"kmax_ant_d", "pachy_thinnest_um", "pachy_pupil_center_um", "pachy_vertex_um",
 		"acd_ext_mm", "isv", "iva", "iha", "ihd", "ki", "cki", "tkc"},
-	ScreenCataract: {"z40_6mm_um", "acd_int_mm"},
+	ScreenCataract: {"z40_6mm_um", "acd_int_mm", "pns"},
 	ScreenBelin:    {"bad_d", "art_max_um"},
-	ScreenRings:    {"coma_z31_5mm_um"},
+	ScreenRings:    {"coma_z31_5mm_um", "coma_z31_6mm_um"},
 }
 
 // FieldHint is the extractor-side half of a C4 diagnostic.
@@ -94,6 +109,7 @@ func normLabelWord(s string) string {
 }
 
 type labelSpan struct {
+	wide               bool
 	text               string
 	left, right, top   int
 	bottom, cy, height int
@@ -222,18 +238,31 @@ func readAnchored(
 	type result struct {
 		reading anchoredValue
 		ok      bool
+		suspect bool
 	}
 	results, _ := parallelwork.Map(ctx, jobs, readerConcurrency, func(c context.Context, j job) (result, error) {
 		page := pageOf[j.screen]
 		img := pageImages[page]
-		value, votes, candidates, rect, ok := readValueBox(c, img, cache[j.screen].words, j.span, j.rule)
+		span := j.span
+		if j.field.ValueBelow {
+			// The value sits on the next line, starting under the label.
+			dy := span.height * 17 / 10
+			span.cy += dy
+			span.top += dy
+			span.bottom += dy
+			span.right = span.left - 3*span.height // value starts left of a partly read label
+		}
+		if j.field.Wide {
+			span.wide = true
+		}
+		value, votes, candidates, rect, ok := readValueBox(c, img, cache[j.screen].words, span, j.rule)
 		if !ok {
-			return result{}, nil
+			return result{suspect: votes == suspectCell}, nil
 		}
 		return result{anchoredValue{Value: value, Hint: FieldHint{
 			Spec: j.field.Spec, Status: "valid", Stage: "recognition", Screen: string(j.screen), Page: page,
 			Strategy: "label_anchor", BBox: to300dpi(rect, img.Bounds()), Votes: votes, Candidates: candidates,
-		}}, true}, nil
+		}}, true, false}, nil
 	})
 
 	// A field printed on several screens (the cornea box repeats on the
@@ -242,10 +271,15 @@ func readAnchored(
 	out := map[string]anchoredValue{}
 	var conflicts []FieldHint
 	readings := map[string][]anchoredValue{}
+	suspect := map[string]FieldHint{}
 	var order []string
 	for i, j := range jobs {
 		if _, ok := readings[j.field.Key]; !ok {
 			order = append(order, j.field.Key)
+		}
+		if results[i].suspect {
+			suspect[j.field.Key] = FieldHint{Spec: j.field.Spec, Status: "unreadable", Stage: "recognition",
+				Strategy: "label_anchor", Screen: string(j.screen), Page: pageOf[j.screen]}
 		}
 		readings[j.field.Key] = readings[j.field.Key]
 		if results[i].ok {
@@ -256,9 +290,23 @@ func readAnchored(
 		rs := readings[key]
 		switch {
 		case len(rs) == 0:
+			if hint, ok := suspect[key]; ok {
+				// Found but not trustworthy: keep the fixed-box fallback from
+				// filling it with the same shortened number.
+				conflicts = append(conflicts, hint)
+			}
 		case allEqual(rs):
 			out[key] = rs[0]
+		case dominant(rs) != nil:
+			// One screen's reading is far better supported than the other's
+			// (the 4-map screen has a different layout and misreads): keep it.
+			out[key] = *dominant(rs)
 		default:
+			if os.Getenv("REFRATIA_OCR_DEBUG") == "1" {
+				for _, r := range rs {
+					fmt.Fprintf(os.Stderr, "pentacam conflict %s screen=%s value=%v votes=%d candidates=%d\n", key, r.Hint.Screen, r.Value, r.Hint.Votes, r.Hint.Candidates)
+				}
+			}
 			conflicts = append(conflicts, FieldHint{
 				Spec: rs[0].Hint.Spec, Status: "conflicting", Stage: "recognition", Strategy: "label_anchor",
 				Screen: rs[0].Hint.Screen, Page: rs[0].Hint.Page, Candidates: len(rs),
@@ -283,9 +331,33 @@ func crossCheckAstigmatism(values map[string]any) []FieldHint {
 	return []FieldHint{{Spec: "astig_ant_d", Status: "conflicting", Stage: "recognition", Strategy: "cross_check", Candidates: 2}}
 }
 
+// suspectCell is returned as the vote count of a cell that was deliberately not
+// read because its OCR word shows a probable lost glyph.
+const suspectCell = -1
+
 // readerConcurrency bounds parallel tesseract processes (they are
 // single-threaded under OMP_THREAD_LIMIT=1).
 const readerConcurrency = 4
+
+// dominant returns the reading with at least 15 votes and at least three times
+// the votes of every other reading, else nil.
+func dominant(rs []anchoredValue) *anchoredValue {
+	best := 0
+	for i := range rs {
+		if rs[i].Hint.Votes > rs[best].Hint.Votes {
+			best = i
+		}
+	}
+	if rs[best].Hint.Votes < 15 {
+		return nil
+	}
+	for i := range rs {
+		if i != best && rs[i].Hint.Votes*3 > rs[best].Hint.Votes {
+			return nil
+		}
+	}
+	return &rs[best]
+}
 
 func allEqual(readings []anchoredValue) bool {
 	for _, r := range readings[1:] {
@@ -329,6 +401,20 @@ func pickLabel(spans []labelSpan, field anchorField, located map[string]labelSpa
 	if best == nil {
 		return labelSpan{}, false
 	}
+	if field.Rank > 0 {
+		// n-th match from the left among those on the same row as the best one.
+		var row []labelSpan
+		for _, s := range spans {
+			if field.Label.MatchString(s.text) && abs(s.cy-best.cy) <= best.height {
+				row = append(row, s)
+			}
+		}
+		sort.Slice(row, func(i, j int) bool { return row[i].left < row[j].left })
+		if field.Rank >= len(row) {
+			return labelSpan{}, false
+		}
+		return row[field.Rank], true
+	}
 	return *best, true
 }
 
@@ -343,7 +429,12 @@ func readValueBox(
 	rule extractionfields.Rule,
 ) (float64, int, int, image.Rectangle, bool) {
 	h := label.height
-	rect := image.Rect(label.right+h/4, label.cy-h, label.right+h/4+7*h/2, label.cy+h)
+	boxWidth := 7 * h / 2
+	searchReach := 8 * h
+	if label.wide {
+		boxWidth, searchReach = 14*h, 14*h
+	}
+	rect := image.Rect(label.right+h/4, label.cy-h, label.right+h/4+boxWidth, label.cy+h)
 
 	// The value cell is the first numeric word to the right of the label within
 	// the row band; a word with letters in between is the next label, so stop.
@@ -352,7 +443,7 @@ func readValueBox(
 	best := -1
 	for i, w := range words {
 		cy := w.Top + w.Height/2
-		if w.Left < label.right-h/4 || w.Left > label.right+8*h || abs(cy-label.cy) > h*3/4 ||
+		if w.Left < label.right-h/4 || w.Left > label.right+searchReach || abs(cy-label.cy) > h*3/4 ||
 			!strings.ContainsAny(w.Text, "0123456789") {
 			continue
 		}
@@ -361,11 +452,37 @@ func readValueBox(
 		}
 		best = i
 	}
+	if best < 0 {
+		// No word with a digit: a fully garbled cell ("[aan" for "44.4 D") still
+		// marks where the cell is. Take the nearest word on the row that is
+		// beyond the label and starts a cell, if any.
+		for i, w := range words {
+			cy := w.Top + w.Height/2
+			if w.Left < label.right+h/2 || w.Left > label.right+searchReach || abs(cy-label.cy) > h*3/4 || w.Width < h {
+				continue
+			}
+			if best < 0 || w.Left < words[best].Left {
+				best = i
+			}
+		}
+	}
 	if best >= 0 {
 		w := words[best]
 		// The OCR word still carries the cell border on its left and the unit
 		// on its right; both are cut off by character proportion.
+		// A leading digit stuck to the cell border is often misread as a letter
+		// ("|12" -> "fi2") or lost, and the crops then agree on the shortened
+		// number ("2"). For integer cells two or more non-digit glyphs before
+		// the first digit therefore mean the value cannot be trusted.
+		if rule.Kind == "int" && leadingNonDigits(w.Text) >= 2 && strings.ContainsAny(w.Text, "0123456789") {
+			return 0, suspectCell, 0, rect, false
+		}
 		extents := trimWordBox(w)
+		if _, parses := normalizePrinted(w.Text, rule); !parses {
+			// A garbled word ("[4a" for 44.1) says little about how wide the
+			// cell is: read the whole cell-sized window starting at the word.
+			extents = [2][2]int{{w.Left, w.Left + 3*h}, {w.Left, w.Left + 7*h/2}}
+		}
 		for _, e := range extents {
 			variants = append(variants, image.Rect(e[0]-h/6, min(w.Top, label.top)-h/4, e[1]+h/6, max(w.Top+w.Height, label.bottom)+h/4).Intersect(img.Bounds()))
 		}
@@ -387,40 +504,45 @@ func readValueBox(
 		if variant.Empty() {
 			continue
 		}
-		cell := frameWithMargin(darkOnLight(ocr.PrepareGray(img, variant, 1, 0)), 10)
-		cellPNG, err := ocr.EncodePNG(cell)
-		if err != nil {
-			continue
-		}
-		// Scale and threshold are varied on purpose: pixel-font digits such as
-		// 3/9 flip with the geometry, and a value is only accepted when the
-		// reads agree across those variations.
-		for _, scale := range []int{2, 3, 4} {
-			for _, threshold := range []uint8{0, 150} {
-				var encoded []byte
-				if threshold == 0 {
-					gray := ocr.PrepareGray(cell, cell.Bounds(), scale, 0)
-					ocr.AutoContrast(gray)
-					encoded, err = ocr.EncodePNG(gray)
-				} else {
-					encoded, err = pentacamBinaryUpscale(cellPNG, scale, threshold)
-				}
-				if err != nil {
-					continue
-				}
-				// Without the whitelist a unit glued to the cell ("D", "mm")
-				// stays letters and is dropped by normalizePrinted instead
-				// of becoming "0".
-				for _, mode := range []struct {
-					psm       int
-					whitelist string
-				}{{7, ""}, {7, "0123456789.,+-"}, {13, "0123456789.,+-"}} {
-					text, err := ocr.RunTesseractText(ctx, encoded, mode.psm, mode.whitelist)
+		for _, luma := range []bool{false, true} {
+			if luma && len(votes) > 0 {
+				break // luminance is only a fallback when darkest-channel reads gave nothing
+			}
+			cell := frameWithMargin(darkOnLight(ocr.PrepareGrayMode(img, variant, 1, 0, luma)), 10)
+			cellPNG, err := ocr.EncodePNG(cell)
+			if err != nil {
+				continue
+			}
+			// Scale and threshold are varied on purpose: pixel-font digits such as
+			// 3/9 flip with the geometry, and a value is only accepted when the
+			// reads agree across those variations.
+			for _, scale := range []int{2, 3, 4} {
+				for _, threshold := range []uint8{0, 150} {
+					var encoded []byte
+					if threshold == 0 {
+						gray := ocr.PrepareGray(cell, cell.Bounds(), scale, 0)
+						ocr.AutoContrast(gray)
+						encoded, err = ocr.EncodePNG(gray)
+					} else {
+						encoded, err = pentacamBinaryUpscale(cellPNG, scale, threshold)
+					}
 					if err != nil {
 						continue
 					}
-					if v, ok := normalizePrinted(text, rule); ok {
-						votes[v]++
+					// Without the whitelist a unit glued to the cell ("D", "mm")
+					// stays letters and is dropped by normalizePrinted instead
+					// of becoming "0".
+					for _, mode := range []struct {
+						psm       int
+						whitelist string
+					}{{7, ""}, {7, "0123456789.,+-"}, {13, "0123456789.,+-"}} {
+						text, err := ocr.RunTesseractText(ctx, encoded, mode.psm, mode.whitelist)
+						if err != nil {
+							continue
+						}
+						if v, ok := normalizePrinted(text, rule); ok {
+							votes[v]++
+						}
 					}
 				}
 			}
@@ -452,6 +574,17 @@ func readValueBox(
 	return bestValue, bestVotes, len(votes), rect, true
 }
 
+func leadingNonDigits(text string) int {
+	n := 0
+	for _, r := range text {
+		if r >= '0' && r <= '9' {
+			break
+		}
+		n++
+	}
+	return n
+}
+
 // trimWordBox returns two horizontal extents of the numeric core of an OCR
 // word (a tight and a loose one). Leading box-border glyphs ("[", "|", "}")
 // and trailing unit letters ("D", "mm", "°") are cut proportionally to their
@@ -471,9 +604,12 @@ func trimWordBox(w ocr.Word) [2][2]int {
 	}
 	char := float64(w.Width) / float64(len(text))
 	at := func(chars float64) int { return w.Left + int(chars*char) }
+	// The second extent is the whole OCR word: when the OCR merges the cell
+	// border with a leading digit ("|12" read as "[2") the character count
+	// misplaces the cut, and only the untrimmed word keeps the digit.
 	return [2][2]int{
 		{at(float64(start) * 0.9), at(float64(end) + 0.5)},
-		{at(float64(start) * 0.5), at(float64(end) + 0.1)},
+		{w.Left - w.Height/4, w.Left + w.Width + w.Height/8},
 	}
 }
 

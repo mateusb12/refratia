@@ -39,10 +39,11 @@ func TestPickLabel(t *testing.T) {
 func TestTrimWordBoxCutsBorderAndUnit(t *testing.T) {
 	word := w("[40.5D", 100, 0, 60, 30) // 6 chars, 10px each
 	ext := trimWordBox(word)
-	for _, e := range ext {
-		if e[0] < 105 || e[0] > 110 || e[1] < 150 || e[1] > 160 {
-			t.Fatalf("extent %v does not isolate the number", e)
-		}
+	if e := ext[0]; e[0] < 105 || e[0] > 110 || e[1] < 150 || e[1] > 160 {
+		t.Fatalf("tight extent %v does not isolate the number", e)
+	}
+	if e := ext[1]; e[0] > 100 || e[1] < 160 {
+		t.Fatalf("loose extent %v must keep the whole word", e)
 	}
 }
 
@@ -61,5 +62,28 @@ func TestCrossCheckAstigmatism(t *testing.T) {
 	bad := map[string]any{"k1_d": 43.5, "k2_d": 44.0, "astigmatism_d": 5.0}
 	if c := crossCheckAstigmatism(bad); len(c) != 1 || c[0].Status != "conflicting" || bad["astigmatism_d"] != nil {
 		t.Fatal("astigmatism read as 5 instead of 0.5 must be removed and conflict")
+	}
+}
+
+func TestDominantReading(t *testing.T) {
+	mk := func(v float64, votes int) anchoredValue {
+		return anchoredValue{Value: v, Hint: FieldHint{Votes: votes}}
+	}
+	if d := dominant([]anchoredValue{mk(45.3, 19), mk(53.1, 6)}); d == nil || d.Value != 45.3 {
+		t.Fatal("a reading with 3x the votes must win")
+	}
+	if dominant([]anchoredValue{mk(45.3, 19), mk(53.1, 10)}) != nil {
+		t.Fatal("close readings must stay conflicting")
+	}
+	if dominant([]anchoredValue{mk(45.3, 8), mk(53.1, 1)}) != nil {
+		t.Fatal("weak evidence must stay conflicting")
+	}
+}
+
+func TestLeadingNonDigits(t *testing.T) {
+	for text, want := range map[string]int{"[12": 1, "fi2": 2, "}[45.5D": 2, "534": 0, "[aan": 4} {
+		if got := leadingNonDigits(text); got != want {
+			t.Errorf("leadingNonDigits(%q)=%d want %d", text, got, want)
+		}
 	}
 }

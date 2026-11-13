@@ -196,14 +196,14 @@ func TestExtractPDFCresoAversaRecoversCriticalFieldsForBothEyes(t *testing.T) {
 
 		if testCase.filename == "../../../frontend/data/creso-aversa/PENTACAM CRESO AVERSA OD .pdf" {
 			topometric := exam["topometric_indices_8mm"].(map[string]any)
-			if got := topometric["tkc"]; got != "—" {
+			if got := topometric["tkc"]; got != nil {
 				t.Errorf("%s: expected topometric_indices_8mm.tkc=—, got %#v", testCase.filename, got)
 			}
 		}
 
 		if testCase.filename == "../../../frontend/data/creso-aversa/PENTACAM CRESO AVERSA OS .pdf" {
 			topometric := exam["topometric_indices_8mm"].(map[string]any)
-			if got := topometric["tkc"]; got != "—" {
+			if got := topometric["tkc"]; got != nil {
 				t.Errorf("%s: expected topometric_indices_8mm.tkc=—, got %#v", testCase.filename, got)
 			}
 		}
