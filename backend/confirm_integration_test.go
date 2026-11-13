@@ -18,6 +18,7 @@ import (
 
 	"refratia/backend/database"
 	intakefeature "refratia/backend/features/intake"
+	"refratia/backend/reconcile"
 )
 
 // Integration tests against testinfra (Postgres refratia_test + Garage
@@ -377,6 +378,11 @@ func TestConfirmSurvivesSQLFailureAfterGarageWrites(t *testing.T) {
 		t.Fatalf("expected %d orphan objects, got %d", len(testDocs)+1, garbage)
 	}
 
+	// (4a) reconcile lists the failed attempt's case as garbage.
+	if !reconcileLists(t, ctx, client, bucket, "garage-case-without-sql", caseID) {
+		t.Fatal("reconcile must list the failed attempt's case as garage-case-without-sql")
+	}
+
 	// (4) retry converges; (5) the same keys are reused, no duplicates.
 	status, out = confirm(t, id)
 	if status != 200 {
@@ -396,4 +402,21 @@ func TestConfirmSurvivesSQLFailureAfterGarageWrites(t *testing.T) {
 	if n := countKeys(t, ctx, client, bucket, refratiaDraftsPrefix+id+"/"); n != 0 {
 		t.Fatalf("draft must be consumed after success, found %d", n)
 	}
+	if reconcileLists(t, ctx, client, bucket, "garage-case-without-sql", caseID) {
+		t.Fatal("after the retry reconcile must no longer list the case")
+	}
+}
+
+func reconcileLists(t *testing.T, ctx context.Context, client fileRepository, bucket, kind, caseID string) bool {
+	t.Helper()
+	findings, err := reconcile.Run(ctx, appDatabase.Gorm, client, bucket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range findings {
+		if f.Kind == kind && f.Detail == caseID {
+			return true
+		}
+	}
+	return false
 }
