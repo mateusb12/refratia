@@ -1,0 +1,151 @@
+# Persistence investigation: intake → Postgres + Garage
+
+Date: 2026-11-12. Scope: phase 1 (investigation and reproduction only, no application code changed).
+Environment: isolated infra from `backend/testinfra` (Postgres `127.0.0.1:55432/refratia_test`, Garage `127.0.0.1:53900/refratia-test`), `REFRATIA_NO_DOTENV=1`, `OPENAI_API_KEY` empty (local OCR only). Backend built from the working tree at `9eb5152` (plus the uncommitted `REFRATIA_NO_DOTENV` guard) and run on `:3100`.
+Patients are referred to by corpus folder slug only.
+
+## 1. Architecture map
+
+```
+Frontend (useIntakeWorkflow.ts)
+  1. sha256 each file in the browser → POST /api/file-checkpoints/check {files:[{filename,sha256}]}
+  2. user classifies each file (examType + eye), mandatory in UI only
+  3. POST /api/intakes/analyze?stream=1[&force=1]   multipart:
+        files=<each file>, classifications=[{sha256,examType,eye}], processFiles=[sha256...]
+     → NDJSON progress events, final event = {intakeId, files, analysis, patientMatch, changePreview}
+  4. user reviews → POST /api/intakes/confirm {intakeId}      (or DELETE /api/intakes/{intakeId})
+  5. later, SavedExamsPage: POST /api/exams/upload-url → browser PUT (presigned) → POST /api/exams/confirm
+```
+
+### analyze (`intake_handlers.go:75`)
+| Step | Store | Key / table |
+|---|---|---|
+| cleanupExpiredDrafts (first 1000 keys, >24h by LastModified) | Garage delete | `refratia/drafts/**` |
+| per-file checkpoint of the raw upload (before OCR) | Garage put | `refratia/file-checkpoints/v1/{sha256}/source` |
+| per-file extraction result, only when the result is "complete" | Garage put | `refratia/file-checkpoints/v1/{sha256}/result.json` |
+| identity lookup: **lists every case and GETs every `paciente_compilado.json`** (O(cases)) | Garage read | `refratia/cases/*/paciente_compilado.json` |
+| draft documents. Name = `CanonicalExamFilename(name, exam, eye, ext)` with a second-resolution timestamp, or `{rand8}-{original}` when unclassified | Garage put | `refratia/drafts/{intakeId}/{name}` |
+| draft manifest `{createdAt, files[], analysis}` | Garage put | `refratia/drafts/{intakeId}/intake.json` |
+
+No SQL is written by analyze.
+
+### confirm (`intake_handlers.go:485`)
+Order of operations, all on Garage except step 7:
+1. GET receipt `refratia/intake-confirmations/{intakeId}.json` → if present return it (idempotency).
+2. GET draft `intake.json`, check age < 24h, `validateStoredAnalysis` (only checks that file list ↔ `source_files` sha/filename match).
+3. `findExistingPatientCase` (full scan again) → target `caseId` = existing case or `case-{intakeId suffix}`.
+4. CopyObject each draft file → `refratia/cases/{caseId}/{basename}`.
+5. Merge with the existing compiled JSON when found, then PUT `refratia/cases/{caseId}/paciente_compilado.json` (the "case complete" marker that `/api/cases` lists).
+6. Delete copied keys that are no longer referenced (exact re-upload dedup).
+7. **SQL**: `upsertPatientFromAnalysis` → `patients` (lookup by `identity_key`, then UPDATE or INSERT; no transaction).
+8. PUT receipt, then delete the draft objects.
+
+### manual exam upload (`exams_storage.go:438`, `exam_database.go:20`)
+`upload-url` presigns `refratia/cases/{caseId}/{unixnano}-{rand8}-{filename}` → browser PUT → `exams/confirm`: HEAD the object, look up `exams.object_key`, upsert the patient from the case manifest, INSERT `exams`. On SQL failure it deletes the object (compensation).
+
+### SQL schema (GORM AutoMigrate, `database/exam.go`)
+- `patients(id, identity_key UNIQUE NOT NULL, full_name, birth_date TEXT, created_at, updated_at)`. `identity_key = lower(unaccent(full_name)) + "|" + YYYY-MM-DD`.
+- `exams(id, patient_id NULL, case_id, patient_name, filename, exam_type, eye, content_type, bucket, object_key UNIQUE, size, referenced, ...)`.
+- Written by: `patient_database.go` (patients), `exam_database.go` (exams insert/delete). **Read by nothing user-facing.** `/api/cases` and `/api/exams` list from Garage.
+- No `cases` table and no `case_id` on `patients`. The patient↔case link exists only inside Garage JSON.
+
+### delete paths
+- `DELETE /api/cases/{id}` (`cases.go:132`): deletes case objects (marker last) and matching receipts. **No SQL.**
+- `DELETE /api/exams` (`exams_storage.go:620`): rewrites the manifest, deletes the object, then deletes the `exams` row.
+- `DELETE /api/intakes/{id}`: deletes the draft objects.
+
+## 2. Reproduction log
+
+Driver: `/api/intakes/inspect` to get the auto-classification (stands in for the UI step), then `analyze` (non-stream) with `classifications` built from it, then `confirm` twice. Each analyze took ~2–3 min under shared CPU load.
+
+| Slug | analyze | patientMatch | confirm #1 | confirm #2 | patients row | exams rows |
+|---|---|---|---|---|---|---|
+| daniela-nogueira | 200 | new | 200 created | 200 (receipt) | `daniela jnogueira rocha\|2001-01-28` (OCR typo in name) | 0 |
+| creso-aversa | 200 | new | 200 created | 200 (receipt) | `aversa martinelli creso\|1979-12-14` | 0 |
+| francisco | 200 | new | 200 created | 200 (receipt) | `joao francisco de aguiar\|1969-08-05` (see D5) | 0 |
+| maria-gorete | 200 | new | 200 created | 200 (receipt) | `maria gorete de carvalho\|1962-03-21` | 0 |
+| rolmey | 200 | **unresolved** | **422** | **422** | none | 0 |
+
+rolmey 422 body: `{"error":"não foi possível salvar o paciente: nome ou data de nascimento estão incompletos ou conflitantes"}`. Even so, Garage then held `refratia/cases/case-20261112T225657Z-59a694a7/` with 6 documents and `paciente_compilado.json`, plus the full draft. The case shows up in `GET /api/cases`.
+
+Example object layout after a successful confirm (daniela-nogueira):
+```
+refratia/cases/case-…-670878e9/668bc237-526c239f-TOPO.pdf          (unclassified → random prefix)
+refratia/cases/case-…-670878e9/EXAME__AO__DANIELA_JNOGUEIRA_ROCHA__20261112_224428.jpeg   (refractometry has no label → "EXAME")
+refratia/cases/case-…-670878e9/MICROSCOPIA_ESPECULAR__AO__…jpg
+refratia/cases/case-…-670878e9/PENTACAM__OD__… / PENTACAM__OS__…
+refratia/cases/case-…-670878e9/paciente_compilado.json
+refratia/intake-confirmations/intake-…-670878e9.json
+refratia/file-checkpoints/v1/{sha}/source   (one per uploaded file; no result.json for these files)
+```
+
+### Fault-injection runs
+Synthetic drafts were built from a stored analyze response by `scratchpad/persist/craft.sh`, with no OCR involved. It writes the same `intake.json` and draft objects that analyze writes, with a jq tweak to `analysis`.
+
+| # | Scenario | Result |
+|---|---|---|
+| F1 | `patient.full_name=""`, confirm ×2 | 422 ×2. Case `case-…-b1d97fe1` (5 docs + marker) written anyway and listed by `/api/cases` with `patientName:""`. Draft kept, so each retry re-copies everything. |
+| F2 | Two different intakes, same new patient, confirmed concurrently | Both 200 `created` → **two cases for one patient** (`…413c0f1c`, `…ea48e823`). One `patients` row (the unique index held, by luck of timing). |
+| F3 | Same intake confirmed 3× concurrently | 3× 200, same caseId. Converges because keys are deterministic, but all three did the full copy, merge and write. |
+| F4 | Two intakes for an existing patient confirmed concurrently, adding top-level marker `persist_x` vs `persist_y` | Both 200 `updated` to the same case. Final `paciente_compilado.json` has `persist_y=1` and **`persist_x=null`, a lost update**. |
+| F5 | Analyze RETINA-OD + CORNEA-OD (both classified `fundus_retinography/OD`) in one batch | Draft has **1 object** for 2 files: both map to `RETINA__OD__…__20261112_225025.jpeg`. Size 211470 = the cornea image, so the retina bytes were overwritten. The manifest lists 2 files pointing to one key. Confirm then gave 422 (images carry no birth date) but still wrote the case (F1 again). |
+| F6 | DELETE both F2 cases | 200. `patients` row `persist race alpha` remains with no case anywhere. |
+| F7 | Manual exam on francisco case, `exams/confirm` ×2 | Object + `exams` row id=1 (`exam_type=''`, `eye=''`, `referenced=false`). Second call is idempotent (same row). |
+| F8 | Manual exam on F1 case (no identity) | PUT 200, confirm **500** "não foi possível salvar o paciente; arquivo revertido" and the object is deleted. Retry gives 404. It returns 500 rather than 422, and a case without identity can never receive exams. |
+
+Final SQL state: 6 patients (4 real + 2 synthetic), **1 exam row in total** (from F7). All intake-confirmed documents have no `exams` row.
+
+## 3. Defects
+
+Severity: **Critical** = loses or corrupts clinical data or misattributes a patient. **High** = inconsistent stores or unusable data. **Medium** = correctness under retry or concurrency. **Low** = hygiene.
+
+| ID | Sev | Defect | Evidence |
+|---|---|---|---|
+| D1 | High | **Intake confirm writes zero `exams` rows.** Only the manual upload path writes them. SQL cannot answer "which exams does patient X have". | Table §2: 0 rows for all 4 confirmed patients |
+| D2 | High | **Garage case + marker are written before identity is validated.** A 422 leaves a case listed as complete, with an empty or wrong patient, and the draft stays. "Invalid data persisted as complete." | rolmey, F1, F5 |
+| D3 | Critical | **Draft key collision**: `CanonicalExamFilename` uses patient+exam+eye+second-resolution time, so two files with the same exam+eye in one batch overwrite each other. The manifest references two files with one object. | F5 (size proves overwrite) |
+| D4 | Critical | **Name-only exact identity**: an OCR typo or name order change creates a new patient and a new case (`daniela jnogueira rocha`, `aversa martinelli creso` vs Pentacam's `CRESO AVERSA MARTINELLI`). Name conflicts between documents in the same batch are never checked. The daniela OS Pentacam `nome_lido` was garbage and was accepted. | §2 rows, `verificacao_identidade` dumps |
+| D5 | Critical | **Birth date is guessed across documents.** `CanonicalBirthDate` takes one global DMY/MDY hint from any Pentacam timestamp and applies it to every document, including DMY-format EyeSuite/Biometria. francisco: EyeSuite `08/05/1969` (DMY = 8 May) and Pentacam `08/05/1969` (MDY = 5 Aug) were both read as MDY, so `1969-08-05` was persisted silently. rolmey: the same rule turned EyeSuite `12/05/1967` into Dec 5, which conflicts with Pentacam May 12, so the result is 422. The date order must be resolved per document. | francisco/rolmey identity entries |
+| D6 | Medium | **Duplicate cases for one patient** under concurrent confirms: find-then-create on Garage has no lock. Legacy duplicates are then resolved by "lexicographically last case". | F2 |
+| D7 | Medium | **Lost update** on `paciente_compilado.json` (read-merge-write without If-Match or a lock). | F4 |
+| D8 | Medium | Patient upsert is lookup-then-insert without a transaction or `ON CONFLICT`. Concurrent first-time confirms can hit a unique violation, and the result is a 500 after Garage was written. Patient and exam inserts in `exams/confirm` are not in one transaction. | code `patient_database.go:42-61`, `exam_database.go:88-121` |
+| D9 | Medium | Case delete does not touch SQL, which leaves orphan `patients` and `exams` rows. | F6 |
+| D10 | Medium | Swallowed errors: `cleanupObjects` ignores delete errors, `findExistingPatientCase` skips unreadable cases (it can miss the real match and create a duplicate), and `examMetadataFromManifest` drops manifest errors (nil analysis gives the misleading "patient" 500). | code |
+| D11 | Medium | Backend does not enforce classification. Unclassified files are persisted with a random name (`668bc237-526c239f-TOPO.pdf`), and manual exams are stored with `exam_type=''`. The UI is the only gate. | §2 layout, F7 |
+| D12 | Low | Superseded documents (same exam+eye replaced on merge) stay in the case folder unreferenced. Only this request's own copies are cleaned. | code `intake_handlers.go:628-638` |
+| D13 | Low | `refractometry` missing from `CanonicalExamFilename` labels, so files are named `EXAME__…`. | §2 layout |
+| D14 | Low | GORM default logger prints `identity_key` (name + DOB) to stdout on every lookup miss: PII in logs. | `backend.log` |
+| D15 | Low | Identity lookup lists every case and GETs every manifest on each analyze and confirm: O(cases) Garage reads. The `patients` table exists but is not used for this lookup. | code |
+
+What already works: confirm retry after success is idempotent via the receipt (F3, double-confirm in §2). Analyze-time draft failures clean up their own keys. `exams/confirm` is idempotent on `object_key`. The 422 identity guard does refuse to create a SQL patient without name+DOB.
+
+## 4. Proposed fix (smallest correct change)
+
+Principle: Garage first, SQL last as the single commit point. Every Garage key is deterministic per `intakeId`, so retries overwrite instead of duplicating. SQL commits in one transaction. Whatever is in Garage but not committed in SQL counts as garbage and is collected later.
+
+1. **Validate before writing** (D2, D5): in `confirmIntakeHandler`, call `patientfeature.Identity(draft.Analysis)` right after `validateStoredAnalysis` and return 422 before any CopyObject. Same in `confirmSavedExam`: identity failure → 422, not 500. Files: `intake_handlers.go`, `exam_database.go`.
+2. **Per-document date order** (D5): in `CanonicalBirthDate`, derive the DMY/MDY hint from each entry's own `timestamp_lido` and only canonicalize that entry's `nascimento_lido` with it. An ambiguous entry without its own hint is skipped if another entry resolves the date, and only conflicts fail. Add the francisco and rolmey cases to `patient_test.go`. File: `features/patient/identity.go`. (This overlaps OCR/identity, so coordinate with the OCR investigator.)
+3. **Unique draft keys** (D3, D13): append the 8-char sha256 prefix to the canonical name (`…__{ts}__{sha8}.{ext}`) and add `refractometry: "AUTO"` to the labels. File: `features/intake/classification.go`.
+4. **One SQL transaction at the end of confirm** (D1, D8): `appDatabase.Gorm.Transaction(func(tx) { upsert patient with ON CONFLICT(identity_key) DO UPDATE; for each referenced source file: INSERT exams … ON CONFLICT(object_key) DO UPDATE })`. Do this after `paciente_compilado.json` is written and before the receipt. A retry re-runs it idempotently. Reuse the `upsertPatientFromAnalysis` body with a `tx` parameter. Files: `patient_database.go`, `exam_database.go` (extract a `upsertExamRows(tx, caseID, patientID, sourceFiles)`), `intake_handlers.go`.
+5. **Patient match from SQL instead of scanning Garage** (D6, D15): add `case_id` to `patients` (one case per patient, as today). In confirm, `SELECT … FOR UPDATE` on `identity_key` inside the transaction from step 4. If the row exists, merge into its `case_id`; if not, insert it with the new case id. Concurrent first confirms then serialize on the unique index: the loser retries and becomes "updated". Keep the Garage scan only as a fallback for legacy cases without a row. Files: `database/exam.go`, `patient_upsert.go`, `intake_handlers.go`.
+6. **Lost update on the compiled JSON** (D7): hold the patient row lock (step 5) while doing read-merge-write of `paciente_compilado.json`. Postgres becomes the mutex, so no Garage conditional writes are needed. ponytail: a row lock held across Garage I/O is fine at clinic scale; switch to If-Match when Garage supports it, if contention ever shows.
+7. **Case delete removes SQL rows** (D9): after the objects are deleted, run `DELETE FROM exams WHERE case_id=?`, and delete the patient if it has no remaining case. File: `cases.go`.
+8. **Log hygiene** (D14): `logger.Default.LogMode(logger.Silent)` (or Warn without params) in `database/database.go`.
+9. **Reconciliation** (D2 legacy, D12): skip a background job for now. A one-off `cmd/` script that lists cases without a `patients.case_id` row, and case objects not referenced by the manifest, covers the existing debris. Add a scheduled job only if new orphans keep appearing after steps 1–6.
+
+Not proposed: an outbox or saga table, a distributed lock service, content-addressed storage for all case files. Steps 1–6 close every reproduced defect, and each extra mechanism can wait until a defect actually needs it.
+
+Rough diff: about 150 lines of Go across `intake_handlers.go`, `patient_database.go`, `exam_database.go`, `database/exam.go`, `features/patient/identity.go`, `features/intake/classification.go`, `cases.go`, plus tests in `features/patient/patient_test.go` and one confirm-path integration test against `testinfra`.
+
+## Artifacts
+Scratch scripts and raw responses are in `/tmp/claude-1000/-home-mateus-Desktop-Javascript-refratia/1fd31442-3487-4858-b33c-f8d40209f14c/scratchpad/persist/`: `run.sh`, `craft.sh`, `s3.sh`, `tamper.sh`, `*.analyze.json`, `batch1.log`, `backend.log`. The test bucket and DB still hold the state described above.
+
+## Remaining work
+- All 5 patients ran (daniela-nogueira, creso-aversa, francisco, maria-gorete, rolmey). Nothing from the corpus is left unrun.
+- Not run: a real (OCR) re-analyze of an already-confirmed patient. Merge/"updated" behaviour was exercised only with synthetic drafts (F4). Superseded-file orphans (D12) were found by code inspection, not reproduced.
+- Not run: a mid-confirm SQL outage (Postgres down after the Garage writes). The outcome is inferred from code: same as F1 (Garage case written, 500 returned, draft kept).
+- D5 (birth-date order) was derived from the `verificacao_identidade` dumps plus code reading. It still needs a unit test with the francisco and rolmey entries in `features/patient/patient_test.go`.
+- Phase 2 (implementing §4) has not started.
+
+## Processes
+- None left running. The backend I started (PID 43640, `PORT=3100 ./refratia` in scratchpad/persist, log `scratchpad/persist/backend.log`) was stopped after the runs finished, along with my monitors. Docker containers `refratia-test-pg` and `refratia-test-garage` were started by the lead and were not touched.

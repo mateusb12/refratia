@@ -1,0 +1,2762 @@
+{
+  "schema_version": "refratia-groundtruth/1",
+  "folder": "rolmey",
+  "method": "Independent visual reading of each source document (PDF rendered 200-500 dpi; JPEG at native resolution, zoomed crops). Not derived from app OCR output.",
+  "generated_on": "2026-11-12",
+  "patient": {
+    "full_name": {
+      "value": "Rolmey Arantes Silva",
+      "raw": "ARANTES SILVA, ROLMEY",
+      "status": "valid",
+      "verification": "agent_visual",
+      "evidence": {
+        "screen": "Pentacam OD/OS",
+        "region": "Sobrenome + Nome"
+      },
+      "note": "Protocol 0.B: display name always from Pentacam"
+    },
+    "birth_date": {
+      "value": "1967-05-12",
+      "raw": "05/12/1967 (Pentacam, MDY) = 12/05/1967 (EyeSuite, DMY)",
+      "status": "valid",
+      "verification": "agent_visual",
+      "evidence": {
+        "screen": "Pentacam + EyeSuite",
+        "region": "Nasc."
+      }
+    },
+    "sex": {
+      "value": null,
+      "raw": null,
+      "status": "missing",
+      "verification": "agent_visual",
+      "evidence": {
+        "screen": "all documents"
+      },
+      "note": "not printed on any document in this folder"
+    },
+    "reference_exam_date": {
+      "value": "2026-07-30",
+      "raw": "07/30/2026",
+      "status": "valid",
+      "verification": "agent_visual",
+      "evidence": {
+        "page": 6,
+        "screen": "Pentacam",
+        "region": "Data de Exame"
+      },
+      "note": "Pentacam = reference exam for 4-month window (protocol 0.C)"
+    }
+  },
+  "identity_checks": [
+    {
+      "file": "EYESUITE__AO__ROLMEY_ARANTES_SILVA__20260730_1203.pdf",
+      "result": "confirmed",
+      "method": "data_nascimento",
+      "detail": "EyeSuite 12/05/1967 (DMY) and Pentacam 05/12/1967 (MDY) are the same date once each device format is applied. A naive string compare would look like a day/month inversion (protocol: data_nascimento_invertida, non-blocking)."
+    },
+    {
+      "file": "MICROSCOPIA_ESPECULAR__AO__ROLMEY_ARANTES_SILVA__20260730_115727.jpeg",
+      "result": "revisar",
+      "method": "nome_parcial",
+      "blocking_if_decisive": true,
+      "classification_note": "Surname abbreviated/omitted in NIDEK ID field, nothing conflicting -> protocol 0.B item 38 nome_parcial. Endothelial count is decisive in Fluxo A Etapa 6 / Fluxo C, so consolidation blocks if that value is used.",
+      "detail": "ID \"ROLMEY ARANTES S\" (surname truncated); Name field \"HCV,\" is not a person name. Same day, 11:57 between Pentacam 11:53 and retina 12:08."
+    },
+    {
+      "file": "RETINA__OD/OS",
+      "result": "confirmed_moderate",
+      "method": "nome_tolerante + timestamp",
+      "detail": "ID \"ROLMEY ARANTES SILVA\" exact; same day."
+    }
+  ],
+  "expected_exam_records": {
+    "count": 8,
+    "count_in_protocol": 8,
+    "records": [
+      {
+        "exam_type": "iol_calculation",
+        "app_exam_key": "iol_calculation",
+        "in_protocol": true,
+        "eye": "OD",
+        "source_file": "EYESUITE__AO__ROLMEY_ARANTES_SILVA__20260730_1203.pdf"
+      },
+      {
+        "exam_type": "iol_calculation",
+        "app_exam_key": "iol_calculation",
+        "in_protocol": true,
+        "eye": "OS",
+        "source_file": "EYESUITE__AO__ROLMEY_ARANTES_SILVA__20260730_1203.pdf"
+      },
+      {
+        "exam_type": "specular_microscopy",
+        "app_exam_key": "specular_microscopy",
+        "in_protocol": true,
+        "eye": "OD",
+        "source_file": "MICROSCOPIA_ESPECULAR__AO__ROLMEY_ARANTES_SILVA__20260730_115727.jpeg"
+      },
+      {
+        "exam_type": "specular_microscopy",
+        "app_exam_key": "specular_microscopy",
+        "in_protocol": true,
+        "eye": "OS",
+        "source_file": "MICROSCOPIA_ESPECULAR__AO__ROLMEY_ARANTES_SILVA__20260730_115727.jpeg"
+      },
+      {
+        "exam_type": "pentacam_corneal_tomography",
+        "app_exam_key": "pentacam_corneal_tomography",
+        "in_protocol": true,
+        "eye": "OD",
+        "source_file": "PENTACAM__OD__ROLMEY_ARANTES_SILVA__20260730_115226.pdf"
+      },
+      {
+        "exam_type": "pentacam_corneal_tomography",
+        "app_exam_key": "pentacam_corneal_tomography",
+        "in_protocol": true,
+        "eye": "OS",
+        "source_file": "PENTACAM__OS__ROLMEY_ARANTES_SILVA__20260730_115345.pdf"
+      },
+      {
+        "exam_type": "fundus_retinography",
+        "app_exam_key": "fundus_retinography",
+        "in_protocol": true,
+        "eye": "OD",
+        "source_file": "RETINA__OD__ROLMEY_ARANTES_SILVA__20260730_120822.jpeg"
+      },
+      {
+        "exam_type": "fundus_retinography",
+        "app_exam_key": "fundus_retinography",
+        "in_protocol": true,
+        "eye": "OS",
+        "source_file": "RETINA__OS__ROLMEY_ARANTES_SILVA__20260730_121009.jpeg"
+      }
+    ]
+  },
+  "files": [
+    {
+      "file": "EYESUITE__AO__ROLMEY_ARANTES_SILVA__20260730_1203.pdf",
+      "exam_type": "iol_calculation",
+      "device": "Haag-Streit EyeSuite IOL V4.12.0 / LS900",
+      "eye": "AO",
+      "pages": 4,
+      "identity": {
+        "name_printed": {
+          "value": "ROLMEY, ARANTES SILVA",
+          "raw": "ROLMEY, ARANTES SILVA",
+          "status": "valid",
+          "verification": "agent_visual",
+          "evidence": {
+            "page": 1,
+            "screen": "EyeSuite IOL (Haag-Streit LS900)",
+            "region": "header line"
+          },
+          "note": "format FIRST, SURNAME"
+        },
+        "birth_date": {
+          "value": "1967-05-12",
+          "raw": "12/05/1967",
+          "status": "valid",
+          "verification": "agent_visual",
+          "evidence": {
+            "page": 1,
+            "screen": "EyeSuite IOL (Haag-Streit LS900)",
+            "region": "header line"
+          },
+          "note": "EyeSuite prints DD/MM/YYYY"
+        },
+        "exam_date": {
+          "value": "2026-07-30",
+          "raw": "30/07/26 - 12:03",
+          "status": "valid",
+          "verification": "agent_visual",
+          "evidence": {
+            "page": 1,
+            "screen": "EyeSuite IOL (Haag-Streit LS900)",
+            "region": "header right"
+          },
+          "note": "calculation timestamp; LS900 measurement dated 30/07/2026"
+        },
+        "calculation_id": {
+          "value": "1917",
+          "raw": "1917",
+          "status": "valid",
+          "verification": "agent_visual",
+          "evidence": {
+            "page": 1,
+            "screen": "EyeSuite IOL (Haag-Streit LS900)",
+            "region": "header right"
+          }
+        }
+      },
+      "fields": {
+        "OD": {
+          "lens_status": {
+            "value": "Phakic",
+            "raw": "Phakic",
+            "unit": "",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 1,
+              "screen": "EyeSuite IOL (Haag-Streit LS900)",
+              "region": "OD column, biometry block; identical on pages 2-4"
+            },
+            "protocol_role": "informative"
+          },
+          "measurement_date": {
+            "value": "2026-07-30",
+            "raw": "30/07/2026",
+            "unit": "",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 1,
+              "screen": "EyeSuite IOL (Haag-Streit LS900)",
+              "region": "OD column, biometry block; identical on pages 2-4"
+            },
+            "protocol_role": "identity"
+          },
+          "al_mm": {
+            "value": 24.6,
+            "raw": "24,60",
+            "unit": "mm",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 1,
+              "screen": "EyeSuite IOL (Haag-Streit LS900)",
+              "region": "OD column, biometry block; identical on pages 2-4"
+            },
+            "protocol_role": "informative",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 2
+            }
+          },
+          "cct_um": {
+            "value": 529,
+            "raw": "529",
+            "unit": "um",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 1,
+              "screen": "EyeSuite IOL (Haag-Streit LS900)",
+              "region": "OD column, biometry block; identical on pages 2-4"
+            },
+            "protocol_role": "cross_check",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 0
+            }
+          },
+          "ad_mm": {
+            "value": 3.31,
+            "raw": "3,31",
+            "unit": "mm",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 1,
+              "screen": "EyeSuite IOL (Haag-Streit LS900)",
+              "region": "OD column, biometry block; identical on pages 2-4"
+            },
+            "protocol_role": "cross_check",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 2
+            }
+          },
+          "acd_mm": {
+            "value": 3.84,
+            "raw": "3,84",
+            "unit": "mm",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 1,
+              "screen": "EyeSuite IOL (Haag-Streit LS900)",
+              "region": "OD column, biometry block; identical on pages 2-4"
+            },
+            "protocol_role": "cross_check",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 2
+            }
+          },
+          "lt_mm": {
+            "value": 4.52,
+            "raw": "4,52",
+            "unit": "mm",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 1,
+              "screen": "EyeSuite IOL (Haag-Streit LS900)",
+              "region": "OD column, biometry block; identical on pages 2-4"
+            },
+            "protocol_role": "informative",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 2
+            }
+          },
+          "k1_d": {
+            "value": 43.68,
+            "raw": "43,68",
+            "unit": "D",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 1,
+              "screen": "EyeSuite IOL (Haag-Streit LS900)",
+              "region": "OD column, biometry block; identical on pages 2-4"
+            },
+            "protocol_role": "cross_check",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 2
+            }
+          },
+          "k1_radius_mm": {
+            "value": 7.73,
+            "raw": "7,73",
+            "unit": "mm",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 1,
+              "screen": "EyeSuite IOL (Haag-Streit LS900)",
+              "region": "OD column, biometry block; identical on pages 2-4"
+            },
+            "protocol_role": "extra",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 2
+            }
+          },
+          "k1_axis_deg": {
+            "value": 54,
+            "raw": "54",
+            "unit": "deg",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 1,
+              "screen": "EyeSuite IOL (Haag-Streit LS900)",
+              "region": "OD column, biometry block; identical on pages 2-4"
+            },
+            "protocol_role": "extra",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 0
+            }
+          },
+          "k2_d": {
+            "value": 43.95,
+            "raw": "43,95",
+            "unit": "D",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 1,
+              "screen": "EyeSuite IOL (Haag-Streit LS900)",
+              "region": "OD column, biometry block; identical on pages 2-4"
+            },
+            "protocol_role": "cross_check",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 2
+            }
+          },
+          "k2_radius_mm": {
+            "value": 7.68,
+            "raw": "7,68",
+            "unit": "mm",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 1,
+              "screen": "EyeSuite IOL (Haag-Streit LS900)",
+              "region": "OD column, biometry block; identical on pages 2-4"
+            },
+            "protocol_role": "extra",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 2
+            }
+          },
+          "k2_axis_deg": {
+            "value": 144,
+            "raw": "144",
+            "unit": "deg",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 1,
+              "screen": "EyeSuite IOL (Haag-Streit LS900)",
+              "region": "OD column, biometry block; identical on pages 2-4"
+            },
+            "protocol_role": "extra",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 0
+            }
+          },
+          "k_mean_d": {
+            "value": 43.82,
+            "raw": "43,82",
+            "unit": "D",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 1,
+              "screen": "EyeSuite IOL (Haag-Streit LS900)",
+              "region": "OD column, biometry block; identical on pages 2-4"
+            },
+            "protocol_role": "cross_check",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 2
+            }
+          },
+          "k_mean_radius_mm": {
+            "value": 7.7,
+            "raw": "7,70",
+            "unit": "mm",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 1,
+              "screen": "EyeSuite IOL (Haag-Streit LS900)",
+              "region": "OD column, biometry block; identical on pages 2-4"
+            },
+            "protocol_role": "extra",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 2
+            }
+          },
+          "astig_d": {
+            "value": -0.28,
+            "raw": "-0,28",
+            "unit": "D",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 1,
+              "screen": "EyeSuite IOL (Haag-Streit LS900)",
+              "region": "OD column, biometry block; identical on pages 2-4"
+            },
+            "protocol_role": "decisive",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 2
+            },
+            "note": "Printed as \"-AST -0,28 @ 54\" (minus-cylinder notation); protocol uses magnitude |astig|"
+          },
+          "astig_axis_deg": {
+            "value": 54,
+            "raw": "54",
+            "unit": "deg",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 1,
+              "screen": "EyeSuite IOL (Haag-Streit LS900)",
+              "region": "OD column, biometry block; identical on pages 2-4"
+            },
+            "protocol_role": "informative",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 0
+            }
+          },
+          "wtw_mm": {
+            "value": 12.24,
+            "raw": "12,24",
+            "unit": "mm",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 1,
+              "screen": "EyeSuite IOL (Haag-Streit LS900)",
+              "region": "OD column, biometry block; identical on pages 2-4"
+            },
+            "protocol_role": "informative",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 2
+            }
+          },
+          "target_refraction_d": {
+            "value": 0.0,
+            "raw": "0,00",
+            "unit": "D",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 1,
+              "screen": "EyeSuite IOL (Haag-Streit LS900)",
+              "region": "OD column, biometry block; identical on pages 2-4"
+            },
+            "protocol_role": "extra",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 2
+            }
+          }
+        },
+        "OS": {
+          "lens_status": {
+            "value": "Phakic",
+            "raw": "Phakic",
+            "unit": "",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 1,
+              "screen": "EyeSuite IOL (Haag-Streit LS900)",
+              "region": "OS column, biometry block; identical on pages 2-4"
+            },
+            "protocol_role": "informative"
+          },
+          "measurement_date": {
+            "value": "2026-07-30",
+            "raw": "30/07/2026",
+            "unit": "",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 1,
+              "screen": "EyeSuite IOL (Haag-Streit LS900)",
+              "region": "OS column, biometry block; identical on pages 2-4"
+            },
+            "protocol_role": "identity"
+          },
+          "al_mm": {
+            "value": 24.74,
+            "raw": "24,74",
+            "unit": "mm",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 1,
+              "screen": "EyeSuite IOL (Haag-Streit LS900)",
+              "region": "OS column, biometry block; identical on pages 2-4"
+            },
+            "protocol_role": "informative",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 2
+            }
+          },
+          "cct_um": {
+            "value": 527,
+            "raw": "527",
+            "unit": "um",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 1,
+              "screen": "EyeSuite IOL (Haag-Streit LS900)",
+              "region": "OS column, biometry block; identical on pages 2-4"
+            },
+            "protocol_role": "cross_check",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 0
+            }
+          },
+          "ad_mm": {
+            "value": 3.31,
+            "raw": "3,31",
+            "unit": "mm",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 1,
+              "screen": "EyeSuite IOL (Haag-Streit LS900)",
+              "region": "OS column, biometry block; identical on pages 2-4"
+            },
+            "protocol_role": "cross_check",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 2
+            }
+          },
+          "acd_mm": {
+            "value": 3.84,
+            "raw": "3,84",
+            "unit": "mm",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 1,
+              "screen": "EyeSuite IOL (Haag-Streit LS900)",
+              "region": "OS column, biometry block; identical on pages 2-4"
+            },
+            "protocol_role": "cross_check",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 2
+            }
+          },
+          "lt_mm": {
+            "value": 4.64,
+            "raw": "4,64",
+            "unit": "mm",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 1,
+              "screen": "EyeSuite IOL (Haag-Streit LS900)",
+              "region": "OS column, biometry block; identical on pages 2-4"
+            },
+            "protocol_role": "informative",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 2
+            }
+          },
+          "k1_d": {
+            "value": 41.11,
+            "raw": "41,11",
+            "unit": "D",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 1,
+              "screen": "EyeSuite IOL (Haag-Streit LS900)",
+              "region": "OS column, biometry block; identical on pages 2-4"
+            },
+            "protocol_role": "cross_check",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 2
+            }
+          },
+          "k1_radius_mm": {
+            "value": 8.21,
+            "raw": "8,21",
+            "unit": "mm",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 1,
+              "screen": "EyeSuite IOL (Haag-Streit LS900)",
+              "region": "OS column, biometry block; identical on pages 2-4"
+            },
+            "protocol_role": "extra",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 2
+            }
+          },
+          "k1_axis_deg": {
+            "value": 3,
+            "raw": "3",
+            "unit": "deg",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 1,
+              "screen": "EyeSuite IOL (Haag-Streit LS900)",
+              "region": "OS column, biometry block; identical on pages 2-4"
+            },
+            "protocol_role": "extra",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 0
+            }
+          },
+          "k2_d": {
+            "value": 44.28,
+            "raw": "44,28",
+            "unit": "D",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 1,
+              "screen": "EyeSuite IOL (Haag-Streit LS900)",
+              "region": "OS column, biometry block; identical on pages 2-4"
+            },
+            "protocol_role": "cross_check",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 2
+            }
+          },
+          "k2_radius_mm": {
+            "value": 7.62,
+            "raw": "7,62",
+            "unit": "mm",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 1,
+              "screen": "EyeSuite IOL (Haag-Streit LS900)",
+              "region": "OS column, biometry block; identical on pages 2-4"
+            },
+            "protocol_role": "extra",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 2
+            }
+          },
+          "k2_axis_deg": {
+            "value": 93,
+            "raw": "93",
+            "unit": "deg",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 1,
+              "screen": "EyeSuite IOL (Haag-Streit LS900)",
+              "region": "OS column, biometry block; identical on pages 2-4"
+            },
+            "protocol_role": "extra",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 0
+            }
+          },
+          "k_mean_d": {
+            "value": 42.64,
+            "raw": "42,64",
+            "unit": "D",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 1,
+              "screen": "EyeSuite IOL (Haag-Streit LS900)",
+              "region": "OS column, biometry block; identical on pages 2-4"
+            },
+            "protocol_role": "cross_check",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 2
+            }
+          },
+          "k_mean_radius_mm": {
+            "value": 7.92,
+            "raw": "7,92",
+            "unit": "mm",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 1,
+              "screen": "EyeSuite IOL (Haag-Streit LS900)",
+              "region": "OS column, biometry block; identical on pages 2-4"
+            },
+            "protocol_role": "extra",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 2
+            }
+          },
+          "astig_d": {
+            "value": -3.17,
+            "raw": "-3,17",
+            "unit": "D",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 1,
+              "screen": "EyeSuite IOL (Haag-Streit LS900)",
+              "region": "OS column, biometry block; identical on pages 2-4"
+            },
+            "protocol_role": "decisive",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 2
+            },
+            "note": "Printed as \"-AST -0,28 @ 54\" (minus-cylinder notation); protocol uses magnitude |astig|"
+          },
+          "astig_axis_deg": {
+            "value": 3,
+            "raw": "3",
+            "unit": "deg",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 1,
+              "screen": "EyeSuite IOL (Haag-Streit LS900)",
+              "region": "OS column, biometry block; identical on pages 2-4"
+            },
+            "protocol_role": "informative",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 0
+            }
+          },
+          "wtw_mm": {
+            "value": 12.4,
+            "raw": "12,40",
+            "unit": "mm",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 1,
+              "screen": "EyeSuite IOL (Haag-Streit LS900)",
+              "region": "OS column, biometry block; identical on pages 2-4"
+            },
+            "protocol_role": "informative",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 2
+            }
+          },
+          "target_refraction_d": {
+            "value": 0.0,
+            "raw": "0,00",
+            "unit": "D",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 1,
+              "screen": "EyeSuite IOL (Haag-Streit LS900)",
+              "region": "OS column, biometry block; identical on pages 2-4"
+            },
+            "protocol_role": "extra",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 2
+            }
+          }
+        }
+      },
+      "app_exam_key": "iol_calculation"
+    },
+    {
+      "file": "MICROSCOPIA_ESPECULAR__AO__ROLMEY_ARANTES_SILVA__20260730_115727.jpeg",
+      "exam_type": "specular_microscopy",
+      "device": "NIDEK",
+      "eye": "AO",
+      "pages": 1,
+      "identity": {
+        "id_printed": {
+          "value": "ROLMEY ARANTES S",
+          "raw": "ROLMEY ARANTES S",
+          "status": "valid",
+          "verification": "agent_visual",
+          "evidence": {
+            "page": 1,
+            "screen": "NIDEK specular microscope report",
+            "region": "header \"ID :\""
+          },
+          "note": "truncated name in ID field"
+        },
+        "name_printed": {
+          "value": "HCV,",
+          "raw": "HCV,",
+          "status": "valid",
+          "verification": "agent_visual",
+          "evidence": {
+            "page": 1,
+            "screen": "NIDEK specular microscope report",
+            "region": "header \"Name:\""
+          },
+          "note": "Name field does not contain the patient name (clinic/operator tag)"
+        },
+        "birth_date": {
+          "value": null,
+          "raw": null,
+          "status": "missing",
+          "verification": "agent_visual",
+          "evidence": {
+            "page": 1,
+            "screen": "NIDEK specular microscope report",
+            "region": "header"
+          }
+        },
+        "exam_date": {
+          "value": "2026-07-30",
+          "raw": "30/JUL/2026 11:57:27",
+          "status": "valid",
+          "verification": "agent_visual",
+          "evidence": {
+            "page": 1,
+            "screen": "NIDEK specular microscope report",
+            "region": "header right"
+          }
+        },
+        "report_number": {
+          "value": "0618",
+          "raw": "0618",
+          "status": "valid",
+          "verification": "agent_visual",
+          "evidence": {
+            "page": 1,
+            "screen": "NIDEK specular microscope report",
+            "region": "header right \"No.\""
+          }
+        }
+      },
+      "fields": {
+        "OD": {
+          "num_cells": {
+            "value": 234,
+            "raw": "234",
+            "unit": "cells",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 1,
+              "screen": "NIDEK specular microscope report",
+              "region": "R (top) table"
+            },
+            "protocol_role": "extra",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 0
+            }
+          },
+          "cell_density_cells_mm2": {
+            "value": 2403,
+            "raw": "2403",
+            "unit": "cells/mm2",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 1,
+              "screen": "NIDEK specular microscope report",
+              "region": "R (top) table"
+            },
+            "protocol_role": "decisive",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 0
+            }
+          },
+          "avg_area_um2": {
+            "value": 394,
+            "raw": "394",
+            "unit": "um2",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 1,
+              "screen": "NIDEK specular microscope report",
+              "region": "R (top) table"
+            },
+            "protocol_role": "extra",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 0
+            }
+          },
+          "sd_um2": {
+            "value": 133,
+            "raw": "133",
+            "unit": "um2",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 1,
+              "screen": "NIDEK specular microscope report",
+              "region": "R (top) table"
+            },
+            "protocol_role": "extra",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 0
+            }
+          },
+          "cv_pct": {
+            "value": 34,
+            "raw": "34",
+            "unit": "%",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 1,
+              "screen": "NIDEK specular microscope report",
+              "region": "R (top) table"
+            },
+            "protocol_role": "informative",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 0
+            }
+          },
+          "max_area_um2": {
+            "value": 933,
+            "raw": "933",
+            "unit": "um2",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 1,
+              "screen": "NIDEK specular microscope report",
+              "region": "R (top) table"
+            },
+            "protocol_role": "extra",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 0
+            }
+          },
+          "min_area_um2": {
+            "value": 137,
+            "raw": "137",
+            "unit": "um2",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 1,
+              "screen": "NIDEK specular microscope report",
+              "region": "R (top) table"
+            },
+            "protocol_role": "extra",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 0
+            }
+          },
+          "hex_pct": {
+            "value": 64,
+            "raw": "64",
+            "unit": "%",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 1,
+              "screen": "NIDEK specular microscope report",
+              "region": "R (top) table"
+            },
+            "protocol_role": "informative",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 0
+            }
+          },
+          "ct_um": {
+            "value": 532,
+            "raw": "532",
+            "unit": "um",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 1,
+              "screen": "NIDEK specular microscope report",
+              "region": "R (top) table"
+            },
+            "protocol_role": "cross_check",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 0
+            }
+          }
+        },
+        "OS": {
+          "num_cells": {
+            "value": 206,
+            "raw": "206",
+            "unit": "cells",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 1,
+              "screen": "NIDEK specular microscope report",
+              "region": "L (bottom) table"
+            },
+            "protocol_role": "extra",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 0
+            }
+          },
+          "cell_density_cells_mm2": {
+            "value": 2184,
+            "raw": "2184",
+            "unit": "cells/mm2",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 1,
+              "screen": "NIDEK specular microscope report",
+              "region": "L (bottom) table"
+            },
+            "protocol_role": "decisive",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 0
+            }
+          },
+          "avg_area_um2": {
+            "value": 432,
+            "raw": "432",
+            "unit": "um2",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 1,
+              "screen": "NIDEK specular microscope report",
+              "region": "L (bottom) table"
+            },
+            "protocol_role": "extra",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 0
+            }
+          },
+          "sd_um2": {
+            "value": 146,
+            "raw": "146",
+            "unit": "um2",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 1,
+              "screen": "NIDEK specular microscope report",
+              "region": "L (bottom) table"
+            },
+            "protocol_role": "extra",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 0
+            }
+          },
+          "cv_pct": {
+            "value": 34,
+            "raw": "34",
+            "unit": "%",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 1,
+              "screen": "NIDEK specular microscope report",
+              "region": "L (bottom) table"
+            },
+            "protocol_role": "informative",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 0
+            }
+          },
+          "max_area_um2": {
+            "value": 1034,
+            "raw": "1034",
+            "unit": "um2",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 1,
+              "screen": "NIDEK specular microscope report",
+              "region": "L (bottom) table"
+            },
+            "protocol_role": "extra",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 0
+            }
+          },
+          "min_area_um2": {
+            "value": 156,
+            "raw": "156",
+            "unit": "um2",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 1,
+              "screen": "NIDEK specular microscope report",
+              "region": "L (bottom) table"
+            },
+            "protocol_role": "extra",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 0
+            }
+          },
+          "hex_pct": {
+            "value": 65,
+            "raw": "65",
+            "unit": "%",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 1,
+              "screen": "NIDEK specular microscope report",
+              "region": "L (bottom) table"
+            },
+            "protocol_role": "informative",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 0
+            }
+          },
+          "ct_um": {
+            "value": 542,
+            "raw": "542",
+            "unit": "um",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 1,
+              "screen": "NIDEK specular microscope report",
+              "region": "L (bottom) table"
+            },
+            "protocol_role": "cross_check",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 0
+            }
+          }
+        }
+      },
+      "app_exam_key": "specular_microscopy"
+    },
+    {
+      "file": "PENTACAM__OD__ROLMEY_ARANTES_SILVA__20260730_115226.pdf",
+      "exam_type": "pentacam_corneal_tomography",
+      "device": "OCULUS Pentacam 1.32r04",
+      "eye": "OD",
+      "pages": 9,
+      "screens": {
+        "1": "Geral",
+        "2": "Imagens Scheimpflug",
+        "3": "Mapas",
+        "4": "4 Mapas Refrativos",
+        "5": "Paquimétrico",
+        "6": "Topométrico / Estadiamento KC",
+        "7": "Cataract Pre-OP",
+        "8": "Ectasia Reforçada Belin / Ambrósio",
+        "9": "Anéis Corneanos"
+      },
+      "identity": {
+        "surname": {
+          "value": "ARANTES SILVA",
+          "raw": "ARANTES SILVA",
+          "status": "valid",
+          "verification": "agent_visual",
+          "evidence": {
+            "page": 6,
+            "screen": "Topométrico / Estadiamento KC",
+            "region": "patient header"
+          }
+        },
+        "first_name": {
+          "value": "ROLMEY",
+          "raw": "ROLMEY",
+          "status": "valid",
+          "verification": "agent_visual",
+          "evidence": {
+            "page": 6,
+            "screen": "Topométrico / Estadiamento KC",
+            "region": "patient header"
+          }
+        },
+        "id": {
+          "value": null,
+          "raw": "",
+          "status": "missing",
+          "verification": "agent_visual",
+          "evidence": {
+            "page": 6,
+            "screen": "Topométrico / Estadiamento KC",
+            "region": "patient header"
+          }
+        },
+        "birth_date": {
+          "value": "1967-05-12",
+          "raw": "05/12/1967",
+          "status": "valid",
+          "verification": "agent_visual",
+          "evidence": {
+            "page": 6,
+            "screen": "Topométrico / Estadiamento KC",
+            "region": "patient header"
+          },
+          "note": "Pentacam prints MM/DD/YYYY"
+        },
+        "exam_date": {
+          "value": "2026-07-30",
+          "raw": "07/30/2026",
+          "status": "valid",
+          "verification": "agent_visual",
+          "evidence": {
+            "page": 6,
+            "screen": "Topométrico / Estadiamento KC",
+            "region": "patient header"
+          }
+        },
+        "exam_time": {
+          "value": "11:52:26",
+          "raw": "11:52:26",
+          "status": "valid",
+          "verification": "agent_visual",
+          "evidence": {
+            "page": 6,
+            "screen": "Topométrico / Estadiamento KC",
+            "region": "patient header"
+          }
+        },
+        "eye_printed": {
+          "value": "Direito",
+          "raw": "Direito",
+          "status": "valid",
+          "verification": "agent_visual",
+          "evidence": {
+            "page": 6,
+            "screen": "Topométrico / Estadiamento KC",
+            "region": "patient header"
+          }
+        }
+      },
+      "fields": {
+        "OD": {
+          "qi": {
+            "value": "OK",
+            "raw": "OK",
+            "unit": "",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 6,
+              "screen": "Topométrico / Estadiamento KC",
+              "region": "Córnea Ant panel, QI"
+            },
+            "protocol_role": "informative"
+          },
+          "k1_d": {
+            "value": 43.5,
+            "raw": "43.5 D",
+            "unit": "D",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 6,
+              "screen": "Topométrico / Estadiamento KC",
+              "region": "Córnea Ant panel, K1"
+            },
+            "protocol_role": "decisive",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 1
+            }
+          },
+          "k2_d": {
+            "value": 43.8,
+            "raw": "43.8 D",
+            "unit": "D",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 6,
+              "screen": "Topométrico / Estadiamento KC",
+              "region": "Córnea Ant panel, K2"
+            },
+            "protocol_role": "decisive",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 1
+            }
+          },
+          "km_d": {
+            "value": 43.6,
+            "raw": "43.6 D",
+            "unit": "D",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 6,
+              "screen": "Topométrico / Estadiamento KC",
+              "region": "Córnea Ant panel, Km"
+            },
+            "protocol_role": "decisive",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 1
+            }
+          },
+          "astig_ant_d": {
+            "value": 0.2,
+            "raw": "0.2 D",
+            "unit": "D",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 6,
+              "screen": "Topométrico / Estadiamento KC",
+              "region": "Córnea Ant panel, Astig."
+            },
+            "protocol_role": "informative",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 1
+            }
+          },
+          "axis_flat_deg": {
+            "value": 47.6,
+            "raw": "47.6 °",
+            "unit": "deg",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 6,
+              "screen": "Topométrico / Estadiamento KC",
+              "region": "Córnea Ant panel, Eixo (plano)"
+            },
+            "protocol_role": "informative",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 1
+            }
+          },
+          "kmax_ant_d": {
+            "value": 44.2,
+            "raw": "44.2 D",
+            "unit": "D",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 6,
+              "screen": "Topométrico / Estadiamento KC",
+              "region": "left pachy panel, K Máx. (ant.)"
+            },
+            "protocol_role": "screening",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 1
+            }
+          },
+          "pachy_thinnest_um": {
+            "value": 529,
+            "raw": "529 µm",
+            "unit": "um",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 6,
+              "screen": "Topométrico / Estadiamento KC",
+              "region": "left pachy panel, Ponto + fino"
+            },
+            "protocol_role": "decisive",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 0
+            }
+          },
+          "pachy_pupil_center_um": {
+            "value": 534,
+            "raw": "534 µm",
+            "unit": "um",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 6,
+              "screen": "Topométrico / Estadiamento KC",
+              "region": "left pachy panel, Centro Pupilar"
+            },
+            "protocol_role": "cross_check",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 0
+            }
+          },
+          "pachy_vertex_um": {
+            "value": 534,
+            "raw": "534 µm",
+            "unit": "um",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 6,
+              "screen": "Topométrico / Estadiamento KC",
+              "region": "left pachy panel, Pachy Vertex N."
+            },
+            "protocol_role": "cross_check",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 0
+            }
+          },
+          "acd_ext_mm": {
+            "value": 3.9,
+            "raw": "3.90 mm",
+            "unit": "mm",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 7,
+              "screen": "Cataract Pre-OP",
+              "region": "bottom-right, Prof.Câm.Ant: (Ext.)"
+            },
+            "protocol_role": "cross_check",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 2
+            }
+          },
+          "acd_int_mm": {
+            "value": 3.36,
+            "raw": "3.36 mm",
+            "unit": "mm",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 7,
+              "screen": "Cataract Pre-OP",
+              "region": "bottom-right, Prof.Câm.Ant: (Int.)"
+            },
+            "protocol_role": "decisive",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 2
+            }
+          },
+          "pns": {
+            "value": 1,
+            "raw": "1",
+            "unit": "",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 7,
+              "screen": "Cataract Pre-OP",
+              "region": "bottom-right, PNS"
+            },
+            "protocol_role": "informative",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 0
+            }
+          },
+          "z40_6mm_um": {
+            "value": 0.287,
+            "raw": "0.287 µm",
+            "unit": "um",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 7,
+              "screen": "Cataract Pre-OP",
+              "region": "right panel, Total Corneal Z40 (6mm)"
+            },
+            "protocol_role": "informative",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 3
+            }
+          },
+          "bad_d": {
+            "value": 0.65,
+            "raw": "0.65",
+            "unit": "",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 8,
+              "screen": "Ectasia Reforçada Belin / Ambrósio",
+              "region": "bottom-right, D:"
+            },
+            "protocol_role": "screening",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 2
+            }
+          },
+          "art_max_um": {
+            "value": 416,
+            "raw": "416",
+            "unit": "um",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 8,
+              "screen": "Ectasia Reforçada Belin / Ambrósio",
+              "region": "data panel, ARTmax"
+            },
+            "protocol_role": "screening",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 0
+            }
+          },
+          "isv": {
+            "value": 10,
+            "raw": "10",
+            "unit": "",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 6,
+              "screen": "Topométrico / Estadiamento KC",
+              "region": "Índices (zona de 8mm), ISV"
+            },
+            "protocol_role": "screening",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 0
+            }
+          },
+          "iva": {
+            "value": 0.09,
+            "raw": "0.09",
+            "unit": "",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 6,
+              "screen": "Topométrico / Estadiamento KC",
+              "region": "Índices (zona de 8mm), IVA"
+            },
+            "protocol_role": "screening",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 2
+            }
+          },
+          "iha": {
+            "value": 4.2,
+            "raw": "4.2",
+            "unit": "",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 6,
+              "screen": "Topométrico / Estadiamento KC",
+              "region": "Índices (zona de 8mm), IHA"
+            },
+            "protocol_role": "screening",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 1
+            }
+          },
+          "ihd": {
+            "value": 0.006,
+            "raw": "0.006",
+            "unit": "",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 6,
+              "screen": "Topométrico / Estadiamento KC",
+              "region": "Índices (zona de 8mm), IHD"
+            },
+            "protocol_role": "screening",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 3
+            }
+          },
+          "ki": {
+            "value": 1.01,
+            "raw": "1.01",
+            "unit": "",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 6,
+              "screen": "Topométrico / Estadiamento KC",
+              "region": "Índices (zona de 8mm), KI"
+            },
+            "protocol_role": "screening",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 2
+            }
+          },
+          "cki": {
+            "value": 1.0,
+            "raw": "1.00",
+            "unit": "",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 6,
+              "screen": "Topométrico / Estadiamento KC",
+              "region": "Índices (zona de 8mm), CKI"
+            },
+            "protocol_role": "screening",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 2
+            }
+          },
+          "tkc": {
+            "value": null,
+            "raw": "-",
+            "unit": "",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 6,
+              "screen": "Topométrico / Estadiamento KC",
+              "region": "Índices (zona de 8mm), TKC"
+            },
+            "protocol_role": "screening",
+            "note": "printed \"-\": no keratoconus classification"
+          },
+          "abcd_staging": {
+            "value": "A0 B0 C0 D",
+            "raw": "A0 B0 C0 D",
+            "unit": "",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 6,
+              "screen": "Topométrico / Estadiamento KC",
+              "region": "Belin ABCD Keratoconus Staging, summary line"
+            },
+            "protocol_role": "screening"
+          },
+          "coma_z31_5mm_um": {
+            "value": 0.097,
+            "raw": "0.097 µm (151°)",
+            "unit": "um",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 9,
+              "screen": "Anéis Corneanos",
+              "region": "Total Corneal WFA Zernike, Diam.Zona 5.0 mm, Z31 (Coma)"
+            },
+            "protocol_role": "informative",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 3
+            }
+          },
+          "coma_z31_5mm_axis_deg": {
+            "value": 151,
+            "raw": "151°",
+            "unit": "deg",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 9,
+              "screen": "Anéis Corneanos",
+              "region": "Total Corneal WFA Zernike, Diam.Zona 5.0 mm, Z31 (Coma) angle"
+            },
+            "protocol_role": "informative",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 0
+            }
+          },
+          "coma_z31_6mm_um": {
+            "value": 0.143,
+            "raw": "0.143 µm (157°)",
+            "unit": "um",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 9,
+              "screen": "Anéis Corneanos",
+              "region": "Total Corneal WFA Zernike, Diam.Zona 6.0 mm, Z31 (Coma)"
+            },
+            "protocol_role": "informative",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 3
+            }
+          },
+          "aberr_max_diameter_mm": {
+            "value": null,
+            "raw": null,
+            "unit": "mm",
+            "status": "missing",
+            "verification": "agent_visual",
+            "evidence": {
+              "screen": "Aberrometry Cornea",
+              "region": "screen not present in PDF"
+            },
+            "protocol_role": "informative",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 2
+            },
+            "note": "\"Aberrometry Cornea\" page not included in this export"
+          },
+          "coma0_4mm_wfa_ant_um": {
+            "value": null,
+            "raw": null,
+            "unit": "um",
+            "status": "missing",
+            "verification": "agent_visual",
+            "evidence": {
+              "screen": "Aberrometry Cornea",
+              "region": "screen not present in PDF"
+            },
+            "protocol_role": "informative",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 3
+            },
+            "note": "\"Aberrometry Cornea\" page not included in this export"
+          },
+          "coma90_4mm_wfa_ant_um": {
+            "value": null,
+            "raw": null,
+            "unit": "um",
+            "status": "missing",
+            "verification": "agent_visual",
+            "evidence": {
+              "screen": "Aberrometry Cornea",
+              "region": "screen not present in PDF"
+            },
+            "protocol_role": "informative",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 3
+            },
+            "note": "\"Aberrometry Cornea\" page not included in this export"
+          },
+          "coma0_4mm_wfa_post_um": {
+            "value": null,
+            "raw": null,
+            "unit": "um",
+            "status": "missing",
+            "verification": "agent_visual",
+            "evidence": {
+              "screen": "Aberrometry Cornea",
+              "region": "screen not present in PDF"
+            },
+            "protocol_role": "informative",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 3
+            },
+            "note": "\"Aberrometry Cornea\" page not included in this export"
+          },
+          "coma90_4mm_wfa_post_um": {
+            "value": null,
+            "raw": null,
+            "unit": "um",
+            "status": "missing",
+            "verification": "agent_visual",
+            "evidence": {
+              "screen": "Aberrometry Cornea",
+              "region": "screen not present in PDF"
+            },
+            "protocol_role": "informative",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 3
+            },
+            "note": "\"Aberrometry Cornea\" page not included in this export"
+          },
+          "coma0_4mm_wfa_cornea_um": {
+            "value": null,
+            "raw": null,
+            "unit": "um",
+            "status": "missing",
+            "verification": "agent_visual",
+            "evidence": {
+              "screen": "Aberrometry Cornea",
+              "region": "screen not present in PDF"
+            },
+            "protocol_role": "informative",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 3
+            },
+            "note": "\"Aberrometry Cornea\" page not included in this export"
+          },
+          "coma90_4mm_wfa_cornea_um": {
+            "value": null,
+            "raw": null,
+            "unit": "um",
+            "status": "missing",
+            "verification": "agent_visual",
+            "evidence": {
+              "screen": "Aberrometry Cornea",
+              "region": "screen not present in PDF"
+            },
+            "protocol_role": "informative",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 3
+            },
+            "note": "\"Aberrometry Cornea\" page not included in this export"
+          },
+          "coma_4mm_wfa_cornea_magnitude_um": {
+            "value": null,
+            "raw": null,
+            "unit": "um",
+            "status": "missing",
+            "verification": "agent_visual",
+            "evidence": {
+              "screen": "Aberrometry Cornea",
+              "region": "not computable"
+            },
+            "protocol_role": "informative",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 3
+            },
+            "note": "Coma 0°/90° 4 mm components not available"
+          }
+        }
+      },
+      "app_exam_key": "pentacam_corneal_tomography"
+    },
+    {
+      "file": "PENTACAM__OS__ROLMEY_ARANTES_SILVA__20260730_115345.pdf",
+      "exam_type": "pentacam_corneal_tomography",
+      "device": "OCULUS Pentacam 1.32r04",
+      "eye": "OS",
+      "pages": 9,
+      "screens": {
+        "1": "Geral",
+        "2": "Imagens Scheimpflug",
+        "3": "Mapas",
+        "4": "4 Mapas Refrativos",
+        "5": "Paquimétrico",
+        "6": "Topométrico / Estadiamento KC",
+        "7": "Cataract Pre-OP",
+        "8": "Ectasia Reforçada Belin / Ambrósio",
+        "9": "Anéis Corneanos"
+      },
+      "identity": {
+        "surname": {
+          "value": "ARANTES SILVA",
+          "raw": "ARANTES SILVA",
+          "status": "valid",
+          "verification": "agent_visual",
+          "evidence": {
+            "page": 6,
+            "screen": "Topométrico / Estadiamento KC",
+            "region": "patient header"
+          }
+        },
+        "first_name": {
+          "value": "ROLMEY",
+          "raw": "ROLMEY",
+          "status": "valid",
+          "verification": "agent_visual",
+          "evidence": {
+            "page": 6,
+            "screen": "Topométrico / Estadiamento KC",
+            "region": "patient header"
+          }
+        },
+        "id": {
+          "value": null,
+          "raw": "",
+          "status": "missing",
+          "verification": "agent_visual",
+          "evidence": {
+            "page": 6,
+            "screen": "Topométrico / Estadiamento KC",
+            "region": "patient header"
+          }
+        },
+        "birth_date": {
+          "value": "1967-05-12",
+          "raw": "05/12/1967",
+          "status": "valid",
+          "verification": "agent_visual",
+          "evidence": {
+            "page": 6,
+            "screen": "Topométrico / Estadiamento KC",
+            "region": "patient header"
+          },
+          "note": "Pentacam prints MM/DD/YYYY"
+        },
+        "exam_date": {
+          "value": "2026-07-30",
+          "raw": "07/30/2026",
+          "status": "valid",
+          "verification": "agent_visual",
+          "evidence": {
+            "page": 6,
+            "screen": "Topométrico / Estadiamento KC",
+            "region": "patient header"
+          }
+        },
+        "exam_time": {
+          "value": "11:53:45",
+          "raw": "11:53:45",
+          "status": "valid",
+          "verification": "agent_visual",
+          "evidence": {
+            "page": 6,
+            "screen": "Topométrico / Estadiamento KC",
+            "region": "patient header"
+          }
+        },
+        "eye_printed": {
+          "value": "Esquerdo",
+          "raw": "Esquerdo",
+          "status": "valid",
+          "verification": "agent_visual",
+          "evidence": {
+            "page": 6,
+            "screen": "Topométrico / Estadiamento KC",
+            "region": "patient header"
+          }
+        }
+      },
+      "fields": {
+        "OS": {
+          "qi": {
+            "value": "OK",
+            "raw": "OK",
+            "unit": "",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 6,
+              "screen": "Topométrico / Estadiamento KC",
+              "region": "Córnea Ant panel, QI"
+            },
+            "protocol_role": "informative"
+          },
+          "k1_d": {
+            "value": 42.1,
+            "raw": "42.1 D",
+            "unit": "D",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 6,
+              "screen": "Topométrico / Estadiamento KC",
+              "region": "Córnea Ant panel, K1"
+            },
+            "protocol_role": "decisive",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 1
+            }
+          },
+          "k2_d": {
+            "value": 44.1,
+            "raw": "44.1 D",
+            "unit": "D",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 6,
+              "screen": "Topométrico / Estadiamento KC",
+              "region": "Córnea Ant panel, K2"
+            },
+            "protocol_role": "decisive",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 1
+            }
+          },
+          "km_d": {
+            "value": 43.1,
+            "raw": "43.1 D",
+            "unit": "D",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 6,
+              "screen": "Topométrico / Estadiamento KC",
+              "region": "Córnea Ant panel, Km"
+            },
+            "protocol_role": "decisive",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 1
+            }
+          },
+          "astig_ant_d": {
+            "value": 2.0,
+            "raw": "2.0 D",
+            "unit": "D",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 6,
+              "screen": "Topométrico / Estadiamento KC",
+              "region": "Córnea Ant panel, Astig."
+            },
+            "protocol_role": "informative",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 1
+            }
+          },
+          "axis_flat_deg": {
+            "value": 177.9,
+            "raw": "177.9 °",
+            "unit": "deg",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 6,
+              "screen": "Topométrico / Estadiamento KC",
+              "region": "Córnea Ant panel, Eixo (plano)"
+            },
+            "protocol_role": "informative",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 1
+            }
+          },
+          "kmax_ant_d": {
+            "value": 45.5,
+            "raw": "45.5 D",
+            "unit": "D",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 6,
+              "screen": "Topométrico / Estadiamento KC",
+              "region": "left pachy panel, K Máx. (ant.)"
+            },
+            "protocol_role": "screening",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 1
+            }
+          },
+          "pachy_thinnest_um": {
+            "value": 526,
+            "raw": "526 µm",
+            "unit": "um",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 6,
+              "screen": "Topométrico / Estadiamento KC",
+              "region": "left pachy panel, Ponto + fino"
+            },
+            "protocol_role": "decisive",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 0
+            }
+          },
+          "pachy_pupil_center_um": {
+            "value": 537,
+            "raw": "537 µm",
+            "unit": "um",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 6,
+              "screen": "Topométrico / Estadiamento KC",
+              "region": "left pachy panel, Centro Pupilar"
+            },
+            "protocol_role": "cross_check",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 0
+            }
+          },
+          "pachy_vertex_um": {
+            "value": 538,
+            "raw": "538 µm",
+            "unit": "um",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 6,
+              "screen": "Topométrico / Estadiamento KC",
+              "region": "left pachy panel, Pachy Vertex N."
+            },
+            "protocol_role": "cross_check",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 0
+            }
+          },
+          "acd_ext_mm": {
+            "value": 3.9,
+            "raw": "3.90 mm",
+            "unit": "mm",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 7,
+              "screen": "Cataract Pre-OP",
+              "region": "bottom-right, Prof.Câm.Ant: (Ext.)"
+            },
+            "protocol_role": "cross_check",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 2
+            },
+            "note": "Printed 3.90 mm on Topométrico and Cataract Pre-OP. Prior app output has 4.0."
+          },
+          "acd_int_mm": {
+            "value": 3.37,
+            "raw": "3.37 mm",
+            "unit": "mm",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 7,
+              "screen": "Cataract Pre-OP",
+              "region": "bottom-right, Prof.Câm.Ant: (Int.)"
+            },
+            "protocol_role": "decisive",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 2
+            }
+          },
+          "pns": {
+            "value": 1,
+            "raw": "1",
+            "unit": "",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 7,
+              "screen": "Cataract Pre-OP",
+              "region": "bottom-right, PNS"
+            },
+            "protocol_role": "informative",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 0
+            }
+          },
+          "z40_6mm_um": {
+            "value": 0.602,
+            "raw": "0.602 µm",
+            "unit": "um",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 7,
+              "screen": "Cataract Pre-OP",
+              "region": "right panel, Total Corneal Z40 (6mm)"
+            },
+            "protocol_role": "informative",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 3
+            }
+          },
+          "bad_d": {
+            "value": 2.27,
+            "raw": "2.27",
+            "unit": "",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 8,
+              "screen": "Ectasia Reforçada Belin / Ambrósio",
+              "region": "bottom-right, D:"
+            },
+            "protocol_role": "screening",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 2
+            }
+          },
+          "art_max_um": {
+            "value": 366,
+            "raw": "366",
+            "unit": "um",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 8,
+              "screen": "Ectasia Reforçada Belin / Ambrósio",
+              "region": "data panel, ARTmax"
+            },
+            "protocol_role": "screening",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 0
+            },
+            "note": "Verified at 500 dpi: \"366\". Prior app output frontend/data/paciente_compilado.json has 368 (app read error)."
+          },
+          "isv": {
+            "value": 20,
+            "raw": "20",
+            "unit": "",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 6,
+              "screen": "Topométrico / Estadiamento KC",
+              "region": "Índices (zona de 8mm), ISV"
+            },
+            "protocol_role": "screening",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 0
+            }
+          },
+          "iva": {
+            "value": 0.18,
+            "raw": "0.18",
+            "unit": "",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 6,
+              "screen": "Topométrico / Estadiamento KC",
+              "region": "Índices (zona de 8mm), IVA"
+            },
+            "protocol_role": "screening",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 2
+            }
+          },
+          "iha": {
+            "value": 12.8,
+            "raw": "12.8",
+            "unit": "",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 6,
+              "screen": "Topométrico / Estadiamento KC",
+              "region": "Índices (zona de 8mm), IHA"
+            },
+            "protocol_role": "screening",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 1
+            }
+          },
+          "ihd": {
+            "value": 0.017,
+            "raw": "0.017",
+            "unit": "",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 6,
+              "screen": "Topométrico / Estadiamento KC",
+              "region": "Índices (zona de 8mm), IHD"
+            },
+            "protocol_role": "screening",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 3
+            }
+          },
+          "ki": {
+            "value": 1.01,
+            "raw": "1.01",
+            "unit": "",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 6,
+              "screen": "Topométrico / Estadiamento KC",
+              "region": "Índices (zona de 8mm), KI"
+            },
+            "protocol_role": "screening",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 2
+            }
+          },
+          "cki": {
+            "value": 0.98,
+            "raw": "0.98",
+            "unit": "",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 6,
+              "screen": "Topométrico / Estadiamento KC",
+              "region": "Índices (zona de 8mm), CKI"
+            },
+            "protocol_role": "screening",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 2
+            }
+          },
+          "tkc": {
+            "value": null,
+            "raw": "-",
+            "unit": "",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 6,
+              "screen": "Topométrico / Estadiamento KC",
+              "region": "Índices (zona de 8mm), TKC"
+            },
+            "protocol_role": "screening",
+            "note": "printed \"-\": no keratoconus classification"
+          },
+          "abcd_staging": {
+            "value": "A0 B0 C0 D",
+            "raw": "A0 B0 C0 D",
+            "unit": "",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 6,
+              "screen": "Topométrico / Estadiamento KC",
+              "region": "Belin ABCD Keratoconus Staging, summary line"
+            },
+            "protocol_role": "screening"
+          },
+          "coma_z31_5mm_um": {
+            "value": 0.299,
+            "raw": "0.299 µm (180°)",
+            "unit": "um",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 9,
+              "screen": "Anéis Corneanos",
+              "region": "Total Corneal WFA Zernike, Diam.Zona 5.0 mm, Z31 (Coma)"
+            },
+            "protocol_role": "informative",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 3
+            }
+          },
+          "coma_z31_5mm_axis_deg": {
+            "value": 180,
+            "raw": "180°",
+            "unit": "deg",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 9,
+              "screen": "Anéis Corneanos",
+              "region": "Total Corneal WFA Zernike, Diam.Zona 5.0 mm, Z31 (Coma) angle"
+            },
+            "protocol_role": "informative",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 0
+            }
+          },
+          "coma_z31_6mm_um": {
+            "value": 0.568,
+            "raw": "0.568 µm (181°)",
+            "unit": "um",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 9,
+              "screen": "Anéis Corneanos",
+              "region": "Total Corneal WFA Zernike, Diam.Zona 6.0 mm, Z31 (Coma)"
+            },
+            "protocol_role": "informative",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 3
+            }
+          },
+          "aberr_max_diameter_mm": {
+            "value": null,
+            "raw": null,
+            "unit": "mm",
+            "status": "missing",
+            "verification": "agent_visual",
+            "evidence": {
+              "screen": "Aberrometry Cornea",
+              "region": "screen not present in PDF"
+            },
+            "protocol_role": "informative",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 2
+            },
+            "note": "\"Aberrometry Cornea\" page not included in this export"
+          },
+          "coma0_4mm_wfa_ant_um": {
+            "value": null,
+            "raw": null,
+            "unit": "um",
+            "status": "missing",
+            "verification": "agent_visual",
+            "evidence": {
+              "screen": "Aberrometry Cornea",
+              "region": "screen not present in PDF"
+            },
+            "protocol_role": "informative",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 3
+            },
+            "note": "\"Aberrometry Cornea\" page not included in this export"
+          },
+          "coma90_4mm_wfa_ant_um": {
+            "value": null,
+            "raw": null,
+            "unit": "um",
+            "status": "missing",
+            "verification": "agent_visual",
+            "evidence": {
+              "screen": "Aberrometry Cornea",
+              "region": "screen not present in PDF"
+            },
+            "protocol_role": "informative",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 3
+            },
+            "note": "\"Aberrometry Cornea\" page not included in this export"
+          },
+          "coma0_4mm_wfa_post_um": {
+            "value": null,
+            "raw": null,
+            "unit": "um",
+            "status": "missing",
+            "verification": "agent_visual",
+            "evidence": {
+              "screen": "Aberrometry Cornea",
+              "region": "screen not present in PDF"
+            },
+            "protocol_role": "informative",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 3
+            },
+            "note": "\"Aberrometry Cornea\" page not included in this export"
+          },
+          "coma90_4mm_wfa_post_um": {
+            "value": null,
+            "raw": null,
+            "unit": "um",
+            "status": "missing",
+            "verification": "agent_visual",
+            "evidence": {
+              "screen": "Aberrometry Cornea",
+              "region": "screen not present in PDF"
+            },
+            "protocol_role": "informative",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 3
+            },
+            "note": "\"Aberrometry Cornea\" page not included in this export"
+          },
+          "coma0_4mm_wfa_cornea_um": {
+            "value": null,
+            "raw": null,
+            "unit": "um",
+            "status": "missing",
+            "verification": "agent_visual",
+            "evidence": {
+              "screen": "Aberrometry Cornea",
+              "region": "screen not present in PDF"
+            },
+            "protocol_role": "informative",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 3
+            },
+            "note": "\"Aberrometry Cornea\" page not included in this export"
+          },
+          "coma90_4mm_wfa_cornea_um": {
+            "value": null,
+            "raw": null,
+            "unit": "um",
+            "status": "missing",
+            "verification": "agent_visual",
+            "evidence": {
+              "screen": "Aberrometry Cornea",
+              "region": "screen not present in PDF"
+            },
+            "protocol_role": "informative",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 3
+            },
+            "note": "\"Aberrometry Cornea\" page not included in this export"
+          },
+          "coma_4mm_wfa_cornea_magnitude_um": {
+            "value": null,
+            "raw": null,
+            "unit": "um",
+            "status": "missing",
+            "verification": "agent_visual",
+            "evidence": {
+              "screen": "Aberrometry Cornea",
+              "region": "not computable"
+            },
+            "protocol_role": "informative",
+            "tolerance": {
+              "abs": 0,
+              "decimals_printed": 3
+            },
+            "note": "Coma 0°/90° 4 mm components not available"
+          }
+        }
+      },
+      "app_exam_key": "pentacam_corneal_tomography"
+    },
+    {
+      "file": "RETINA__OD__ROLMEY_ARANTES_SILVA__20260730_120822.jpeg",
+      "exam_type": "fundus_retinography",
+      "device": "fundus camera (unbranded overlay)",
+      "eye": "OD",
+      "pages": 1,
+      "identity": {
+        "id_printed": {
+          "value": "ROLMEY ARANTES SILVA",
+          "raw": "ROLMEY ARANTES SILVA",
+          "status": "valid",
+          "verification": "agent_visual",
+          "evidence": {
+            "page": 1,
+            "screen": "Retinography image overlay",
+            "region": "top-right text"
+          }
+        },
+        "eye_printed": {
+          "value": "OD",
+          "raw": "OD",
+          "status": "valid",
+          "verification": "agent_visual",
+          "evidence": {
+            "page": 1,
+            "screen": "Retinography image overlay",
+            "region": "top-right text"
+          }
+        },
+        "exam_datetime": {
+          "value": "2026-07-30T12:08:22",
+          "raw": "2026-07-30 12:08:22",
+          "status": "valid",
+          "verification": "agent_visual",
+          "evidence": {
+            "page": 1,
+            "screen": "Retinography image overlay",
+            "region": "top-right text"
+          }
+        },
+        "birth_date": {
+          "value": null,
+          "raw": null,
+          "status": "missing",
+          "verification": "agent_visual",
+          "evidence": {
+            "page": 1,
+            "screen": "Retinography image overlay",
+            "region": "top-right text"
+          }
+        }
+      },
+      "fields": {
+        "OD": {
+          "mode": {
+            "value": "Retina",
+            "raw": "Retina",
+            "unit": "",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 1,
+              "screen": "Retinography image overlay",
+              "region": "top-right text"
+            },
+            "protocol_role": "identity"
+          },
+          "findings": {
+            "value": null,
+            "raw": null,
+            "unit": "",
+            "status": "not_applicable",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 1,
+              "screen": "fundus image"
+            },
+            "protocol_role": "informative",
+            "note": "Image only; no printed findings. Clinical reading belongs to the physician (protocol: informative only)."
+          }
+        }
+      },
+      "app_exam_key": "fundus_retinography"
+    },
+    {
+      "file": "RETINA__OS__ROLMEY_ARANTES_SILVA__20260730_121009.jpeg",
+      "exam_type": "fundus_retinography",
+      "device": "fundus camera (unbranded overlay)",
+      "eye": "OS",
+      "pages": 1,
+      "identity": {
+        "id_printed": {
+          "value": "ROLMEY ARANTES SILVA",
+          "raw": "ROLMEY ARANTES SILVA",
+          "status": "valid",
+          "verification": "agent_visual",
+          "evidence": {
+            "page": 1,
+            "screen": "Retinography image overlay",
+            "region": "top-right text"
+          }
+        },
+        "eye_printed": {
+          "value": "OS",
+          "raw": "OS",
+          "status": "valid",
+          "verification": "agent_visual",
+          "evidence": {
+            "page": 1,
+            "screen": "Retinography image overlay",
+            "region": "top-right text"
+          }
+        },
+        "exam_datetime": {
+          "value": "2026-07-30T12:10:09",
+          "raw": "2026-07-30 12:10:09",
+          "status": "valid",
+          "verification": "agent_visual",
+          "evidence": {
+            "page": 1,
+            "screen": "Retinography image overlay",
+            "region": "top-right text"
+          }
+        },
+        "birth_date": {
+          "value": null,
+          "raw": null,
+          "status": "missing",
+          "verification": "agent_visual",
+          "evidence": {
+            "page": 1,
+            "screen": "Retinography image overlay",
+            "region": "top-right text"
+          }
+        }
+      },
+      "fields": {
+        "OS": {
+          "mode": {
+            "value": "Retina",
+            "raw": "Retina",
+            "unit": "",
+            "status": "valid",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 1,
+              "screen": "Retinography image overlay",
+              "region": "top-right text"
+            },
+            "protocol_role": "identity"
+          },
+          "findings": {
+            "value": null,
+            "raw": null,
+            "unit": "",
+            "status": "not_applicable",
+            "verification": "agent_visual",
+            "evidence": {
+              "page": 1,
+              "screen": "fundus image"
+            },
+            "protocol_role": "informative",
+            "note": "Image only; no printed findings. Clinical reading belongs to the physician (protocol: informative only)."
+          }
+        }
+      },
+      "app_exam_key": "fundus_retinography"
+    }
+  ],
+  "needs_human": [],
+  "notes": [
+    "No identity conflicts in this folder.",
+    "Pentacam exports lack the \"Aberrometry Cornea\" (4 mm) page, so 4 mm coma components are missing; only Anéis Corneanos 5/6 mm Z31 is available.",
+    "No refractometry and no OCT document in this folder.",
+    "Prior app output (frontend/data/paciente_compilado.json, also rolmey/paciente_compilado.json) disagrees on OS ARTmax (368 vs printed 366) and OD/OS Prof.Câm.Ant Ext (OS 4.0 vs printed 3.90)."
+  ]
+}

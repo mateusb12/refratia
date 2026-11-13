@@ -1,0 +1,1486 @@
+{
+  "schema_version": "refratia-groundtruth/1",
+  "app_exam_key": {
+    "pentacam_corneal_tomography": "pentacam_corneal_tomography",
+    "iol_calculation": "iol_calculation",
+    "specular_microscopy": "specular_microscopy",
+    "refractometry": "refractometry",
+    "fundus_retinography": "fundus_retinography",
+    "oct_retina": "oct_retina",
+    "anterior_segment_photo": null,
+    "corneal_topography_other": null
+  },
+  "in_protocol": {
+    "pentacam_corneal_tomography": true,
+    "iol_calculation": true,
+    "specular_microscopy": true,
+    "refractometry": true,
+    "fundus_retinography": true,
+    "oct_retina": true,
+    "anterior_segment_photo": false,
+    "corneal_topography_other": false
+  },
+  "fields": {
+    "pentacam_corneal_tomography": {
+      "qi": {
+        "unit": "",
+        "kind": "str",
+        "decimals_printed": null,
+        "plausible_range": null,
+        "protocol_role": "informative",
+        "app_paths": [
+          [
+            "exams",
+            "pentacam_corneal_tomography",
+            "eyes",
+            "<EYE>",
+            "quality"
+          ],
+          [
+            "exams",
+            "pentacam_corneal_tomography",
+            "eyes",
+            "<EYE>",
+            "general",
+            "quality"
+          ]
+        ]
+      },
+      "k1_d": {
+        "unit": "D",
+        "kind": "num",
+        "decimals_printed": 1,
+        "plausible_range": [
+          30,
+          60
+        ],
+        "protocol_role": "decisive",
+        "app_paths": [
+          [
+            "exams",
+            "pentacam_corneal_tomography",
+            "eyes",
+            "<EYE>",
+            "anterior_cornea",
+            "k1_d"
+          ]
+        ]
+      },
+      "k2_d": {
+        "unit": "D",
+        "kind": "num",
+        "decimals_printed": 1,
+        "plausible_range": [
+          30,
+          60
+        ],
+        "protocol_role": "decisive",
+        "app_paths": [
+          [
+            "exams",
+            "pentacam_corneal_tomography",
+            "eyes",
+            "<EYE>",
+            "anterior_cornea",
+            "k2_d"
+          ]
+        ]
+      },
+      "km_d": {
+        "unit": "D",
+        "kind": "num",
+        "decimals_printed": 1,
+        "plausible_range": [
+          30,
+          60
+        ],
+        "protocol_role": "decisive",
+        "app_paths": [
+          [
+            "exams",
+            "pentacam_corneal_tomography",
+            "eyes",
+            "<EYE>",
+            "anterior_cornea",
+            "km_d"
+          ]
+        ]
+      },
+      "astig_ant_d": {
+        "unit": "D",
+        "kind": "num",
+        "decimals_printed": 1,
+        "plausible_range": [
+          0,
+          15
+        ],
+        "protocol_role": "informative",
+        "app_paths": [
+          [
+            "exams",
+            "pentacam_corneal_tomography",
+            "eyes",
+            "<EYE>",
+            "anterior_cornea",
+            "astigmatism_d"
+          ]
+        ]
+      },
+      "axis_flat_deg": {
+        "unit": "deg",
+        "kind": "num",
+        "decimals_printed": 1,
+        "plausible_range": [
+          0,
+          180
+        ],
+        "protocol_role": "informative",
+        "app_paths": [
+          [
+            "exams",
+            "pentacam_corneal_tomography",
+            "eyes",
+            "<EYE>",
+            "anterior_cornea",
+            "axis_deg"
+          ]
+        ]
+      },
+      "kmax_ant_d": {
+        "unit": "D",
+        "kind": "num",
+        "decimals_printed": 1,
+        "plausible_range": [
+          30,
+          80
+        ],
+        "protocol_role": "screening",
+        "app_paths": [
+          [
+            "exams",
+            "pentacam_corneal_tomography",
+            "eyes",
+            "<EYE>",
+            "anterior_cornea",
+            "kmax_d"
+          ],
+          [
+            "exams",
+            "pentacam_corneal_tomography",
+            "eyes",
+            "<EYE>",
+            "belin_ambrosio",
+            "kmax_d"
+          ]
+        ]
+      },
+      "pachy_thinnest_um": {
+        "unit": "um",
+        "kind": "int",
+        "decimals_printed": 0,
+        "plausible_range": [
+          300,
+          750
+        ],
+        "protocol_role": "decisive",
+        "app_paths": [
+          [
+            "exams",
+            "pentacam_corneal_tomography",
+            "eyes",
+            "<EYE>",
+            "pachymetry",
+            "thinnest_um"
+          ]
+        ]
+      },
+      "pachy_pupil_center_um": {
+        "unit": "um",
+        "kind": "int",
+        "decimals_printed": 0,
+        "plausible_range": [
+          300,
+          750
+        ],
+        "protocol_role": "cross_check",
+        "app_paths": [
+          [
+            "exams",
+            "pentacam_corneal_tomography",
+            "eyes",
+            "<EYE>",
+            "pachymetry",
+            "pupil_center_um"
+          ]
+        ]
+      },
+      "pachy_vertex_um": {
+        "unit": "um",
+        "kind": "int",
+        "decimals_printed": 0,
+        "plausible_range": [
+          300,
+          750
+        ],
+        "protocol_role": "cross_check",
+        "app_paths": [
+          [
+            "exams",
+            "pentacam_corneal_tomography",
+            "eyes",
+            "<EYE>",
+            "pachymetry",
+            "vertex_normal_um"
+          ]
+        ]
+      },
+      "acd_ext_mm": {
+        "unit": "mm",
+        "kind": "num",
+        "decimals_printed": 2,
+        "plausible_range": [
+          1.5,
+          5.5
+        ],
+        "protocol_role": "cross_check",
+        "app_paths": [
+          [
+            "exams",
+            "pentacam_corneal_tomography",
+            "eyes",
+            "<EYE>",
+            "anterior_segment",
+            "external_anterior_chamber_depth_mm"
+          ]
+        ]
+      },
+      "acd_int_mm": {
+        "unit": "mm",
+        "kind": "num",
+        "decimals_printed": 2,
+        "plausible_range": [
+          1.0,
+          5.0
+        ],
+        "protocol_role": "decisive",
+        "app_paths": [
+          [
+            "exams",
+            "pentacam_corneal_tomography",
+            "eyes",
+            "<EYE>",
+            "anterior_segment",
+            "internal_anterior_chamber_depth_mm"
+          ],
+          [
+            "exams",
+            "pentacam_corneal_tomography",
+            "eyes",
+            "<EYE>",
+            "cataract_preop",
+            "acd_mm"
+          ]
+        ]
+      },
+      "pns": {
+        "unit": "",
+        "kind": "int",
+        "decimals_printed": 0,
+        "plausible_range": [
+          0,
+          5
+        ],
+        "protocol_role": "informative",
+        "app_paths": [
+          [
+            "exams",
+            "pentacam_corneal_tomography",
+            "eyes",
+            "<EYE>",
+            "anterior_segment",
+            "pns"
+          ],
+          [
+            "exams",
+            "pentacam_corneal_tomography",
+            "eyes",
+            "<EYE>",
+            "cataract_preop",
+            "pns"
+          ]
+        ]
+      },
+      "z40_6mm_um": {
+        "unit": "um",
+        "kind": "num",
+        "decimals_printed": 3,
+        "plausible_range": [
+          -0.5,
+          1.5
+        ],
+        "protocol_role": "informative",
+        "app_paths": [
+          [
+            "exams",
+            "pentacam_corneal_tomography",
+            "eyes",
+            "<EYE>",
+            "cataract_preop",
+            "total_corneal_z40_6mm_um"
+          ]
+        ]
+      },
+      "bad_d": {
+        "unit": "",
+        "kind": "num",
+        "decimals_printed": 2,
+        "plausible_range": [
+          -3,
+          25
+        ],
+        "protocol_role": "screening",
+        "app_paths": [
+          [
+            "exams",
+            "pentacam_corneal_tomography",
+            "eyes",
+            "<EYE>",
+            "belin_ambrosio",
+            "d"
+          ]
+        ]
+      },
+      "art_max_um": {
+        "unit": "um",
+        "kind": "int",
+        "decimals_printed": 0,
+        "plausible_range": [
+          50,
+          1000
+        ],
+        "protocol_role": "screening",
+        "app_paths": [
+          [
+            "exams",
+            "pentacam_corneal_tomography",
+            "eyes",
+            "<EYE>",
+            "belin_ambrosio",
+            "art_max"
+          ]
+        ]
+      },
+      "isv": {
+        "unit": "",
+        "kind": "int",
+        "decimals_printed": 0,
+        "plausible_range": [
+          0,
+          300
+        ],
+        "protocol_role": "screening",
+        "app_paths": [
+          [
+            "exams",
+            "pentacam_corneal_tomography",
+            "eyes",
+            "<EYE>",
+            "topometric_indices_8mm",
+            "isv"
+          ]
+        ]
+      },
+      "iva": {
+        "unit": "",
+        "kind": "num",
+        "decimals_printed": 2,
+        "plausible_range": [
+          0,
+          3
+        ],
+        "protocol_role": "screening",
+        "app_paths": [
+          [
+            "exams",
+            "pentacam_corneal_tomography",
+            "eyes",
+            "<EYE>",
+            "topometric_indices_8mm",
+            "iva"
+          ]
+        ]
+      },
+      "iha": {
+        "unit": "",
+        "kind": "num",
+        "decimals_printed": 1,
+        "plausible_range": [
+          0,
+          100
+        ],
+        "protocol_role": "screening",
+        "app_paths": [
+          [
+            "exams",
+            "pentacam_corneal_tomography",
+            "eyes",
+            "<EYE>",
+            "topometric_indices_8mm",
+            "iha"
+          ]
+        ]
+      },
+      "ihd": {
+        "unit": "",
+        "kind": "num",
+        "decimals_printed": 3,
+        "plausible_range": [
+          0,
+          1
+        ],
+        "protocol_role": "screening",
+        "app_paths": [
+          [
+            "exams",
+            "pentacam_corneal_tomography",
+            "eyes",
+            "<EYE>",
+            "topometric_indices_8mm",
+            "ihd"
+          ]
+        ]
+      },
+      "ki": {
+        "unit": "",
+        "kind": "num",
+        "decimals_printed": 2,
+        "plausible_range": [
+          0.5,
+          2
+        ],
+        "protocol_role": "screening",
+        "app_paths": [
+          [
+            "exams",
+            "pentacam_corneal_tomography",
+            "eyes",
+            "<EYE>",
+            "topometric_indices_8mm",
+            "ki"
+          ]
+        ]
+      },
+      "cki": {
+        "unit": "",
+        "kind": "num",
+        "decimals_printed": 2,
+        "plausible_range": [
+          0.5,
+          2
+        ],
+        "protocol_role": "screening",
+        "app_paths": [
+          [
+            "exams",
+            "pentacam_corneal_tomography",
+            "eyes",
+            "<EYE>",
+            "topometric_indices_8mm",
+            "cki"
+          ]
+        ]
+      },
+      "tkc": {
+        "unit": "",
+        "kind": "str",
+        "decimals_printed": null,
+        "plausible_range": null,
+        "protocol_role": "screening",
+        "app_paths": [
+          [
+            "exams",
+            "pentacam_corneal_tomography",
+            "eyes",
+            "<EYE>",
+            "topometric_indices_8mm",
+            "tkc"
+          ]
+        ]
+      },
+      "abcd_staging": {
+        "unit": "",
+        "kind": "str",
+        "decimals_printed": null,
+        "plausible_range": null,
+        "protocol_role": "screening",
+        "app_paths": [
+          [
+            "exams",
+            "pentacam_corneal_tomography",
+            "eyes",
+            "<EYE>",
+            "abcd_keratoconus_staging",
+            "staging"
+          ]
+        ]
+      },
+      "coma_z31_5mm_um": {
+        "unit": "um",
+        "kind": "num",
+        "decimals_printed": 3,
+        "plausible_range": [
+          0,
+          5
+        ],
+        "protocol_role": "informative",
+        "app_paths": [
+          [
+            "exams",
+            "pentacam_corneal_tomography",
+            "eyes",
+            "<EYE>",
+            "corneal_rings",
+            "zernike",
+            "5mm",
+            "z31_coma"
+          ]
+        ]
+      },
+      "coma_z31_5mm_axis_deg": {
+        "unit": "deg",
+        "kind": "int",
+        "decimals_printed": 0,
+        "plausible_range": [
+          0,
+          360
+        ],
+        "protocol_role": "informative",
+        "app_paths": [
+          [
+            "exams",
+            "pentacam_corneal_tomography",
+            "eyes",
+            "<EYE>",
+            "corneal_rings",
+            "zernike",
+            "5mm",
+            "z31_coma"
+          ]
+        ]
+      },
+      "coma_z31_6mm_um": {
+        "unit": "um",
+        "kind": "num",
+        "decimals_printed": 3,
+        "plausible_range": [
+          0,
+          5
+        ],
+        "protocol_role": "informative",
+        "app_paths": [
+          [
+            "exams",
+            "pentacam_corneal_tomography",
+            "eyes",
+            "<EYE>",
+            "corneal_rings",
+            "zernike",
+            "6mm",
+            "z31_coma"
+          ]
+        ]
+      },
+      "aberr_max_diameter_mm": {
+        "unit": "mm",
+        "kind": "num",
+        "decimals_printed": 2,
+        "plausible_range": [
+          1,
+          8
+        ],
+        "protocol_role": "informative",
+        "app_paths": []
+      },
+      "coma0_4mm_wfa_ant_um": {
+        "unit": "um",
+        "kind": "num",
+        "decimals_printed": 3,
+        "plausible_range": [
+          -3,
+          3
+        ],
+        "protocol_role": "informative",
+        "app_paths": []
+      },
+      "coma90_4mm_wfa_ant_um": {
+        "unit": "um",
+        "kind": "num",
+        "decimals_printed": 3,
+        "plausible_range": [
+          -3,
+          3
+        ],
+        "protocol_role": "informative",
+        "app_paths": []
+      },
+      "coma0_4mm_wfa_post_um": {
+        "unit": "um",
+        "kind": "num",
+        "decimals_printed": 3,
+        "plausible_range": [
+          -3,
+          3
+        ],
+        "protocol_role": "informative",
+        "app_paths": []
+      },
+      "coma90_4mm_wfa_post_um": {
+        "unit": "um",
+        "kind": "num",
+        "decimals_printed": 3,
+        "plausible_range": [
+          -3,
+          3
+        ],
+        "protocol_role": "informative",
+        "app_paths": []
+      },
+      "coma0_4mm_wfa_cornea_um": {
+        "unit": "um",
+        "kind": "num",
+        "decimals_printed": 3,
+        "plausible_range": [
+          -3,
+          3
+        ],
+        "protocol_role": "informative",
+        "app_paths": []
+      },
+      "coma90_4mm_wfa_cornea_um": {
+        "unit": "um",
+        "kind": "num",
+        "decimals_printed": 3,
+        "plausible_range": [
+          -3,
+          3
+        ],
+        "protocol_role": "informative",
+        "app_paths": []
+      },
+      "coma_4mm_wfa_cornea_magnitude_um": {
+        "unit": "um",
+        "kind": "num",
+        "decimals_printed": 3,
+        "plausible_range": [
+          0,
+          3
+        ],
+        "protocol_role": "informative",
+        "app_paths": []
+      }
+    },
+    "iol_calculation": {
+      "lens_status": {
+        "unit": "",
+        "kind": "str",
+        "decimals_printed": null,
+        "plausible_range": null,
+        "protocol_role": "informative",
+        "app_paths": [
+          [
+            "exams",
+            "iol_calculation",
+            "eyes",
+            "<EYE>",
+            "status"
+          ]
+        ]
+      },
+      "measurement_date": {
+        "unit": "",
+        "kind": "date",
+        "decimals_printed": null,
+        "plausible_range": null,
+        "protocol_role": "identity",
+        "app_paths": []
+      },
+      "al_mm": {
+        "unit": "mm",
+        "kind": "num",
+        "decimals_printed": 2,
+        "plausible_range": [
+          18,
+          35
+        ],
+        "protocol_role": "informative",
+        "app_paths": [
+          [
+            "exams",
+            "iol_calculation",
+            "eyes",
+            "<EYE>",
+            "axial_length_mm"
+          ]
+        ]
+      },
+      "cct_um": {
+        "unit": "um",
+        "kind": "int",
+        "decimals_printed": 0,
+        "plausible_range": [
+          300,
+          750
+        ],
+        "protocol_role": "cross_check",
+        "app_paths": [
+          [
+            "exams",
+            "iol_calculation",
+            "eyes",
+            "<EYE>",
+            "central_corneal_thickness_um"
+          ]
+        ]
+      },
+      "ad_mm": {
+        "unit": "mm",
+        "kind": "num",
+        "decimals_printed": 2,
+        "plausible_range": [
+          1.0,
+          5.0
+        ],
+        "protocol_role": "cross_check",
+        "app_paths": [
+          [
+            "exams",
+            "iol_calculation",
+            "eyes",
+            "<EYE>",
+            "aqueous_depth_mm"
+          ]
+        ]
+      },
+      "acd_mm": {
+        "unit": "mm",
+        "kind": "num",
+        "decimals_printed": 2,
+        "plausible_range": [
+          1.5,
+          5.5
+        ],
+        "protocol_role": "cross_check",
+        "app_paths": [
+          [
+            "exams",
+            "iol_calculation",
+            "eyes",
+            "<EYE>",
+            "anterior_chamber_depth_mm"
+          ]
+        ]
+      },
+      "lt_mm": {
+        "unit": "mm",
+        "kind": "num",
+        "decimals_printed": 2,
+        "plausible_range": [
+          2,
+          7
+        ],
+        "protocol_role": "informative",
+        "app_paths": [
+          [
+            "exams",
+            "iol_calculation",
+            "eyes",
+            "<EYE>",
+            "lens_thickness_mm"
+          ]
+        ]
+      },
+      "k1_d": {
+        "unit": "D",
+        "kind": "num",
+        "decimals_printed": 2,
+        "plausible_range": [
+          30,
+          60
+        ],
+        "protocol_role": "cross_check",
+        "app_paths": [
+          [
+            "exams",
+            "iol_calculation",
+            "eyes",
+            "<EYE>",
+            "keratometry",
+            "k1_d"
+          ]
+        ]
+      },
+      "k1_radius_mm": {
+        "unit": "mm",
+        "kind": "num",
+        "decimals_printed": 2,
+        "plausible_range": [
+          5.5,
+          11
+        ],
+        "protocol_role": "extra",
+        "app_paths": [
+          [
+            "exams",
+            "iol_calculation",
+            "eyes",
+            "<EYE>",
+            "keratometry",
+            "k1_radius_mm"
+          ]
+        ]
+      },
+      "k1_axis_deg": {
+        "unit": "deg",
+        "kind": "int",
+        "decimals_printed": 0,
+        "plausible_range": [
+          0,
+          180
+        ],
+        "protocol_role": "extra",
+        "app_paths": [
+          [
+            "exams",
+            "iol_calculation",
+            "eyes",
+            "<EYE>",
+            "keratometry",
+            "k1_axis_deg"
+          ]
+        ]
+      },
+      "k2_d": {
+        "unit": "D",
+        "kind": "num",
+        "decimals_printed": 2,
+        "plausible_range": [
+          30,
+          60
+        ],
+        "protocol_role": "cross_check",
+        "app_paths": [
+          [
+            "exams",
+            "iol_calculation",
+            "eyes",
+            "<EYE>",
+            "keratometry",
+            "k2_d"
+          ]
+        ]
+      },
+      "k2_radius_mm": {
+        "unit": "mm",
+        "kind": "num",
+        "decimals_printed": 2,
+        "plausible_range": [
+          5.5,
+          11
+        ],
+        "protocol_role": "extra",
+        "app_paths": [
+          [
+            "exams",
+            "iol_calculation",
+            "eyes",
+            "<EYE>",
+            "keratometry",
+            "k2_radius_mm"
+          ]
+        ]
+      },
+      "k2_axis_deg": {
+        "unit": "deg",
+        "kind": "int",
+        "decimals_printed": 0,
+        "plausible_range": [
+          0,
+          180
+        ],
+        "protocol_role": "extra",
+        "app_paths": [
+          [
+            "exams",
+            "iol_calculation",
+            "eyes",
+            "<EYE>",
+            "keratometry",
+            "k2_axis_deg"
+          ]
+        ]
+      },
+      "k_mean_d": {
+        "unit": "D",
+        "kind": "num",
+        "decimals_printed": 2,
+        "plausible_range": [
+          30,
+          60
+        ],
+        "protocol_role": "cross_check",
+        "app_paths": [
+          [
+            "exams",
+            "iol_calculation",
+            "eyes",
+            "<EYE>",
+            "keratometry",
+            "mean_k_d"
+          ]
+        ]
+      },
+      "k_mean_radius_mm": {
+        "unit": "mm",
+        "kind": "num",
+        "decimals_printed": 2,
+        "plausible_range": [
+          5.5,
+          11
+        ],
+        "protocol_role": "extra",
+        "app_paths": [
+          [
+            "exams",
+            "iol_calculation",
+            "eyes",
+            "<EYE>",
+            "keratometry",
+            "mean_radius_mm"
+          ]
+        ]
+      },
+      "astig_d": {
+        "unit": "D",
+        "kind": "num",
+        "decimals_printed": 2,
+        "plausible_range": [
+          -15,
+          15
+        ],
+        "protocol_role": "decisive",
+        "app_paths": [
+          [
+            "exams",
+            "iol_calculation",
+            "eyes",
+            "<EYE>",
+            "keratometry",
+            "astigmatism_d"
+          ]
+        ]
+      },
+      "astig_axis_deg": {
+        "unit": "deg",
+        "kind": "int",
+        "decimals_printed": 0,
+        "plausible_range": [
+          0,
+          180
+        ],
+        "protocol_role": "informative",
+        "app_paths": [
+          [
+            "exams",
+            "iol_calculation",
+            "eyes",
+            "<EYE>",
+            "keratometry",
+            "astigmatism_axis_deg"
+          ]
+        ]
+      },
+      "wtw_mm": {
+        "unit": "mm",
+        "kind": "num",
+        "decimals_printed": 2,
+        "plausible_range": [
+          9,
+          15
+        ],
+        "protocol_role": "informative",
+        "app_paths": [
+          [
+            "exams",
+            "iol_calculation",
+            "eyes",
+            "<EYE>",
+            "white_to_white_mm"
+          ]
+        ]
+      },
+      "target_refraction_d": {
+        "unit": "D",
+        "kind": "num",
+        "decimals_printed": 2,
+        "plausible_range": [
+          -10,
+          10
+        ],
+        "protocol_role": "extra",
+        "app_paths": [
+          [
+            "exams",
+            "iol_calculation",
+            "eyes",
+            "<EYE>",
+            "target_refraction_d"
+          ]
+        ]
+      }
+    },
+    "specular_microscopy": {
+      "cell_density_cells_mm2": {
+        "unit": "cells/mm2",
+        "kind": "int",
+        "decimals_printed": 0,
+        "plausible_range": [
+          300,
+          4500
+        ],
+        "protocol_role": "decisive",
+        "app_paths": [
+          [
+            "exams",
+            "specular_microscopy",
+            "eyes",
+            "<EYE>",
+            "cell_density_cells_per_mm2"
+          ],
+          [
+            "exams",
+            "specular_microscopy",
+            "eyes",
+            "<EYE>",
+            "cell_density_cells_mm2"
+          ]
+        ]
+      },
+      "num_cells": {
+        "unit": "cells",
+        "kind": "int",
+        "decimals_printed": 0,
+        "plausible_range": [
+          1,
+          1000
+        ],
+        "protocol_role": "extra",
+        "app_paths": [
+          [
+            "exams",
+            "specular_microscopy",
+            "eyes",
+            "<EYE>",
+            "number_of_cells"
+          ]
+        ]
+      },
+      "avg_area_um2": {
+        "unit": "um2",
+        "kind": "int",
+        "decimals_printed": 0,
+        "plausible_range": [
+          100,
+          3000
+        ],
+        "protocol_role": "extra",
+        "app_paths": [
+          [
+            "exams",
+            "specular_microscopy",
+            "eyes",
+            "<EYE>",
+            "average_cell_area_um2"
+          ]
+        ]
+      },
+      "sd_um2": {
+        "unit": "um2",
+        "kind": "int",
+        "decimals_printed": 0,
+        "plausible_range": [
+          0,
+          2000
+        ],
+        "protocol_role": "extra",
+        "app_paths": [
+          [
+            "exams",
+            "specular_microscopy",
+            "eyes",
+            "<EYE>",
+            "standard_deviation_um2"
+          ]
+        ]
+      },
+      "cv_pct": {
+        "unit": "%",
+        "kind": "int",
+        "decimals_printed": 0,
+        "plausible_range": [
+          0,
+          100
+        ],
+        "protocol_role": "informative",
+        "app_paths": [
+          [
+            "exams",
+            "specular_microscopy",
+            "eyes",
+            "<EYE>",
+            "coefficient_of_variation_percent"
+          ]
+        ]
+      },
+      "max_area_um2": {
+        "unit": "um2",
+        "kind": "int",
+        "decimals_printed": 0,
+        "plausible_range": [
+          100,
+          10000
+        ],
+        "protocol_role": "extra",
+        "app_paths": [
+          [
+            "exams",
+            "specular_microscopy",
+            "eyes",
+            "<EYE>",
+            "maximum_cell_area_um2"
+          ]
+        ]
+      },
+      "min_area_um2": {
+        "unit": "um2",
+        "kind": "int",
+        "decimals_printed": 0,
+        "plausible_range": [
+          10,
+          3000
+        ],
+        "protocol_role": "extra",
+        "app_paths": [
+          [
+            "exams",
+            "specular_microscopy",
+            "eyes",
+            "<EYE>",
+            "minimum_cell_area_um2"
+          ]
+        ]
+      },
+      "hex_pct": {
+        "unit": "%",
+        "kind": "int",
+        "decimals_printed": 0,
+        "plausible_range": [
+          0,
+          100
+        ],
+        "protocol_role": "informative",
+        "app_paths": [
+          [
+            "exams",
+            "specular_microscopy",
+            "eyes",
+            "<EYE>",
+            "hexagonal_cells_percent"
+          ]
+        ]
+      },
+      "ct_um": {
+        "unit": "um",
+        "kind": "int",
+        "decimals_printed": 0,
+        "plausible_range": [
+          300,
+          750
+        ],
+        "protocol_role": "cross_check",
+        "app_paths": [
+          [
+            "exams",
+            "specular_microscopy",
+            "eyes",
+            "<EYE>",
+            "corneal_thickness_um"
+          ]
+        ]
+      }
+    },
+    "refractometry": {
+      "refraction_type": {
+        "unit": "",
+        "kind": "str",
+        "decimals_printed": null,
+        "plausible_range": null,
+        "protocol_role": "informative",
+        "app_paths": [
+          [
+            "exams",
+            "refractometry",
+            "eyes",
+            "<EYE>",
+            "refraction_type"
+          ],
+          [
+            "exams",
+            "refractometry",
+            "eyes",
+            "<EYE>",
+            "type"
+          ]
+        ]
+      },
+      "sphere_d": {
+        "unit": "D",
+        "kind": "num",
+        "decimals_printed": 2,
+        "plausible_range": [
+          -30,
+          20
+        ],
+        "protocol_role": "decisive",
+        "app_paths": [
+          [
+            "exams",
+            "refractometry",
+            "eyes",
+            "<EYE>",
+            "sphere_d"
+          ],
+          [
+            "exams",
+            "refractometry",
+            "eyes",
+            "<EYE>",
+            "refraction",
+            "sphere_d"
+          ]
+        ]
+      },
+      "cylinder_d": {
+        "unit": "D",
+        "kind": "num",
+        "decimals_printed": 2,
+        "plausible_range": [
+          -10,
+          10
+        ],
+        "protocol_role": "decisive",
+        "app_paths": [
+          [
+            "exams",
+            "refractometry",
+            "eyes",
+            "<EYE>",
+            "cylinder_d"
+          ],
+          [
+            "exams",
+            "refractometry",
+            "eyes",
+            "<EYE>",
+            "refraction",
+            "cylinder_d"
+          ]
+        ]
+      },
+      "axis_deg": {
+        "unit": "deg",
+        "kind": "int",
+        "decimals_printed": 0,
+        "plausible_range": [
+          0,
+          180
+        ],
+        "protocol_role": "decisive",
+        "app_paths": [
+          [
+            "exams",
+            "refractometry",
+            "eyes",
+            "<EYE>",
+            "axis_deg"
+          ],
+          [
+            "exams",
+            "refractometry",
+            "eyes",
+            "<EYE>",
+            "refraction",
+            "axis_deg"
+          ]
+        ]
+      },
+      "vertex_distance_mm": {
+        "unit": "mm",
+        "kind": "num",
+        "decimals_printed": 1,
+        "plausible_range": [
+          0,
+          20
+        ],
+        "protocol_role": "informative",
+        "app_paths": [
+          [
+            "exams",
+            "refractometry",
+            "eyes",
+            "<EYE>",
+            "vertex_distance_mm"
+          ]
+        ]
+      },
+      "cyl_form": {
+        "unit": "",
+        "kind": "str",
+        "decimals_printed": null,
+        "plausible_range": null,
+        "protocol_role": "extra",
+        "app_paths": []
+      },
+      "pd_mm": {
+        "unit": "mm",
+        "kind": "num",
+        "decimals_printed": 0,
+        "plausible_range": [
+          40,
+          80
+        ],
+        "protocol_role": "extra",
+        "app_paths": [
+          [
+            "exams",
+            "refractometry",
+            "eyes",
+            "<EYE>",
+            "pd_mm"
+          ]
+        ]
+      },
+      "iop_avg_mmhg": {
+        "unit": "mmHg",
+        "kind": "num",
+        "decimals_printed": 1,
+        "plausible_range": [
+          5,
+          60
+        ],
+        "protocol_role": "extra",
+        "app_paths": []
+      }
+    },
+    "fundus_retinography": {
+      "mode": {
+        "unit": "",
+        "kind": "str",
+        "decimals_printed": null,
+        "plausible_range": null,
+        "protocol_role": "identity",
+        "app_paths": [
+          [
+            "exams",
+            "fundus_retinography",
+            "eyes",
+            "<EYE>",
+            "mode"
+          ]
+        ]
+      },
+      "findings": {
+        "unit": "",
+        "kind": "str",
+        "decimals_printed": null,
+        "plausible_range": null,
+        "protocol_role": "informative",
+        "app_paths": [
+          [
+            "exams",
+            "fundus_retinography",
+            "eyes",
+            "<EYE>",
+            "findings"
+          ]
+        ]
+      }
+    },
+    "anterior_segment_photo": {
+      "mode": {
+        "unit": "",
+        "kind": "str",
+        "decimals_printed": null,
+        "plausible_range": null,
+        "protocol_role": "identity",
+        "app_paths": []
+      }
+    },
+    "corneal_topography_other": {
+      "simk_3mm_steep_d": {
+        "unit": "D",
+        "kind": "num",
+        "decimals_printed": 2,
+        "plausible_range": [
+          30,
+          60
+        ],
+        "protocol_role": "cross_check",
+        "app_paths": []
+      },
+      "simk_3mm_steep_axis_deg": {
+        "unit": "deg",
+        "kind": "int",
+        "decimals_printed": 0,
+        "plausible_range": [
+          0,
+          180
+        ],
+        "protocol_role": "cross_check",
+        "app_paths": []
+      },
+      "simk_3mm_flat_d": {
+        "unit": "D",
+        "kind": "num",
+        "decimals_printed": 2,
+        "plausible_range": [
+          30,
+          60
+        ],
+        "protocol_role": "cross_check",
+        "app_paths": []
+      },
+      "simk_3mm_flat_axis_deg": {
+        "unit": "deg",
+        "kind": "int",
+        "decimals_printed": 0,
+        "plausible_range": [
+          0,
+          180
+        ],
+        "protocol_role": "cross_check",
+        "app_paths": []
+      },
+      "simk_3mm_cyl_d": {
+        "unit": "D",
+        "kind": "num",
+        "decimals_printed": 2,
+        "plausible_range": [
+          0,
+          15
+        ],
+        "protocol_role": "cross_check",
+        "app_paths": []
+      }
+    }
+  }
+}
