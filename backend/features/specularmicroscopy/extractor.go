@@ -309,7 +309,7 @@ func ocrMicroscopyPanelOpts(
 		return panelOCRResult{}, err
 	}
 
-	first, err := ocrPanelPNG(ctx, pngData, 6)
+	first, err := ocrPanelPNG(ctx, pngData, 6, 1)
 	if err != nil {
 		return panelOCRResult{}, err
 	}
@@ -329,7 +329,7 @@ func ocrMicroscopyPanelOpts(
 	for _, variant := range []struct {
 		binarize int
 		psm      int
-	}{{0, 6}, {0, 4}, {60, 6}, {60, 4}} {
+	}{{0, 6}, {0, 4}, {60, 6}, {60, 4}, {120, 6}, {120, 4}} {
 		gray := ocr.PrepareGray(img, crop, 3, 0)
 		ocr.AutoContrast(gray)
 		if variant.binarize > 0 {
@@ -339,7 +339,7 @@ func ocrMicroscopyPanelOpts(
 		if encodeErr != nil {
 			continue
 		}
-		result, ocrErr := ocrPanelPNG(ctx, encoded, variant.psm)
+		result, ocrErr := ocrPanelPNG(ctx, encoded, variant.psm, 3)
 		if ocrErr != nil {
 			continue
 		}
@@ -359,7 +359,8 @@ func ocrMicroscopyPanelOpts(
 	return main, nil
 }
 
-func ocrPanelPNG(ctx context.Context, pngData []byte, psm int) (panelOCRResult, error) {
+// scale is the upscale factor of pngData: the row tolerance is in its pixels.
+func ocrPanelPNG(ctx context.Context, pngData []byte, psm, scale int) (panelOCRResult, error) {
 	tsv, err := ocr.RunTesseractTSVWithPSM(ctx, pngData, psm)
 	if err != nil {
 		return panelOCRResult{}, err
@@ -368,7 +369,7 @@ func ocrPanelPNG(ctx context.Context, pngData []byte, psm int) (panelOCRResult, 
 	if err != nil {
 		return panelOCRResult{}, err
 	}
-	rows := ocr.GroupRows(words, 12)
+	rows := ocr.GroupRows(words, 12*scale)
 	textRows := make([]string, 0, len(rows))
 	for _, row := range rows {
 		textRows = append(textRows, ocr.RowText(row))

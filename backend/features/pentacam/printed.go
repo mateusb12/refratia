@@ -39,7 +39,14 @@ func normalizePrinted(raw string, rule extractionfields.Rule) (float64, bool) {
 		sign, token = token[:1], token[1:]
 	}
 
-	if dot := strings.IndexByte(token, '.'); dot >= 0 {
+	dot := strings.IndexByte(token, '.')
+	// The unit printed after the value ("D", "°") is read as a trailing "0" when
+	// the crop keeps it and a digit whitelist forces letters into digits: one
+	// more decimal than the cell prints, and it is a zero, is that unit.
+	if dot >= 0 && rule.Decimals > 0 && len(token)-dot-1 == rule.Decimals+1 && token[len(token)-1] == '0' {
+		token = token[:len(token)-1]
+	}
+	if dot >= 0 {
 		if rule.Decimals < 0 || len(token)-dot-1 != rule.Decimals || rule.Decimals == 0 {
 			return 0, false
 		}

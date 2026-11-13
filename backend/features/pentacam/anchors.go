@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 	"image"
-	"math"
 	"os"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 
@@ -329,26 +329,47 @@ func readAnchored(
 			readings[j.field.Key] = append(readings[j.field.Key], results[i].reading)
 		}
 	}
-	// Tie-break by a physical prior: the anterior astigmatism equals K2 - K1.
-	// When the astigmatism cell's readings disagree (0.5 vs 5: the OCR drops
-	// the "0." of a small value), the one reading within 0.3 of K2 - K1 wins.
-	if _, have := readings["astigmatism_d"]; have && len(readings["astigmatism_d"]) == 0 {
-		k1, ok1 := readings["k1_d"]
-		k2, ok2 := readings["k2_d"]
-		if ok1 && ok2 && len(k1) > 0 && len(k2) > 0 {
-			prior := k2[0].Value - k1[0].Value
-			for i, j := range jobs {
-				if j.field.Key != "astigmatism_d" || results[i].votes == nil {
-					continue
-				}
-				if v, ok := fitPrior(results[i].votes, prior, 0.3); ok {
-					hint := FieldHint{Spec: j.field.Spec, Status: "valid", Stage: "recognition", Screen: string(j.screen),
-						Page: pageOf[j.screen], Strategy: "label_anchor+prior", Votes: results[i].votes[v], Candidates: len(results[i].votes)}
-					readings["astigmatism_d"] = append(readings["astigmatism_d"], anchoredValue{Value: v, Hint: hint})
-					break
-				}
-			}
+	// The keratometry cells obey Km = (K1+K2)/2 and astigmatism = K2-K1: a
+	// misread glyph (1 vs 7, a lost "1.") shows as a broken identity. Resolve
+	// toward the one reading assignment that satisfies them, else drop the
+	// values that cannot be trusted (never keep one side arbitrarily).
+	accepted := map[string]float64{}
+	candidates := map[string]map[float64]int{}
+	firstJob := map[string]int{}
+	for i, j := range jobs {
+		if !slices.Contains(keratoKeys, j.field.Key) {
+			continue
 		}
+		if _, ok := firstJob[j.field.Key]; !ok {
+			firstJob[j.field.Key] = i
+		}
+		if candidates[j.field.Key] == nil {
+			candidates[j.field.Key] = map[float64]int{}
+		}
+		for v, n := range results[i].votes {
+			candidates[j.field.Key][v] += n
+		}
+	}
+	for _, key := range keratoKeys {
+		if rs := readings[key]; len(rs) > 0 && allEqual(rs) {
+			accepted[key] = rs[0].Value
+		}
+	}
+	for key, v := range keratoResolve(accepted, candidates) {
+		if a, ok := accepted[key]; ok && a == v {
+			continue
+		}
+		j := jobs[firstJob[key]]
+		readings[key] = []anchoredValue{{Value: v, Hint: FieldHint{Spec: j.field.Spec, Status: "valid", Stage: "recognition",
+			Screen: string(j.screen), Page: pageOf[j.screen], Strategy: "label_anchor+consistency",
+			Votes: candidates[key][v], Candidates: len(candidates[key])}}}
+		accepted[key] = v
+	}
+	for _, key := range keratoDrop(accepted) {
+		j := jobs[firstJob[key]]
+		readings[key] = nil
+		conflicts = append(conflicts, FieldHint{Spec: j.field.Spec, Status: "conflicting", Stage: "recognition",
+			Strategy: "cross_check", Screen: string(j.screen), Page: pageOf[j.screen], Candidates: len(candidates[key])})
 	}
 	for _, key := range order {
 		rs := readings[key]
@@ -422,19 +443,22 @@ func readQuality(
 	return "", FieldHint{}, false
 }
 
-// crossCheckAstigmatism: the anterior astigmatism is the difference between the
-// steep and flat keratometry (K2 - K1), printed rounded. A value that disagrees
-// by more than the rounding (a lost decimal point: 0.5 read as 5), whichever
-// strategy read it, is removed and reported conflicting.
+// crossCheckAstigmatism applies the keratometry identities (keratoDrop) to the
+// final values, whichever strategy read them: values that break them are
+// removed and reported conflicting.
 func crossCheckAstigmatism(values map[string]any) []FieldHint {
-	k1, ok1 := values["k1_d"].(float64)
-	k2, ok2 := values["k2_d"].(float64)
-	astig, ok3 := values["astigmatism_d"].(float64)
-	if !ok1 || !ok2 || !ok3 || math.Abs((k2-k1)-astig) <= 0.3 {
-		return nil
+	num := map[string]float64{}
+	for _, key := range keratoKeys {
+		if v, ok := values[key].(float64); ok {
+			num[key] = v
+		}
 	}
-	values["astigmatism_d"] = nil
-	return []FieldHint{{Spec: "astig_ant_d", Status: "conflicting", Stage: "recognition", Strategy: "cross_check", Candidates: 2}}
+	var hints []FieldHint
+	for _, key := range keratoDrop(num) {
+		values[key] = nil
+		hints = append(hints, FieldHint{Spec: valueKeySpec[key], Status: "conflicting", Stage: "recognition", Strategy: "cross_check", Candidates: 2})
+	}
+	return hints
 }
 
 // suspectCell is returned as the vote count of a cell that was deliberately not
@@ -444,22 +468,6 @@ const suspectCell = -1
 // readerConcurrency bounds parallel tesseract processes (they are
 // single-threaded under OMP_THREAD_LIMIT=1).
 const readerConcurrency = 4
-
-// fitPrior returns the only reading within tol of the prior that was read at
-// least three times; with zero or several such readings there is no answer.
-func fitPrior(votes map[float64]int, prior, tol float64) (float64, bool) {
-	best, found := 0.0, false
-	for v, n := range votes {
-		if n < 3 || math.Abs(v-prior) > tol {
-			continue
-		}
-		if found {
-			return 0, false
-		}
-		best, found = v, true
-	}
-	return best, found
-}
 
 func allEqual(readings []anchoredValue) bool {
 	for _, r := range readings[1:] {
@@ -608,6 +616,10 @@ func readValueBox(
 	}
 
 	votes := map[float64]int{}
+	// Votes per binarization family (grey vs fixed threshold), to tell a
+	// glyph distorted by one preprocessing from a value the cell really shows.
+	var family [2]map[float64]int
+	family[0], family[1] = map[float64]int{}, map[float64]int{}
 	if tokenValue != nil {
 		votes[*tokenValue]++
 	}
@@ -653,6 +665,7 @@ func readValueBox(
 						}
 						if v, ok := normalizePrinted(text, rule); ok {
 							votes[v]++
+							family[min(int(threshold), 1)][v]++
 						}
 					}
 				}
@@ -682,10 +695,37 @@ func readValueBox(
 	}
 	// A competing reading (3 vs 9 in a pixel font) must not be outvoted by a
 	// small margin: with rivals the winner needs 80% of the valid reads.
+	// The thresholded reads (fixed threshold 150) distort some glyphs
+	// systematically (5 becomes 6 when the strokes merge). When the whole-page
+	// reading and a clear majority of the grey-scale reads agree, that rival
+	// confined to the thresholded family does not make the cell ambiguous.
+	if tokenValue != nil && (rival || (len(votes) > 1 && bestVotes*5 < total*4)) {
+		grey, greyTotal := family[0][*tokenValue], 0
+		for _, n := range family[0] {
+			greyTotal += n
+		}
+		if grey >= 2 && strictPlurality(family[0], *tokenValue) && grey*3 >= greyTotal*2 {
+			return *tokenValue, votes[*tokenValue], len(votes), rect, true
+		}
+	}
 	if bestVotes < 2 || rival || (len(votes) > 1 && bestVotes*5 < total*4) {
 		return 0, bestVotes, len(votes), rect, false
 	}
 	return bestValue, bestVotes, len(votes), rect, true
+}
+
+// strictPlurality reports whether v has more votes than every other value.
+func strictPlurality(votes map[float64]int, v float64) bool {
+	n := votes[v]
+	if n == 0 {
+		return false
+	}
+	for other, m := range votes {
+		if other != v && m >= n {
+			return false
+		}
+	}
+	return true
 }
 
 func leadingNonDigits(text string) int {

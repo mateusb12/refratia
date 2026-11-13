@@ -20,7 +20,8 @@ func TestNormalizePrinted(t *testing.T) {
 		{"46D", d1, 4.6, true},     // dot lost by OCR
 		{"}45.5D", d1, 45.5, true}, // border + unit
 		{"6.0°", d1, 6.0, true},
-		{"5.55", d1, 0, false}, // wrong number of decimals
+		{"5.55", d1, 0, false},  // wrong number of decimals
+		{"1.20", d1, 1.2, true}, // unit "D" read as a trailing zero
 		{"0173", d3signed, 0.173, true},
 		{"-0.173", d3signed, -0.173, true},
 		{"-0173", d3signed, -0.173, true}, // sign preserved through re-insertion
