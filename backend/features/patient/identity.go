@@ -2,6 +2,7 @@ package patient
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 	"unicode"
@@ -14,7 +15,7 @@ func Identity(analysis map[string]any) (string, bool) {
 	}
 
 	fullName, _ := patient["full_name"].(string)
-	fullName = normalizePatientName(fullName)
+	fullName = NameKey(fullName)
 
 	birthDate, birthOK := CanonicalBirthDate(analysis)
 
@@ -28,96 +29,221 @@ func Identity(analysis map[string]any) (string, bool) {
 	return fullName + "|" + birthDate, true
 }
 
+// CanonicalBirthDate resolves the birth date. See ResolveBirthDate.
 func CanonicalBirthDate(analysis map[string]any) (string, bool) {
-	// A evidência bruta do documento tem prioridade sobre datas
-	// "normalized" produzidas pelo modelo.
-	//
-	// Exemplo real do Pentacam:
-	//   nascimento_lido = 03/04/1980
-	//   timestamp_lido  = 08/31/2026
-	//
-	// Como 30 não pode ser mês, o documento está em MM/DD/YYYY.
-	// Portanto 03/04/1980 = 1980-03-04.
+	date, _, ok := ResolveBirthDate(analysis)
+	return date, ok
+}
 
-	rawBirthDates := make([]string, 0)
-	dateOrder := ""
+// ResolveBirthDate resolves the birth date from the raw per-document readings.
+//
+// The day/month order is a property of each document, never of the batch:
+//  1. the document's own slash timestamp when conclusive (a part > 12);
+//  2. otherwise a slash timestamp means a US-locale device (Pentacam): MDY;
+//  3. otherwise the extractor already normalized the timestamp to ISO, which
+//     is what BR-locale devices (EyeSuite) print as DMY: DMY;
+//  4. no timestamp at all: only an unambiguous date (a part > 12) is accepted.
+//
+// Two documents may disagree only by a day/month swap. That is the protocol
+// 0.B "data_nascimento_invertida": the reading of the slash-timestamp
+// (Pentacam, reference) document wins and inverted=true. Any other
+// disagreement is unresolved.
+func ResolveBirthDate(analysis map[string]any) (date string, inverted bool, ok bool) {
+	type reading struct {
+		date      string
+		reference bool
+	}
+	readings := make([]reading, 0)
 
-	if entries, ok := analysis["verificacao_identidade"].([]any); ok {
+	if entries, isList := analysis["verificacao_identidade"].([]any); isList {
 		for _, rawEntry := range entries {
-			entry, ok := rawEntry.(map[string]any)
-			if !ok {
+			entry, isMap := rawEntry.(map[string]any)
+			if !isMap {
 				continue
 			}
-
-			if raw, ok := entry["nascimento_lido"].(string); ok && strings.TrimSpace(raw) != "" {
-				rawBirthDates = append(rawBirthDates, strings.TrimSpace(raw))
+			raw, _ := entry["nascimento_lido"].(string)
+			raw = strings.TrimSpace(raw)
+			if raw == "" {
+				continue
 			}
-
-			if timestamp, ok := entry["timestamp_lido"].(string); ok {
-				hint := inferSlashDateOrder(timestamp)
-
-				if hint != "" {
-					if dateOrder != "" && dateOrder != hint {
-						return "", false
-					}
-					dateOrder = hint
-				}
-			}
-		}
-	}
-
-	if len(rawBirthDates) > 0 {
-		resolved := ""
-
-		for _, raw := range rawBirthDates {
-			canonical, ok := canonicalizeDocumentDate(raw, dateOrder)
-			if !ok {
+			timestamp, _ := entry["timestamp_lido"].(string)
+			order, reference := documentDateOrder(timestamp)
+			canonical, valid := canonicalizeDocumentDate(raw, order)
+			if !valid {
 				// Existe uma data bruta, mas ela é ambígua.
 				// Não caímos para o "normalized" do modelo porque ele pode
 				// ter invertido dia e mês.
-				return "", false
+				return "", false, false
 			}
+			readings = append(readings, reading{canonical, reference})
+		}
+	}
 
-			if resolved != "" && resolved != canonical {
-				return "", false
+	if len(readings) > 0 {
+		first := readings[0].date
+		other := ""
+		for _, r := range readings {
+			if r.date != first {
+				other = r.date
 			}
-
-			resolved = canonical
 		}
-
-		if resolved != "" {
-			return resolved, true
+		if other == "" {
+			return first, false, true
 		}
+		if swapDayMonth(first) != other {
+			return "", false, false
+		}
+		for _, r := range readings {
+			if r.date != first && r.date != other {
+				return "", false, false
+			}
+		}
+		refDate := ""
+		for _, r := range readings {
+			if r.reference {
+				if refDate != "" && refDate != r.date {
+					return "", false, false
+				}
+				refDate = r.date
+			}
+		}
+		if refDate == "" {
+			return "", false, false
+		}
+		return refDate, true, true
 	}
 
 	// Fallback para análises que não possuem verificacao_identidade.
 	// Aceitamos somente ISO já válido.
-	patient, ok := analysis["patient"].(map[string]any)
-	if !ok {
-		return "", false
+	patient, isMap := analysis["patient"].(map[string]any)
+	if !isMap {
+		return "", false, false
 	}
-
-	if value, ok := patient["birth_date"].(string); ok {
-		if canonical, ok := canonicalISODate(value); ok {
-			return canonical, true
+	if value, isStr := patient["birth_date"].(string); isStr {
+		if canonical, valid := canonicalISODate(value); valid {
+			return canonical, false, true
 		}
 	}
-
-	if value, ok := patient["birth_date_normalized"].(string); ok {
-		if canonical, ok := canonicalISODate(value); ok {
-			return canonical, true
+	if value, isStr := patient["birth_date_normalized"].(string); isStr {
+		if canonical, valid := canonicalISODate(value); valid {
+			return canonical, false, true
 		}
 	}
-
-	if value, ok := patient["birth_date"].(map[string]any); ok {
-		if normalized, ok := value["normalized"].(string); ok {
-			if canonical, ok := canonicalISODate(normalized); ok {
-				return canonical, true
+	if value, isMap := patient["birth_date"].(map[string]any); isMap {
+		if normalized, isStr := value["normalized"].(string); isStr {
+			if canonical, valid := canonicalISODate(normalized); valid {
+				return canonical, false, true
 			}
 		}
 	}
+	return "", false, false
+}
 
+// documentDateOrder returns the day/month order of one document and whether
+// it is a slash-timestamp (reference, Pentacam-style) document.
+func documentDateOrder(timestamp string) (order string, reference bool) {
+	timestamp = strings.TrimSpace(timestamp)
+	if timestamp == "" {
+		return "", false
+	}
+	if _, err := time.Parse("2006-01-02", strings.Fields(timestamp)[0]); err == nil {
+		return "DMY", false
+	}
+	if hint := inferSlashDateOrder(timestamp); hint != "" {
+		return hint, true
+	}
+	if strings.Contains(timestamp, "/") {
+		return "MDY", true
+	}
 	return "", false
+}
+
+func swapDayMonth(iso string) string {
+	parsed, err := time.Parse("2006-01-02", iso)
+	if err != nil {
+		return ""
+	}
+	swapped := fmt.Sprintf("%04d-%02d-%02d", parsed.Year(), parsed.Day(), int(parsed.Month()))
+	if canonical, ok := canonicalISODate(swapped); ok {
+		return canonical
+	}
+	return ""
+}
+
+// Warning is a non-blocking identity finding shown to the reviewer.
+type Warning map[string]any
+
+// IdentityWarnings reports non-blocking identity findings:
+//   - data_nascimento_invertida: devices disagree only by a day/month swap;
+//   - nome_divergente: a document's name is not compatible with patient.full_name.
+func IdentityWarnings(analysis map[string]any) []Warning {
+	warnings := make([]Warning, 0)
+	if date, inverted, ok := ResolveBirthDate(analysis); ok && inverted {
+		warnings = append(warnings, Warning{
+			"code":       "data_nascimento_invertida",
+			"birth_date": date,
+			"detail":     "documentos divergem apenas por inversão dia/mês; persistida a leitura do Pentacam (documento de referência)",
+		})
+	}
+	patient, _ := analysis["patient"].(map[string]any)
+	fullName, _ := patient["full_name"].(string)
+	if strings.IndexFunc(fullName, func(r rune) bool {
+		return !unicode.IsLetter(r) && !strings.ContainsRune(" .,'-", r)
+	}) >= 0 {
+		warnings = append(warnings, Warning{
+			"code":   "nome_suspeito",
+			"name":   fullName,
+			"detail": "o nome contém dígitos ou símbolos: provável ruído de OCR; revisar antes de confirmar",
+		})
+	}
+	entries, _ := analysis["verificacao_identidade"].([]any)
+	for _, rawEntry := range entries {
+		entry, _ := rawEntry.(map[string]any)
+		name, _ := entry["nome_lido"].(string)
+		if strings.TrimSpace(name) == "" || strings.TrimSpace(fullName) == "" || NamesCompatible(fullName, name) {
+			continue
+		}
+		warnings = append(warnings, Warning{
+			"code":   "nome_divergente",
+			"source": entry["source"],
+			"name":   name,
+			"detail": "nome lido no documento não é compatível com o nome do paciente",
+		})
+	}
+	return warnings
+}
+
+// NameKey is the order-insensitive name identity: accents, case, punctuation,
+// whitespace and word order ("SURNAME, NAME" vs "NAME SURNAME") are ignored.
+func NameKey(name string) string {
+	tokens := strings.Fields(normalizePatientName(name))
+	sort.Strings(tokens)
+	return strings.Join(tokens, " ")
+}
+
+// NamesCompatible: every token of the shorter name appears in the longer one,
+// either whole or as a one-letter initial (nome_parcial: "MARIA GORETE DE C").
+func NamesCompatible(a, b string) bool {
+	ta, tb := strings.Fields(normalizePatientName(a)), strings.Fields(normalizePatientName(b))
+	if len(ta) > len(tb) {
+		ta, tb = tb, ta
+	}
+	if len(ta) == 0 {
+		return false
+	}
+	for _, t := range ta {
+		found := false
+		for _, u := range tb {
+			if t == u || (len(t) == 1 && strings.HasPrefix(u, t)) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
 }
 
 func inferSlashDateOrder(value string) string {
@@ -257,4 +383,23 @@ func normalizePatientName(value string) string {
 	}
 
 	return strings.Join(strings.Fields(normalized.String()), " ")
+}
+
+// SameIdentity reports whether two (possibly partial) analyses are the same
+// patient. Besides equal identity keys it accepts the protocol 0.B day/month
+// inversion: same name key and birth dates that are each other's day/month
+// swap (documents read in isolation, e.g. one EyeSuite and one Pentacam
+// checkpoint, resolve to different dates for the same patient).
+func SameIdentity(a, b map[string]any) bool {
+	keyA, okA := Identity(a)
+	keyB, okB := Identity(b)
+	if !okA || !okB {
+		return false
+	}
+	if keyA == keyB {
+		return true
+	}
+	nameA, dateA, _ := strings.Cut(keyA, "|")
+	nameB, dateB, _ := strings.Cut(keyB, "|")
+	return nameA == nameB && swapDayMonth(dateA) == dateB
 }

@@ -17,7 +17,7 @@ func TestPatientIdentityNormalizesNameAndBirthDate(t *testing.T) {
 		t.Fatal("expected patient to be identifiable")
 	}
 
-	if identity != "paciente teste silva|1980-03-04" {
+	if identity != "paciente silva teste|1980-03-04" {
 		t.Fatalf("unexpected identity: %q", identity)
 	}
 }
@@ -335,7 +335,7 @@ func TestPatientIdentityUsesDocumentDateOrderInsteadOfModelNormalizedDate(t *tes
 		t.Fatal("expected patient identity to be deterministically resolved")
 	}
 
-	if identity != "paciente teste silva|1980-03-04" {
+	if identity != "paciente silva teste|1980-03-04" {
 		t.Fatalf("unexpected identity: %q", identity)
 	}
 }
@@ -384,7 +384,7 @@ func TestPatientIdentityMatchesBothObservedPentacamShapes(t *testing.T) {
 		)
 	}
 
-	if odIdentity != "paciente teste silva|1980-03-04" {
+	if odIdentity != "paciente silva teste|1980-03-04" {
 		t.Fatalf("unexpected canonical identity: %q", odIdentity)
 	}
 }
@@ -694,5 +694,105 @@ func TestBuildPatientChangePreviewExactReuploadHasNoChanges(t *testing.T) {
 		preview.Removed != 0 ||
 		preview.Unchanged != 0 {
 		t.Fatalf("exact reupload must produce empty preview: %#v", preview)
+	}
+}
+
+func identityEntries(entries ...map[string]any) map[string]any {
+	list := make([]any, 0, len(entries))
+	for _, entry := range entries {
+		list = append(list, entry)
+	}
+	return map[string]any{
+		"patient":                map[string]any{"full_name": "JOAO FRANCISCO DE AGUIAR"},
+		"verificacao_identidade": list,
+	}
+}
+
+// francisco: EyeSuite prints DMY, Pentacam MDY, same string 08/05/1969.
+func TestBirthDateDayMonthInversionKeepsPentacamAndWarns(t *testing.T) {
+	analysis := identityEntries(
+		map[string]any{"nascimento_lido": "08/05/1969", "timestamp_lido": "2026-08-28 16:36"},
+		map[string]any{"nascimento_lido": "08/05/1969", "timestamp_lido": "08/28/2026"},
+	)
+	date, inverted, ok := ResolveBirthDate(analysis)
+	if !ok || !inverted || date != "1969-08-05" {
+		t.Fatalf("got %q inverted=%v ok=%v", date, inverted, ok)
+	}
+	warnings := IdentityWarnings(analysis)
+	if len(warnings) != 1 || warnings[0]["code"] != "data_nascimento_invertida" {
+		t.Fatalf("unexpected warnings: %v", warnings)
+	}
+}
+
+// rolmey: EyeSuite 12/05/1967 (DMY) is the same day as Pentacam 05/12/1967 (MDY).
+func TestBirthDatePerDocumentOrderAgrees(t *testing.T) {
+	analysis := identityEntries(
+		map[string]any{"nascimento_lido": "12/05/1967", "timestamp_lido": "2026-07-30 12:03"},
+		map[string]any{"nascimento_lido": "05/12/1967", "timestamp_lido": "07/30/2026"},
+	)
+	date, inverted, ok := ResolveBirthDate(analysis)
+	if !ok || inverted || date != "1967-05-12" {
+		t.Fatalf("got %q inverted=%v ok=%v", date, inverted, ok)
+	}
+	if len(IdentityWarnings(analysis)) != 0 {
+		t.Fatal("no warning expected")
+	}
+}
+
+func TestBirthDateRealConflictIsUnresolved(t *testing.T) {
+	analysis := identityEntries(
+		map[string]any{"nascimento_lido": "14/12/1979", "timestamp_lido": "2026-08-28 16:36"},
+		map[string]any{"nascimento_lido": "11/04/2026", "timestamp_lido": "08/28/2026"},
+	)
+	if _, ok := CanonicalBirthDate(analysis); ok {
+		t.Fatal("conflicting dates must not resolve")
+	}
+}
+
+func TestNameKeyIgnoresOrderAccentsAndWhitespace(t *testing.T) {
+	if NameKey("AVERSA MARTINELLI,  CRESO") != NameKey("Creso  Aversa Martinelli") ||
+		NameKey("FRANCISCO DE AGUIAR, JOÃO") != NameKey("joao francisco de aguiar") {
+		t.Fatal("device name variants must share one key")
+	}
+	if NameKey("DANIELA JNOGUEIRA ROCHA") == NameKey("DANIELA NOGUEIRA ROCHA") {
+		t.Fatal("OCR typo must not silently collapse")
+	}
+}
+
+func TestNameWarningForIncompatibleDocumentName(t *testing.T) {
+	analysis := identityEntries(
+		map[string]any{"nome_lido": "JOAO FRANCISCO"},
+		map[string]any{"nome_lido": "jJO40 JFRANCISCO DE AGUIAR", "source": "x.pdf"},
+	)
+	warnings := IdentityWarnings(analysis)
+	if len(warnings) != 1 || warnings[0]["code"] != "nome_divergente" || warnings[0]["source"] != "x.pdf" {
+		t.Fatalf("unexpected warnings: %v", warnings)
+	}
+	if !NamesCompatible("MARIA GORETE DE C", "MARIA GORETE DE CARVALHO") {
+		t.Fatal("truncated device name is compatible")
+	}
+}
+
+func TestSuspiciousNameIsFlagged(t *testing.T) {
+	analysis := map[string]any{"patient": map[string]any{"full_name": "° 2/25 Segmento: 294° NOGUEIRA ROCHA"}}
+	warnings := IdentityWarnings(analysis)
+	if len(warnings) != 1 || warnings[0]["code"] != "nome_suspeito" {
+		t.Fatalf("unexpected warnings: %v", warnings)
+	}
+	analysis["patient"] = map[string]any{"full_name": "Joāo D'Ávila-Silva Jr."}
+	if len(IdentityWarnings(analysis)) != 0 {
+		t.Fatal("ordinary names must not warn")
+	}
+}
+
+func TestSameIdentityAcceptsDayMonthInversion(t *testing.T) {
+	eyeSuite := map[string]any{"patient": map[string]any{"full_name": "JOAO FRANCISCO DE AGUIAR", "birth_date": "1969-05-08"}}
+	pentacam := map[string]any{"patient": map[string]any{"full_name": "AGUIAR DE, FRANCISCO JOAO", "birth_date": "1969-08-05"}}
+	other := map[string]any{"patient": map[string]any{"full_name": "OUTRA PESSOA", "birth_date": "1969-08-05"}}
+	if !SameIdentity(eyeSuite, pentacam) {
+		t.Fatal("inversion of the same patient must match")
+	}
+	if SameIdentity(eyeSuite, other) {
+		t.Fatal("different names must not match")
 	}
 }

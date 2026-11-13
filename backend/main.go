@@ -43,7 +43,7 @@ func main() {
 	if databaseOpenError != nil {
 		panic(databaseOpenError)
 	}
-	if databaseMigrationError := appDatabase.AutoMigrate(&database.Patient{}, &database.Exam{}); databaseMigrationError != nil {
+	if databaseMigrationError := appDatabase.Migrate(); databaseMigrationError != nil {
 		panic(fmt.Errorf("migrate postgres schema: %w", databaseMigrationError))
 	}
 

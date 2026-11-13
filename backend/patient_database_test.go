@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestUpsertPatientFromAnalysisRejectsConflictingIdentity(t *testing.T) {
+func TestPatientIdentityRejectsConflictingIdentity(t *testing.T) {
 	analysis := map[string]any{
 		"patient": map[string]any{
 			"full_name":  "AVERSA MARTINELLI CRESO",
@@ -17,7 +17,7 @@ func TestUpsertPatientFromAnalysisRejectsConflictingIdentity(t *testing.T) {
 		},
 	}
 
-	_, err := upsertPatientFromAnalysis(analysis)
+	_, _, _, err := patientIdentity(analysis)
 	if !errors.Is(err, errPatientIdentity) {
 		t.Fatalf("expected identity error, got %v", err)
 	}

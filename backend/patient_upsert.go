@@ -4,12 +4,16 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
+	"log"
 	"sort"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/smithy-go"
+	"gorm.io/gorm"
 
 	patientfeature "refratia/backend/features/patient"
 )
@@ -59,8 +63,15 @@ func findExistingPatientCase(
 
 			analysis, err := loadStoredCaseAnalysis(ctx, client, bucket, caseID)
 			if err != nil {
-				// Um case quebrado não deve impedir a confirmação dos demais.
-				continue
+				var syntaxErr *json.SyntaxError
+				if isNotFound(err) || errors.As(err, &syntaxErr) || errors.Is(err, io.ErrUnexpectedEOF) {
+					// Um case sem marcador ou corrompido não impede os demais,
+					// mas fica registrado (sem PII: só o id do case).
+					log.Printf("identity scan: skipping unreadable case %s: %v", caseID, err)
+					continue
+				}
+				// Falha de storage: não podemos afirmar que o paciente não existe.
+				return "", nil, false, err
 			}
 
 			existingIdentity, identifiable := patientfeature.Identity(analysis)
@@ -169,4 +180,41 @@ func storeConfirmationReceipt(
 	})
 
 	return err
+}
+
+func isNotFound(err error) bool {
+	var apiErr smithy.APIError
+	return errors.As(err, &apiErr) && (apiErr.ErrorCode() == "NoSuchKey" || apiErr.ErrorCode() == "NotFound")
+}
+
+// resolveExistingCase finds the case of an already-known patient: the SQL row
+// (patients.case_id) is authoritative; the O(cases) Garage scan is only the
+// fallback for legacy cases that have no row/case_id yet.
+// ponytail: the scan also runs for brand-new patients; drop it once legacy
+// cases are backfilled (cmd/reconcile) .
+func resolveExistingCase(
+	ctx context.Context,
+	db *gorm.DB,
+	client fileRepository,
+	bucket string,
+	analysis map[string]any,
+) (string, map[string]any, bool, error) {
+	identity, ok := patientfeature.Identity(analysis)
+	if !ok {
+		return "", nil, false, nil
+	}
+	caseID, err := patientCaseFromSQL(db, identity)
+	if err != nil {
+		return "", nil, false, err
+	}
+	if caseID != "" {
+		stored, loadErr := loadStoredCaseAnalysis(ctx, client, bucket, caseID)
+		if loadErr == nil {
+			return caseID, stored, true, nil
+		}
+		if !isNotFound(loadErr) {
+			return "", nil, false, loadErr
+		}
+	}
+	return findExistingPatientCase(ctx, client, bucket, analysis)
 }

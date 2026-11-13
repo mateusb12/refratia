@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"log"
 	"os"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -32,7 +33,18 @@ func storagePresigner(operationContext context.Context) (fileStorage.PresignRepo
 }
 
 func cleanupObjects(operationContext context.Context, client fileRepository, objectKeys []string) {
+	var firstErr error
+	failed := 0
 	for _, key := range objectKeys {
-		_, _ = client.DeleteObject(operationContext, &s3.DeleteObjectInput{Bucket: aws.String(os.Getenv("BUCKET_NAME")), Key: aws.String(key)})
+		if _, err := client.DeleteObject(operationContext, &s3.DeleteObjectInput{Bucket: aws.String(os.Getenv("BUCKET_NAME")), Key: aws.String(key)}); err != nil {
+			failed++
+			if firstErr == nil {
+				firstErr = err
+			}
+		}
+	}
+	if failed > 0 {
+		// Keys carry patient names: log counts only. Leftovers are garbage for cmd/reconcile.
+		log.Printf("cleanup: %d/%d objects not deleted: %v", failed, len(objectKeys), firstErr)
 	}
 }

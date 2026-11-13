@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"mime/multipart"
 	"net/http"
 	"net/url"
@@ -17,7 +18,9 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"gorm.io/gorm"
 
+	"refratia/backend/database"
 	intakefeature "refratia/backend/features/intake"
 	patientfeature "refratia/backend/features/patient"
 	progress "refratia/backend/shared/progress"
@@ -140,6 +143,22 @@ func analyzeIntakeHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// D11: o backend não persiste arquivo sem exame+olho (antes só a UI exigia).
+	unclassified := make([]string, 0)
+	for _, file := range files {
+		if file.Metadata.ExamType == "" || file.Metadata.Eye == "" {
+			unclassified = append(unclassified, file.Metadata.Filename)
+		}
+	}
+	if len(unclassified) > 0 {
+		writeError(
+			w,
+			http.StatusUnprocessableEntity,
+			"classifique exame e lateralidade de todos os arquivos: "+strings.Join(unclassified, ", "),
+		)
+		return
+	}
+
 	ctx := r.Context()
 	var stream *progressStream
 
@@ -227,6 +246,11 @@ func analyzeIntakeHandler(w http.ResponseWriter, r *http.Request) {
 	// debug exibir "sem campos" mesmo quando os valores estavam em analysis.exams.
 	classifySourceFilesFromExams(analysis)
 
+	// O nascimento canônico final (leitura do Pentacam em caso de inversão)
+	// precisa estar em patient.birth_date: a extração incremental pode tê-lo
+	// fixado só com o primeiro documento lido.
+	patientfeature.NormalizeIdentityFields(analysis)
+
 	progress.Report(
 		ctx,
 		90,
@@ -252,6 +276,14 @@ func analyzeIntakeHandler(w http.ResponseWriter, r *http.Request) {
 	var existingAnalysis map[string]any
 	var foundExisting bool
 
+	if warnings := patientfeature.IdentityWarnings(analysis); len(warnings) > 0 {
+		list := make([]any, 0, len(warnings))
+		for _, warning := range warnings {
+			list = append(list, map[string]any(warning))
+		}
+		analysis["identity_warnings"] = list
+	}
+
 	if identifiable {
 		patientMatch["status"] = "new"
 
@@ -273,6 +305,27 @@ func analyzeIntakeHandler(w http.ResponseWriter, r *http.Request) {
 				"não foi possível verificar pacientes existentes",
 			)
 			return
+		}
+	}
+
+	if identifiable && !foundExisting {
+		// Mesmo nascimento, nome diferente: possível erro de OCR ou homônimo.
+		// Sinalizado para revisão; nunca fundido nem "adivinhado".
+		key, _ := patientfeature.Identity(analysis)
+		birth, _ := patientfeature.CanonicalBirthDate(analysis)
+		similar, similarErr := similarPatientsByBirthDate(appDatabase.Gorm, key, birth)
+		if similarErr != nil {
+			fail(http.StatusInternalServerError, "não foi possível verificar pacientes existentes")
+			return
+		}
+		for _, other := range similar {
+			warnings, _ := analysis["identity_warnings"].([]any)
+			analysis["identity_warnings"] = append(warnings, map[string]any{
+				"code":   "nome_divergente_paciente_existente",
+				"caseId": other.CaseID,
+				"name":   other.FullName,
+				"detail": "já existe paciente com a mesma data de nascimento e nome diferente; revisar antes de confirmar",
+			})
 		}
 	}
 
@@ -321,19 +374,16 @@ func analyzeIntakeHandler(w http.ResponseWriter, r *http.Request) {
 		)
 
 		metadata := uploaded.Metadata
-		storageName := safeName(metadata.Filename)
-		if metadata.ExamType != "" {
-			patientName := ""
-			if patient, ok := analysis["patient"].(map[string]any); ok {
-				patientName, _ = patient["full_name"].(string)
-			}
-			extension := strings.TrimPrefix(filepath.Ext(metadata.Filename), ".")
-			if extension == "" {
-				extension = "bin"
-			}
-			metadata.CanonicalFilename = intakefeature.CanonicalExamFilename(patientName, metadata.ExamType, metadata.Eye, extension)
-			storageName = metadata.CanonicalFilename
+		patientName := ""
+		if patient, ok := analysis["patient"].(map[string]any); ok {
+			patientName, _ = patient["full_name"].(string)
 		}
+		extension := strings.TrimPrefix(filepath.Ext(metadata.Filename), ".")
+		if extension == "" {
+			extension = "bin"
+		}
+		metadata.CanonicalFilename = intakefeature.CanonicalExamFilename(patientName, metadata.ExamType, metadata.Eye, extension, metadata.SHA256)
+		storageName := metadata.CanonicalFilename
 		key := fmt.Sprintf(refratiaDraftsPrefix+"%s/%s", intakeID, storageName)
 
 		_, putErr := client.PutObject(
@@ -547,104 +597,33 @@ func confirmIntakeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	caseID := defaultCaseID
-	analysisKey := defaultAnalysisKey
-	action := "created"
-
-	var existingAnalysis map[string]any
-
-	existingCaseID, existing, found, findErr := findExistingPatientCase(
-		r.Context(),
-		client,
-		bucket,
-		draft.Analysis,
-	)
-	if findErr != nil {
-		writeError(w, http.StatusBadGateway, "não foi possível verificar pacientes existentes")
+	// C2: identidade validada ANTES de qualquer escrita no Garage.
+	if _, _, _, identityErr := patientIdentity(draft.Analysis); identityErr != nil {
+		writeError(w, http.StatusUnprocessableEntity, "não foi possível salvar o paciente: nome ou data de nascimento estão incompletos ou conflitantes")
 		return
 	}
-
-	if found {
-		caseID = existingCaseID
-		analysisKey = fmt.Sprintf(refratiaCasesPrefix+"%s/paciente_compilado.json", caseID)
-		existingAnalysis = existing
-		action = "updated"
-	}
-
-	result := make([]intakefeature.FileMetadata, 0, len(draft.Files))
-	copiedKeys := make([]string, 0, len(draft.Files))
-
 	for _, file := range draft.Files {
-		key := fmt.Sprintf(refratiaCasesPrefix+"%s/%s", caseID, filepath.Base(file.Key))
-
-		_, copyErr := client.CopyObject(r.Context(), &s3.CopyObjectInput{
-			Bucket:            aws.String(bucket),
-			Key:               aws.String(key),
-			CopySource:        aws.String(url.PathEscape(bucket + "/" + file.Key)),
-			ContentType:       aws.String(file.ContentType),
-			MetadataDirective: "REPLACE",
-		})
-		if copyErr != nil {
-			cleanupObjects(r.Context(), client, copiedKeys)
-			writeError(w, http.StatusBadGateway, "não foi possível confirmar os arquivos")
+		if file.ExamType == "" || file.Eye == "" {
+			writeError(w, http.StatusUnprocessableEntity, "arquivo sem exame e lateralidade classificados")
 			return
 		}
-
-		copiedKeys = append(copiedKeys, key)
-		file.Key = key
-		result = append(result, file)
 	}
 
-	setStoredPaths(draft.Analysis, result)
-
-	finalAnalysis := draft.Analysis
-	if existingAnalysis != nil {
-		finalAnalysis = patientfeature.Merge(existingAnalysis, draft.Analysis)
-	}
-
-	classifySourceFilesFromExams(
-		finalAnalysis,
-	)
-
-	compiled, marshalErr := json.MarshalIndent(finalAnalysis, "", "  ")
-	if marshalErr != nil {
-		cleanupObjects(r.Context(), client, copiedKeys)
-		writeError(w, http.StatusInternalServerError, "não foi possível montar o JSON compilado")
-		return
-	}
-
-	_, putErr := client.PutObject(r.Context(), &s3.PutObjectInput{
-		Bucket:      aws.String(bucket),
-		Key:         aws.String(analysisKey),
-		Body:        bytes.NewReader(compiled),
-		ContentType: aws.String("application/json"),
-	})
-	if putErr != nil {
-		cleanupObjects(r.Context(), client, copiedKeys)
-		writeError(w, http.StatusBadGateway, "não foi possível armazenar o JSON compilado")
-		return
-	}
-
-	// Se exatamente o mesmo arquivo for reenviado, source_files é deduplicado
-	// por SHA-256. Nesse caso não deixamos a cópia redundante órfã no bucket.
-	referenced := patientfeature.ReferencedSourcePaths(finalAnalysis)
-	orphanedCopies := make([]string, 0)
-
-	for _, key := range copiedKeys {
-		if !referenced[key] {
-			orphanedCopies = append(orphanedCopies, key)
-		}
-	}
-	cleanupObjects(r.Context(), client, orphanedCopies)
-
-	if _, patientError := upsertPatientFromAnalysis(finalAnalysis); patientError != nil {
-		if errors.Is(patientError, errPatientIdentity) {
+	receipt, commitErr := commitIntake(r.Context(), client, bucket, draft, defaultCaseID)
+	if commitErr != nil {
+		var httpErr *intakeError
+		switch {
+		case errors.As(commitErr, &httpErr):
+			writeError(w, httpErr.status, httpErr.message)
+		case errors.Is(commitErr, errPatientIdentity):
 			writeError(w, http.StatusUnprocessableEntity, "não foi possível salvar o paciente: nome ou data de nascimento estão incompletos ou conflitantes")
-		} else {
+		default:
+			log.Printf("confirm %s: %v", request.IntakeID, commitErr)
 			writeError(w, http.StatusInternalServerError, "não foi possível salvar o paciente")
 		}
 		return
 	}
+	caseID, analysisKey, action := receipt.CaseID, receipt.AnalysisKey, receipt.Action
 
 	// O receipt precisa existir antes de consumirmos o draft.
 	// Se sua gravação falhar, o case já pode ter sido atualizado, mas o draft
@@ -654,11 +633,7 @@ func confirmIntakeHandler(w http.ResponseWriter, r *http.Request) {
 		client,
 		bucket,
 		request.IntakeID,
-		confirmationReceipt{
-			CaseID:      caseID,
-			AnalysisKey: analysisKey,
-			Action:      action,
-		},
+		receipt,
 	); receiptErr != nil {
 		writeError(w, http.StatusBadGateway, "não foi possível finalizar a confirmação")
 		return
@@ -671,6 +646,165 @@ func confirmIntakeHandler(w http.ResponseWriter, r *http.Request) {
 	cleanupObjects(r.Context(), client, append(draftKeys, draftKey))
 
 	writeConfirmation(w, caseID, analysisKey, action)
+}
+
+func (e *intakeError) Error() string { return e.message }
+
+// commitIntake is the commit protocol (C3). Garage objects live at keys that
+// are deterministic per intake; the case marker (paciente_compilado.json) is
+// written next; everything in SQL (patient + exam rows) commits in ONE
+// transaction. The patient row lock (SELECT ... FOR UPDATE) is the mutex for
+// the read-merge-write of the compiled JSON, so concurrent confirms of the same
+// patient serialize instead of creating two cases or losing an update. A
+// failure after Garage writes rolls SQL back; the objects are then garbage that
+// a retry of the same intake overwrites (cmd/reconcile lists the rest).
+// ponytail: the row lock is held across Garage I/O (fine at clinic scale);
+// switch to If-Match writes if contention ever shows.
+func commitIntake(
+	ctx context.Context,
+	client fileRepository,
+	bucket string,
+	draft storedIntake,
+	defaultCaseID string,
+) (confirmationReceipt, error) {
+	identityKey, fullName, birthDate, err := patientIdentity(draft.Analysis)
+	if err != nil {
+		return confirmationReceipt{}, err
+	}
+	if appDatabase == nil {
+		return confirmationReceipt{}, errors.New("database is not initialized")
+	}
+	patientfeature.NormalizeIdentityFields(draft.Analysis)
+
+	var receipt confirmationReceipt
+	err = appDatabase.Gorm.Transaction(func(tx *gorm.DB) error {
+		patient, err := lockPatient(tx, identityKey, fullName, birthDate)
+		if err != nil {
+			return err
+		}
+
+		caseID := defaultCaseID
+		action := "created"
+		var existingAnalysis map[string]any
+		if patient.CaseID != "" {
+			stored, loadErr := loadStoredCaseAnalysis(ctx, client, bucket, patient.CaseID)
+			switch {
+			case loadErr == nil:
+				caseID, existingAnalysis, action = patient.CaseID, stored, "updated"
+			case !isNotFound(loadErr):
+				return &intakeError{http.StatusBadGateway, "não foi possível verificar pacientes existentes"}
+			}
+		}
+		if existingAnalysis == nil {
+			// Fallback legado: case sem linha/case_id em SQL.
+			legacyID, legacy, found, findErr := findExistingPatientCase(ctx, client, bucket, draft.Analysis)
+			if findErr != nil {
+				return &intakeError{http.StatusBadGateway, "não foi possível verificar pacientes existentes"}
+			}
+			if found {
+				caseID, existingAnalysis, action = legacyID, legacy, "updated"
+			}
+		}
+		analysisKey := fmt.Sprintf(refratiaCasesPrefix+"%s/paciente_compilado.json", caseID)
+
+		result := make([]intakefeature.FileMetadata, 0, len(draft.Files))
+		copiedKeys := make([]string, 0, len(draft.Files))
+		for _, file := range draft.Files {
+			key := fmt.Sprintf(refratiaCasesPrefix+"%s/%s", caseID, filepath.Base(file.Key))
+			_, copyErr := client.CopyObject(ctx, &s3.CopyObjectInput{
+				Bucket:            aws.String(bucket),
+				Key:               aws.String(key),
+				CopySource:        aws.String(url.PathEscape(bucket + "/" + file.Key)),
+				ContentType:       aws.String(file.ContentType),
+				MetadataDirective: "REPLACE",
+			})
+			if copyErr != nil {
+				cleanupObjects(ctx, client, copiedKeys)
+				return &intakeError{http.StatusBadGateway, "não foi possível confirmar os arquivos"}
+			}
+			copiedKeys = append(copiedKeys, key)
+			file.Key = key
+			result = append(result, file)
+		}
+
+		setStoredPaths(draft.Analysis, result)
+		finalAnalysis := draft.Analysis
+		if existingAnalysis != nil {
+			finalAnalysis = patientfeature.Merge(existingAnalysis, draft.Analysis)
+		}
+		classifySourceFilesFromExams(finalAnalysis)
+
+		compiled, marshalErr := json.MarshalIndent(finalAnalysis, "", "  ")
+		if marshalErr != nil {
+			cleanupObjects(ctx, client, copiedKeys)
+			return &intakeError{http.StatusInternalServerError, "não foi possível montar o JSON compilado"}
+		}
+		if _, putErr := client.PutObject(ctx, &s3.PutObjectInput{
+			Bucket:      aws.String(bucket),
+			Key:         aws.String(analysisKey),
+			Body:        bytes.NewReader(compiled),
+			ContentType: aws.String("application/json"),
+		}); putErr != nil {
+			cleanupObjects(ctx, client, copiedKeys)
+			return &intakeError{http.StatusBadGateway, "não foi possível armazenar o JSON compilado"}
+		}
+
+		// Se exatamente o mesmo arquivo for reenviado, source_files é deduplicado
+		// por SHA-256. Nesse caso não deixamos a cópia redundante órfã no bucket.
+		referenced := patientfeature.ReferencedSourcePaths(finalAnalysis)
+		orphanedCopies := make([]string, 0)
+		rows := make([]database.Exam, 0, len(result))
+		for _, file := range result {
+			if !referenced[file.Key] {
+				orphanedCopies = append(orphanedCopies, file.Key)
+				continue
+			}
+			filename := file.OriginalFilename
+			if filename == "" {
+				filename = file.Filename
+			}
+			for _, eye := range examEyes(file.Eye) {
+				rows = append(rows, database.Exam{
+					CaseID:      caseID,
+					PatientID:   &patient.ID,
+					PatientName: fullName,
+					Filename:    filename,
+					ExamType:    examTypeKey(file.ExamType),
+					Eye:         eye,
+					ContentType: file.ContentType,
+					Bucket:      bucket,
+					ObjectKey:   file.Key,
+					Size:        file.Size,
+					Referenced:  true,
+				})
+			}
+		}
+		cleanupObjects(ctx, client, orphanedCopies)
+
+		if err := savePatient(tx, patient, fullName, birthDate, caseID); err != nil {
+			return fmt.Errorf("update patient: %w", err)
+		}
+		if err := upsertExamRows(tx, rows); err != nil {
+			return fmt.Errorf("upsert exams: %w", err)
+		}
+		// Documentos substituídos no merge (mesmo exame+olho) saem do SQL
+		// junto com o manifesto; arquivos manuais não referenciados ficam.
+		stale := tx.Where("case_id = ? AND referenced = ?", caseID, true)
+		if len(referenced) > 0 {
+			keys := make([]string, 0, len(referenced))
+			for key := range referenced {
+				keys = append(keys, key)
+			}
+			stale = stale.Where("object_key NOT IN ?", keys)
+		}
+		if err := stale.Delete(&database.Exam{}).Error; err != nil {
+			return fmt.Errorf("prune exams: %w", err)
+		}
+
+		receipt = confirmationReceipt{CaseID: caseID, AnalysisKey: analysisKey, Action: action}
+		return nil
+	})
+	return receipt, err
 }
 
 func intakeHandler(w http.ResponseWriter, r *http.Request) {

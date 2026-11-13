@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -14,6 +15,9 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"gorm.io/gorm"
+
+	"refratia/backend/database"
 )
 
 func casesHandler(w http.ResponseWriter, r *http.Request) {
@@ -176,6 +180,12 @@ func deleteCaseHandler(w http.ResponseWriter, r *http.Request, caseID string) {
 		writeError(w, http.StatusNotFound, "caso não encontrado")
 		return
 	}
+	// D9: SQL primeiro (idempotente): se o Garage falhar no meio, o retry
+	// ainda encontra os objetos e repete a limpeza.
+	if sqlErr := deleteCaseRows(caseID); sqlErr != nil {
+		writeError(w, http.StatusInternalServerError, "não foi possível apagar os registros do caso")
+		return
+	}
 	deletedCount := len(keys)
 	if markerExists {
 		deletedCount++
@@ -258,4 +268,18 @@ func deleteCaseConfirmationReceipts(ctx context.Context, client fileRepository, 
 
 func validCaseID(id string) bool {
 	return strings.HasPrefix(id, "case-") && intakefeature.ValidID("intake-"+strings.TrimPrefix(id, "case-"))
+}
+
+// deleteCaseRows removes the exams of the case and its patient row (one case
+// per patient, so the patient has nothing left once the case is gone).
+func deleteCaseRows(caseID string) error {
+	if appDatabase == nil {
+		return errors.New("database is not initialized")
+	}
+	return appDatabase.Gorm.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("case_id = ?", caseID).Delete(&database.Exam{}).Error; err != nil {
+			return err
+		}
+		return tx.Where("case_id = ?", caseID).Delete(&database.Patient{}).Error
+	})
 }
