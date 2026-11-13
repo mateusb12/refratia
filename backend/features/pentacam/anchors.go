@@ -59,8 +59,8 @@ var anchorFields = []anchorField{
 	{Key: "kmax_d", Spec: "kmax_ant_d", Screens: []Screen{ScreenTopometric}, Label: lbl(`k m[aá]x ant`)},
 	{Key: "thinnest_um", Spec: "pachy_thinnest_um", Screens: []Screen{ScreenTopometric}, Label: lbl(`ponto fino`)},
 	{Key: "pupil_center_um", Spec: "pachy_pupil_center_um", Screens: []Screen{ScreenTopometric}, Label: lbl(`centro pupilar`)},
-	{Key: "vertex_normal_um", Spec: "pachy_vertex_um", Screens: []Screen{ScreenTopometric}, Label: lbl(`pachy vertex n`)},
-	{Key: "acd_external_mm", Spec: "acd_ext_mm", Screens: []Screen{ScreenTopometric}, Label: lbl(`prof c.mara ant ext`)},
+	{Key: "vertex_normal_um", Spec: "pachy_vertex_um", Screens: []Screen{ScreenTopometric, ScreenCataract}, Label: lbl(`pachy vertex n`)},
+	{Key: "acd_external_mm", Spec: "acd_ext_mm", Screens: []Screen{ScreenTopometric, ScreenCataract}, Label: lbl(`prof c\S+ ant ext`)},
 	{Key: "isv", Spec: "isv", Screens: []Screen{ScreenTopometric}, Label: lbl(`[i1l][s5][vy]?`)},
 	{Key: "iha", Spec: "iha", Screens: []Screen{ScreenTopometric}, Label: lbl(`iha`)},
 	{Key: "ihd", Spec: "ihd", Screens: []Screen{ScreenTopometric}, Label: lbl(`ihd`)},
@@ -84,7 +84,7 @@ var anchorFields = []anchorField{
 	{Key: "pns", Spec: "pns", Screens: []Screen{ScreenCataract}, Label: lbl(`pns`), Bottom: true, Wide: true},
 	{Key: "bad_d", Spec: "bad_d", Screens: []Screen{ScreenCataract}, Label: lbl(`bad d`)},
 	{Key: "z40_6mm_um", Spec: "z40_6mm_um", Screens: []Screen{ScreenCataract}, Label: lbl(`z40`)},
-	{Key: "acd_internal_mm", Spec: "acd_int_mm", Screens: []Screen{ScreenCataract}, Label: lbl(`prof c.mara ant int`)},
+	{Key: "acd_internal_mm", Spec: "acd_int_mm", Screens: []Screen{ScreenCataract}, Label: lbl(`prof c\S+ ant int`)},
 }
 
 // screenSpecFields lists which spec fields live on which screen, including the
@@ -337,7 +337,7 @@ func readAnchored(
 	candidates := map[string]map[float64]int{}
 	firstJob := map[string]int{}
 	for i, j := range jobs {
-		if !slices.Contains(keratoKeys, j.field.Key) {
+		if !slices.Contains(keratoKeys, j.field.Key) && !slices.Contains(depthKeys, j.field.Key) {
 			continue
 		}
 		if _, ok := firstJob[j.field.Key]; !ok {
@@ -355,8 +355,24 @@ func readAnchored(
 			accepted[key] = rs[0].Value
 		}
 	}
+	acceptedDepth := map[string]float64{}
+	for _, key := range depthKeys {
+		if rs := readings[key]; len(rs) > 0 && allEqual(rs) {
+			acceptedDepth[key] = rs[0].Value
+		}
+	}
+	resolved := map[string]float64{}
 	for key, v := range keratoResolve(accepted, candidates) {
+		resolved[key] = v
+	}
+	for key, v := range depthResolve(acceptedDepth, candidates) {
+		resolved[key] = v
+	}
+	for key, v := range resolved {
 		if a, ok := accepted[key]; ok && a == v {
+			continue
+		}
+		if a, ok := acceptedDepth[key]; ok && a == v {
 			continue
 		}
 		j := jobs[firstJob[key]]
@@ -695,21 +711,6 @@ func readValueBox(
 	}
 	// A competing reading (3 vs 9 in a pixel font) must not be outvoted by a
 	// small margin: with rivals the winner needs 80% of the valid reads.
-	// The thresholded reads (fixed threshold 150) distort some glyphs
-	// systematically (5 becomes 6 when the strokes merge). When the whole-page
-	// reading and a clear majority of the grey-scale reads agree, that rival
-	// confined to the thresholded family does not make the cell ambiguous.
-	if tokenValue != nil && (rival || (len(votes) > 1 && bestVotes*5 < total*4)) {
-		grey, greyTotal := family[0][*tokenValue], 0
-		for _, n := range family[0] {
-			greyTotal += n
-		}
-		// The token needs a 3:1 majority among the grey-scale reads: a 2:1 share
-		// (3 vs 9 on a pixel font) is a genuinely split cell, not a distortion.
-		if grey >= 2 && grey*4 >= greyTotal*3 {
-			return *tokenValue, votes[*tokenValue], len(votes), rect, true
-		}
-	}
 	if bestVotes < 2 || rival || (len(votes) > 1 && bestVotes*5 < total*4) {
 		return 0, bestVotes, len(votes), rect, false
 	}
