@@ -173,6 +173,7 @@ func conclude(run *Run, e *env, baselinePath string, update bool, compareArg, ou
 			run.Why = append(run.Why, "infra: "+f)
 		}
 	}
+	run.Final = final
 	run.Complete = len(run.Why) == 0
 
 	run.Regressions = nil
@@ -233,6 +234,7 @@ func conclude(run *Run, e *env, baselinePath string, update bool, compareArg, ou
 		fmt.Println("baseline NOT rewritten: run is incomplete")
 	}
 	writeReports(run, e.out)
+	saveJSON(filepath.Join(e.out, "state.json"), map[string]any{"pid": os.Getpid(), "state": "finished", "updated": time.Now().Format(time.RFC3339)})
 	fmt.Println()
 	fmt.Println(summaryTable(run))
 	status := "COMPLETE"
@@ -325,7 +327,7 @@ func (e *env) rescoreRun(dir string, run *Run) *Run {
 func perPatient(p *PatientRun) (acc tally, unexpected, notInApp int, persist tally) {
 	for _, f := range p.Fields {
 		switch {
-		case f.Outcome == "not_in_app" || f.Outcome == "contract_mismatch":
+		case f.Outcome == "not_in_app":
 			notInApp++
 		case scored(f):
 			acc.total++
@@ -363,7 +365,9 @@ func render(run *Run) string {
 	var b strings.Builder
 	w := func(f string, a ...any) { fmt.Fprintf(&b, f, a...) }
 	w("# RefratIA benchmark report\n\n")
-	if run.Complete {
+	if !run.Final {
+		w("**Run IN PROGRESS** (this file is rewritten after every patient; if it stops changing and state.json says running with a dead pid, the run died): %s\n\n", strings.Join(run.Why, "; "))
+	} else if run.Complete {
 		w("**Run COMPLETE**: all %d requested patients evaluated, no infra failures.\n\n", len(run.Requested))
 	} else {
 		w("**Run INCOMPLETE**: %s\n\n", strings.Join(run.Why, "; "))
@@ -372,13 +376,20 @@ func render(run *Run) string {
 		w("%s\n\n", run.Note)
 	}
 	w("Commit `%s`. Started %s, runtime %.0fs. Backend built from `%s`.\n\nCommand: `%s`\n\n", run.Commit, run.Started, run.Seconds, run.BackendDir, run.Command)
+	w("Outcome categories: pass; incorrect (value differs from the printed one); missing (app path present, value null); conflicting (app reported conflicting readings and gave no value); unexpected_value (app value where ground truth is missing/not_applicable); contract_mismatch (the field's app path exists in no patient's output: the app never emits it; counts as a FAILURE in the accuracy denominator, listed separately to tell contract gaps from OCR misses); unverified (needs_human: excluded, never a pass); not_in_app (the spec defines no app path at all: excluded from accuracy, its count is shown next to it).\n\n")
 	w("Patients are referred to by folder slug. Field values are shown; names and birth dates are not.\n\n")
-	w("## Summary per patient\n\n| patient | extraction accuracy | unexpected values | not in app / contract mismatch | persistence + identity checks | analyze |\n|---|---|---|---|---|---|\n")
+	w("## Summary per patient\n\n| patient | extraction accuracy | unexpected values | not_in_app (excluded) | contract_mismatch (in denominator) | persistence + identity checks | analyze |\n|---|---|---|---|---|---|---|\n")
 	byType, byField := map[string]*tally{}, map[string]*tally{}
 	stages := map[string]int{}
 	for _, p := range run.Patients {
 		acc, un, na, ps := perPatient(p)
-		w("| %s | %s | %d | %d | %s | %.0fs (HTTP %d) |\n", p.Slug, acc, un, na, ps, p.AnalyzeSecs, p.AnalyzeStatus)
+		cm := 0
+		for _, f := range p.Fields {
+			if f.Outcome == "contract_mismatch" {
+				cm++
+			}
+		}
+		w("| %s | %s | %d | %d | %d | %s | %.0fs (HTTP %d) |\n", p.Slug, acc, un, na, cm, ps, p.AnalyzeSecs, p.AnalyzeStatus)
 		for _, f := range p.Fields {
 			if !scored(f) {
 				continue

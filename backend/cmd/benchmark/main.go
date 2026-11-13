@@ -87,6 +87,7 @@ type Run struct {
 	Requested   []string      `json:"requested_patients"`
 	Compare     *Compare      `json:"compare,omitempty"`
 	Note        string        `json:"note,omitempty"`
+	Final       bool          `json:"final"`
 }
 
 type env struct {
@@ -176,6 +177,13 @@ func realMain() (code int) {
 	if *resume != "" {
 		e.out = *resume
 		run.Patients = loadDone(e.out)
+		var st struct {
+			PID         int
+			Step, State string
+		}
+		if b, err := os.ReadFile(filepath.Join(e.out, "state.json")); err == nil && json.Unmarshal(b, &st) == nil && st.State == "running" && !pidAlive(st.PID) {
+			run.Note = fmt.Sprintf("Previous run died without a final report (pid %d, last step: %s); resumed here.", st.PID, st.Step)
+		}
 	} else {
 		e.out = filepath.Join(*outBase, t0.Format("20060102-150405"))
 	}
@@ -231,6 +239,19 @@ func realMain() (code int) {
 	defer e.mu.Unlock()
 	return conclude(run, e, *baseline, *update, *compare, *outBase, t0, true)
 }
+
+func saveJSON(path string, v any) {
+	b, _ := json.Marshal(v)
+	os.WriteFile(path, b, 0o644)
+}
+
+func (e *env) setCur(step string) {
+	e.cur = step
+	b, _ := json.Marshal(map[string]any{"pid": os.Getpid(), "step": step, "updated": time.Now().Format(time.RFC3339), "state": "running"})
+	os.WriteFile(filepath.Join(e.out, "state.json"), b, 0o644)
+}
+
+func pidAlive(pid int) bool { return pid > 0 && syscall.Kill(pid, 0) == nil }
 
 func gitRev(dir string) string {
 	out, err := exec.Command("git", "-C", dir, "rev-parse", "--short", "HEAD").Output()
@@ -771,7 +792,7 @@ func (e *env) runPatient(ctx context.Context, slug string, pr *PatientRun) {
 	}
 
 	pre := e.snapshot(ctx)
-	e.cur = slug + ": analyze"
+	e.setCur(slug + ": analyze")
 	t := time.Now()
 	actx, cancel := withTO(ctx, e.analyzeTO)
 	status, payload, raw, err := e.analyze(actx, paths, cls, shas)
@@ -786,6 +807,7 @@ func (e *env) runPatient(ctx context.Context, slug string, pr *PatientRun) {
 		return
 	}
 	if err != nil || status != 200 {
+		os.WriteFile(filepath.Join(e.out, "raw", slug+".analyze.error.txt"), []byte(fmt.Sprint("HTTP ", status, ": ", err)), 0o644)
 		add("analyze", "analyze_http_200", false, fmt.Sprint(status, " ", err))
 		pr.Fields = scorePatient(slug, g, e.spec, nil, classOK)
 		fmt.Printf("   analyze FAILED (%d) after %.0fs\n", status, pr.AnalyzeSecs)
@@ -800,7 +822,7 @@ func (e *env) runPatient(ctx context.Context, slug string, pr *PatientRun) {
 	// ---- persistence: always asserted on real SQL rows and Garage objects (snapshots are saved for -rescore) ----
 	sn := &Snaps{Pre: pre, ByName: byName}
 	intakeID, _ := payload["intakeId"].(string)
-	e.cur = slug + ": confirm"
+	e.setCur(slug + ": confirm")
 	cctx, cancel := withTO(ctx, e.stepTO)
 	cs, cbody := e.confirm(cctx, intakeID)
 	cancel()
@@ -813,14 +835,16 @@ func (e *env) runPatient(ctx context.Context, slug string, pr *PatientRun) {
 	sn.CS1, sn.Action1, sn.Case1 = cs, sval(cbody, "action"), sval(cbody, "caseId")
 	sn.Post1 = e.snapshot(ctx)
 
-	e.cur = slug + ": confirm retry"
+	e.setCur(slug + ": confirm retry")
 	cctx, cancel = withTO(ctx, e.stepTO)
-	sn.CS2, _ = e.confirm(cctx, intakeID)
+	var cb2 map[string]any
+	sn.CS2, cb2 = e.confirm(cctx, intakeID)
 	cancel()
+	saveJSON(filepath.Join(e.out, "raw", slug+".confirm2.json"), cb2)
 	sn.Post2 = e.snapshot(ctx)
 
 	// re-ingest: same folder again (checkpoints unless -reingest-force)
-	e.cur = slug + ": re-ingest analyze"
+	e.setCur(slug + ": re-ingest analyze")
 	var proc []string
 	if e.reForce {
 		proc = shas
@@ -842,6 +866,7 @@ func (e *env) runPatient(ctx context.Context, slug string, pr *PatientRun) {
 		sn.CS3, cb3 = e.confirm(cctx, id3)
 		cancel()
 		sn.Action3 = sval(cb3, "action")
+		saveJSON(filepath.Join(e.out, "raw", slug+".confirm3.json"), cb3)
 		sn.Post3 = e.snapshot(ctx)
 	}
 	b, _ = json.Marshal(sn)

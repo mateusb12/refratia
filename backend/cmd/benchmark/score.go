@@ -126,7 +126,7 @@ func isEmpty(v any) bool {
 	}
 	if s, ok := v.(string); ok {
 		s = strings.TrimSpace(s)
-		return s == "" || s == "-"
+		return s == "" || s == "-" || s == "–" || s == "—" // dash variants: the printed "-" normalizes to null
 	}
 	return false
 }
@@ -433,5 +433,5 @@ func markContractMismatch(ps []*PatientRun) {
 }
 
 func scored(r FieldRes) bool {
-	return r.Outcome != "not_in_app" && r.Outcome != "unverified" && r.Outcome != "contract_mismatch"
+	return r.Outcome != "not_in_app" && r.Outcome != "unverified" // contract_mismatch stays in: the app never emitting a field is a failure
 }

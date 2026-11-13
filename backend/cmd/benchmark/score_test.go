@@ -55,3 +55,11 @@ func TestABCDAndNotEvaluable(t *testing.T) {
 		t.Fatalf("with 0 rows 4 checks are not evaluable, got %d", ne)
 	}
 }
+
+func TestContractMismatchCountsInDenominator(t *testing.T) {
+	p := &PatientRun{Fields: []FieldRes{{Outcome: "pass"}, {Outcome: "contract_mismatch"}, {Outcome: "not_in_app"}}}
+	acc, _, na, _ := perPatient(p)
+	if acc.total != 2 || acc.pass != 1 || na != 1 {
+		t.Fatalf("got %+v na=%d", acc, na)
+	}
+}
