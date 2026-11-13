@@ -186,12 +186,6 @@ func compareField(key string, gt FieldValue, spec SpecField, got any) bool {
 		return false
 	}
 	g := nums[0]
-	if strings.HasPrefix(key, "coma_z31") && strings.HasSuffix(key, "axis_deg") {
-		if len(nums) < 2 {
-			return false
-		}
-		g = nums[1]
-	}
 	dp := 0
 	if spec.Decimals != nil {
 		dp = *spec.Decimals

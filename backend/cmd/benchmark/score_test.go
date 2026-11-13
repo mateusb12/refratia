@@ -83,3 +83,10 @@ func TestOutOfProtocolFieldsAreOptional(t *testing.T) {
 		}
 	}
 }
+
+func TestTypedComaAxisIsCompared(t *testing.T) {
+	d := 0
+	if !compareField("coma_z31_5mm_axis_deg", FieldValue{Value: 207.0}, SpecField{Kind: "int", Decimals: &d}, 207.0) {
+		t.Fatal("typed axis equal to ground truth must pass")
+	}
+}
