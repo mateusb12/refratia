@@ -4,15 +4,15 @@
 # Usage: bash backend/testinfra/up.sh   then   set -a; . backend/testinfra/test.env; set +a
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
-PG=refratia-test-pg
-GA=refratia-test-garage
+PG=refratia-benchmark-postgres
+GA=refratia-benchmark-garage
 PG_PORT=${REFRATIA_TEST_PG_PORT:-55432}
 GA_PORT=${REFRATIA_TEST_GARAGE_PORT:-53900}
 BUCKET=refratia-test
 
 if ! docker ps --format '{{.Names}}' | grep -qx "$PG"; then
   docker rm -f "$PG" >/dev/null 2>&1 || true
-  docker run -d --name "$PG" -e POSTGRES_USER=refratia -e POSTGRES_PASSWORD=refratia \
+  docker run -d --name "$PG" --label refratia.purpose=isolated-test-infra -e POSTGRES_USER=refratia -e POSTGRES_PASSWORD=refratia \
     -e POSTGRES_DB=postgres -p 127.0.0.1:$PG_PORT:5432 postgres:17-alpine >/dev/null
 fi
 
@@ -33,7 +33,7 @@ root_domain = ".s3.garage.localhost"
 [admin]
 api_bind_addr = "[::]:3903"
 EOF
-  docker run -d --name "$GA" -p 127.0.0.1:$GA_PORT:3900 \
+  docker run -d --name "$GA" --label refratia.purpose=isolated-test-infra -p 127.0.0.1:$GA_PORT:3900 \
     -v "$here/garage.toml:/etc/garage.toml:ro" dxflrs/garage:v1.1.0 >/dev/null
   sleep 2
   g() { docker exec "$GA" /garage "$@"; }

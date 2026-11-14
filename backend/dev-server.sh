@@ -35,7 +35,7 @@ while true; do
 		last_attempted_source_checksum="$source_checksum"
 
 		echo "[refratia] Compilando backend..."
-		if go build -o "$backend_binary" .; then
+		if go build -o "$backend_binary" ./cmd/server; then
 			echo "[refratia] Backend compilado; iniciando servidor."
 			stop_backend
 			"$backend_binary" &

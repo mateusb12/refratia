@@ -402,7 +402,7 @@ func (e *env) listObjects(ctx context.Context, prefix string) (map[string]int64,
 func (e *env) buildBackend(backendDir string) error {
 	e.bin = filepath.Join(e.out, "backend.bin")
 	e.backendDir = backendDir
-	build := exec.Command("go", "build", "-o", e.bin, ".")
+	build := exec.Command("go", "build", "-o", e.bin, "./cmd/server")
 	build.Dir = backendDir
 	if o, err := build.CombinedOutput(); err != nil {
 		return fmt.Errorf("go build failed in %s: %s", backendDir, o)

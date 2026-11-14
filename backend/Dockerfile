@@ -3,7 +3,7 @@ WORKDIR /src
 COPY go.mod ./
 COPY go.sum ./
 COPY . .
-RUN CGO_ENABLED=0 go build -o /server .
+RUN CGO_ENABLED=0 go build -o /server ./cmd/server
 
 FROM alpine:3.20
 RUN apk add --no-cache \

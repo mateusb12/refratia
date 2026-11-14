@@ -8,9 +8,9 @@ import (
 	"fmt"
 	"os"
 
-	"refratia/backend/database"
-	"refratia/backend/fileStorage"
-	"refratia/backend/reconcile"
+	"refratia/backend/src/features/reconcile"
+	"refratia/backend/src/shared/database"
+	"refratia/backend/src/shared/fileStorage"
 )
 
 func main() {
