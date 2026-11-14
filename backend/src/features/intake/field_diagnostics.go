@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sort"
 
-	"refratia/backend/src/features/extractionfields"
+	"refratia/backend/src/features/fileIdentification/extractionfields"
 )
 
 const fieldHintsKey = "_field_hints"

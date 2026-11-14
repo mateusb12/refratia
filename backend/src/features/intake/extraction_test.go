@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
-	"refratia/backend/src/features/cases"
+	"refratia/backend/src/features/persistence/cases"
 	"refratia/backend/src/shared/fileStorage"
 	"testing"
 )

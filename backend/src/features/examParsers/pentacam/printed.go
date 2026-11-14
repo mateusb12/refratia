@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"refratia/backend/src/features/extractionfields"
+	"refratia/backend/src/features/fileIdentification/extractionfields"
 )
 
 var (

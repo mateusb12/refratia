@@ -7,8 +7,8 @@ import (
 
 	progress "refratia/backend/src/shared/progress"
 
-	patientfeature "refratia/backend/src/features/patient"
-	"refratia/backend/src/features/pentacam"
+	"refratia/backend/src/features/examParsers/pentacam"
+	patientfeature "refratia/backend/src/features/persistence/patient"
 )
 
 func tryExtractPentacamLocal(

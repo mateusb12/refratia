@@ -3,7 +3,7 @@ package pentacam
 import (
 	"testing"
 
-	"refratia/backend/src/features/extractionfields"
+	"refratia/backend/src/features/fileIdentification/extractionfields"
 )
 
 func TestNormalizePrinted(t *testing.T) {

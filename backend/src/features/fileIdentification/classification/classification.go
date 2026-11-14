@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	specularmicroscopy "refratia/backend/src/features/specularmicroscopy"
+	specularmicroscopy "refratia/backend/src/features/examParsers/specularmicroscopy"
 	pdfutil "refratia/backend/src/shared/pdf"
 )
 

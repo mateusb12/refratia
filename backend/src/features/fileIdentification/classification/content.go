@@ -5,7 +5,7 @@ import (
 	"regexp"
 	"strings"
 
-	"refratia/backend/src/features/retinography"
+	"refratia/backend/src/features/examParsers/retinography"
 	"refratia/backend/src/shared/ocr"
 	pdfutil "refratia/backend/src/shared/pdf"
 )

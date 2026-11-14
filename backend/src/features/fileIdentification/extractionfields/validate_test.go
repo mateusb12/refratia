@@ -7,7 +7,7 @@ import (
 )
 
 func TestSpecCopyMatchesGroundTruthSpec(t *testing.T) {
-	src, err := os.ReadFile("../../../benchmark/groundtruth/_field_spec.json")
+	src, err := os.ReadFile("../../../../benchmark/groundtruth/_field_spec.json")
 	if err != nil {
 		t.Skip("ground truth spec not present")
 	}

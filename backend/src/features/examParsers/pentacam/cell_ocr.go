@@ -8,7 +8,7 @@ import (
 	"image/png"
 	"os"
 	"os/exec"
-	"refratia/backend/src/features/extractionfields"
+	"refratia/backend/src/features/fileIdentification/extractionfields"
 	"refratia/backend/src/shared/ocr"
 	"regexp"
 	"strconv"

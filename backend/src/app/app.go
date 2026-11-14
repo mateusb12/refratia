@@ -10,9 +10,9 @@ import (
 
 	"gorm.io/gorm"
 
-	"refratia/backend/src/features/cases"
-	"refratia/backend/src/features/exams"
 	"refratia/backend/src/features/intake"
+	"refratia/backend/src/features/persistence/cases"
+	"refratia/backend/src/features/persistence/exams"
 )
 
 // Routes returns the full API, wrapped in CORS.

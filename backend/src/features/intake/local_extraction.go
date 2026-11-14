@@ -7,11 +7,11 @@ import (
 	"sort"
 	"strings"
 
-	"refratia/backend/src/features/classification"
-	"refratia/backend/src/features/eyesuite"
-	"refratia/backend/src/features/refractometry"
-	"refratia/backend/src/features/retinography"
-	"refratia/backend/src/features/specularmicroscopy"
+	"refratia/backend/src/features/examParsers/eyesuite"
+	"refratia/backend/src/features/examParsers/refractometry"
+	"refratia/backend/src/features/examParsers/retinography"
+	"refratia/backend/src/features/examParsers/specularmicroscopy"
+	"refratia/backend/src/features/fileIdentification/classification"
 
 	progress "refratia/backend/src/shared/progress"
 )

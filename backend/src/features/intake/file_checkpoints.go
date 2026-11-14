@@ -19,8 +19,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/smithy-go"
 
-	"refratia/backend/src/features/classification"
-	patientfeature "refratia/backend/src/features/patient"
+	"refratia/backend/src/features/fileIdentification/classification"
+	patientfeature "refratia/backend/src/features/persistence/patient"
 	"refratia/backend/src/shared/fileStorage"
 	"refratia/backend/src/shared/httpresponse"
 	progress "refratia/backend/src/shared/progress"

@@ -11,7 +11,7 @@ func TestExtractPDFMariaGoreteAutoRecoversBothEyes(t *testing.T) {
 		t.Skip("teste de integração desabilitado; use REFRATIA_RUN_INTEGRATION_TESTS=1")
 	}
 	data, err := os.ReadFile(
-		"../../../../frontend/data/maria-gorete/AUTO AO MARIA GORETE.pdf",
+		"../../../../../frontend/data/maria-gorete/AUTO AO MARIA GORETE.pdf",
 	)
 	if err != nil {
 		t.Fatal(err)

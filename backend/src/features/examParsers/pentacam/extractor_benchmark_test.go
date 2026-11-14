@@ -8,7 +8,7 @@ import (
 )
 
 func BenchmarkExtractPDFStrategies(b *testing.B) {
-	data, errorValue := os.ReadFile("../../../../frontend/data/maria-gorete/PENTACAM OD MARIA GORETE.pdf")
+	data, errorValue := os.ReadFile("../../../../../frontend/data/maria-gorete/PENTACAM OD MARIA GORETE.pdf")
 	if errorValue != nil {
 		b.Fatal(errorValue)
 	}

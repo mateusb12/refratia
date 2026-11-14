@@ -13,11 +13,11 @@ import (
 	"sync"
 	"time"
 
-	"refratia/backend/src/features/classification"
-	"refratia/backend/src/features/eyesuite"
-	"refratia/backend/src/features/pentacam"
-	"refratia/backend/src/features/refractometry"
-	"refratia/backend/src/features/specularmicroscopy"
+	"refratia/backend/src/features/examParsers/eyesuite"
+	"refratia/backend/src/features/examParsers/pentacam"
+	"refratia/backend/src/features/examParsers/refractometry"
+	"refratia/backend/src/features/examParsers/specularmicroscopy"
+	"refratia/backend/src/features/fileIdentification/classification"
 	"refratia/backend/src/shared/httpresponse"
 	"refratia/backend/src/shared/progress"
 )

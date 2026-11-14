@@ -2,7 +2,7 @@ package exams
 
 import (
 	"path/filepath"
-	"refratia/backend/src/features/classification"
+	"refratia/backend/src/features/fileIdentification/classification"
 	"strings"
 )
 

@@ -18,7 +18,7 @@ import (
 
 	progress "refratia/backend/src/shared/progress"
 
-	patientFeature "refratia/backend/src/features/patient"
+	patientFeature "refratia/backend/src/features/persistence/patient"
 	"refratia/backend/src/shared/fileStorage"
 )
 

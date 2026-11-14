@@ -14,7 +14,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"gorm.io/gorm"
 
-	patientfeature "refratia/backend/src/features/patient"
+	patientfeature "refratia/backend/src/features/persistence/patient"
 	"refratia/backend/src/shared/fileStorage"
 )
 

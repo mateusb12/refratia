@@ -16,7 +16,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 
-	"refratia/backend/src/features/cases"
+	"refratia/backend/src/features/persistence/cases"
 	"refratia/backend/src/shared/fileStorage"
 	"refratia/backend/src/shared/httpresponse"
 )

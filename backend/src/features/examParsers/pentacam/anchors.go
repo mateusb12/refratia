@@ -10,7 +10,7 @@ import (
 	"sort"
 	"strings"
 
-	"refratia/backend/src/features/extractionfields"
+	"refratia/backend/src/features/fileIdentification/extractionfields"
 	"refratia/backend/src/shared/document"
 	"refratia/backend/src/shared/ocr"
 	"refratia/backend/src/shared/parallelwork"

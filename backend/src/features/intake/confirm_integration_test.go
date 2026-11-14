@@ -17,9 +17,9 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"gorm.io/gorm"
 
-	"refratia/backend/src/features/cases"
-	"refratia/backend/src/features/exams"
-	"refratia/backend/src/features/reconcile"
+	"refratia/backend/src/features/persistence/cases"
+	"refratia/backend/src/features/persistence/exams"
+	"refratia/backend/src/features/persistence/reconcile"
 	"refratia/backend/src/shared/database"
 	"refratia/backend/src/shared/fileStorage"
 )

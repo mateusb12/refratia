@@ -15,8 +15,8 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
-	"refratia/backend/src/features/cases"
-	patientfeature "refratia/backend/src/features/patient"
+	"refratia/backend/src/features/persistence/cases"
+	patientfeature "refratia/backend/src/features/persistence/patient"
 	"refratia/backend/src/shared/database"
 	"refratia/backend/src/shared/fileStorage"
 	"refratia/backend/src/shared/httpresponse"

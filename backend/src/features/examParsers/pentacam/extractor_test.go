@@ -43,7 +43,7 @@ func TestExtractPDFMariaGoreteODRecoversVisibleFields(t *testing.T) {
 	}
 	fixturePath := os.Getenv("PENTACAM_FIXTURE")
 	if fixturePath == "" {
-		fixturePath = "../../../../frontend/data/maria-gorete/PENTACAM OD MARIA GORETE.pdf"
+		fixturePath = "../../../../../frontend/data/maria-gorete/PENTACAM OD MARIA GORETE.pdf"
 	}
 
 	data, errorValue := os.ReadFile(fixturePath)
@@ -67,7 +67,7 @@ func TestDetectEyeMariaGoreteOE(t *testing.T) {
 		t.Skip("teste de integração desabilitado; use REFRATIA_RUN_INTEGRATION_TESTS=1")
 	}
 	data, errorValue := os.ReadFile(
-		"../../../../frontend/data/maria-gorete/PENTACAM OE MARIA GORETE.pdf",
+		"../../../../../frontend/data/maria-gorete/PENTACAM OE MARIA GORETE.pdf",
 	)
 	if errorValue != nil {
 		t.Fatal(errorValue)
@@ -87,7 +87,7 @@ func TestExtractPDFMariaGoreteOERecoversRequiredFields(t *testing.T) {
 		t.Skip("teste de integração desabilitado; use REFRATIA_RUN_INTEGRATION_TESTS=1")
 	}
 	data, errorValue := os.ReadFile(
-		"../../../../frontend/data/maria-gorete/PENTACAM OE MARIA GORETE.pdf",
+		"../../../../../frontend/data/maria-gorete/PENTACAM OE MARIA GORETE.pdf",
 	)
 	if errorValue != nil {
 		t.Fatal(errorValue)
@@ -136,7 +136,7 @@ func TestExtractPDFCresoAversaRecoversCriticalFieldsForBothEyes(t *testing.T) {
 		expected map[string]float64
 	}{
 		{
-			filename: "../../../../frontend/data/creso-aversa/PENTACAM CRESO AVERSA OD .pdf",
+			filename: "../../../../../frontend/data/creso-aversa/PENTACAM CRESO AVERSA OD .pdf",
 			expected: map[string]float64{
 				"anterior_cornea.k1_d":                                43.9,
 				"anterior_cornea.k2_d":                                45.1,
@@ -157,7 +157,7 @@ func TestExtractPDFCresoAversaRecoversCriticalFieldsForBothEyes(t *testing.T) {
 			},
 		},
 		{
-			filename: "../../../../frontend/data/creso-aversa/PENTACAM CRESO AVERSA OS .pdf",
+			filename: "../../../../../frontend/data/creso-aversa/PENTACAM CRESO AVERSA OS .pdf",
 			expected: map[string]float64{
 				"belin_ambrosio.d":                        0.98,
 				"belin_ambrosio.art_max":                  444,
@@ -194,14 +194,14 @@ func TestExtractPDFCresoAversaRecoversCriticalFieldsForBothEyes(t *testing.T) {
 			}
 		}
 
-		if testCase.filename == "../../../../frontend/data/creso-aversa/PENTACAM CRESO AVERSA OD .pdf" {
+		if testCase.filename == "../../../../../frontend/data/creso-aversa/PENTACAM CRESO AVERSA OD .pdf" {
 			topometric := exam["topometric_indices_8mm"].(map[string]any)
 			if got := topometric["tkc"]; got != nil {
 				t.Errorf("%s: expected topometric_indices_8mm.tkc=—, got %#v", testCase.filename, got)
 			}
 		}
 
-		if testCase.filename == "../../../../frontend/data/creso-aversa/PENTACAM CRESO AVERSA OS .pdf" {
+		if testCase.filename == "../../../../../frontend/data/creso-aversa/PENTACAM CRESO AVERSA OS .pdf" {
 			topometric := exam["topometric_indices_8mm"].(map[string]any)
 			if got := topometric["tkc"]; got != nil {
 				t.Errorf("%s: expected topometric_indices_8mm.tkc=—, got %#v", testCase.filename, got)
