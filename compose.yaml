@@ -38,6 +38,9 @@ services:
       POSTGRES_ADMIN_DB: ${POSTGRES_ADMIN_DB:-postgres}
     ports:
       - "3000:3000"
+    networks:
+      - default
+      - coolify
     depends_on:
       minio-init:
         condition: service_completed_successfully
@@ -75,3 +78,7 @@ services:
 
 volumes:
   minio_data:
+
+networks:
+  coolify:
+    external: true
