@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"image"
 	"image/png"
-	"os"
-	"os/exec"
 	"refratia/backend/src/features/fileIdentification/extractionfields"
 	"refratia/backend/src/shared/ocr"
 	"regexp"
@@ -176,43 +174,15 @@ func pentacamReadNumericCell(
 }
 
 func pentacamNumericOCR(
-	ctx context.Context,
+	executionContext context.Context,
 	data []byte,
 	psm int,
 ) (string, error) {
-	f, err := os.CreateTemp("", "refratia-pentacam-cell-*.png")
-	if err != nil {
-		return "", err
+	text, recognizeError := ocr.Recognize(executionContext, data, psm, "0123456789.,+-", false)
+	if recognizeError != nil {
+		return "", recognizeError
 	}
-
-	path := f.Name()
-	defer os.Remove(path)
-
-	if _, err := f.Write(data); err != nil {
-		f.Close()
-		return "", err
-	}
-	if err := f.Close(); err != nil {
-		return "", err
-	}
-
-	cmd := exec.CommandContext(
-		ctx,
-		"tesseract",
-		path,
-		"stdout",
-		"--psm",
-		strconv.Itoa(psm),
-		"-c",
-		"tessedit_char_whitelist=0123456789.,+-",
-	)
-
-	output, err := cmd.Output()
-	if err != nil {
-		return "", err
-	}
-
-	return strings.TrimSpace(string(output)), nil
+	return strings.TrimSpace(text), nil
 }
 
 func pentacamParseCellNumber(

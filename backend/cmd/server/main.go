@@ -11,6 +11,7 @@ import (
 
 	"refratia/backend/src/app"
 	"refratia/backend/src/shared/database"
+	"refratia/backend/src/shared/ocr"
 )
 
 func main() {
@@ -26,6 +27,11 @@ func main() {
 	}
 	if databaseMigrationError := appDatabase.Migrate(); databaseMigrationError != nil {
 		panic(fmt.Errorf("migrate postgres schema: %w", databaseMigrationError))
+	}
+
+	// Load the OCR engines now, so the first upload does not pay for it.
+	if warmUpError := ocr.WarmUp(); warmUpError != nil {
+		panic(warmUpError)
 	}
 
 	port := os.Getenv("PORT")

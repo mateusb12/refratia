@@ -1,9 +1,12 @@
-FROM golang:1.23-alpine AS build
+# Same Alpine release as the runtime stage: the server links libtesseract
+# (cgo), so build and runtime must ship the same tesseract/leptonica.
+FROM golang:1.23-alpine3.20 AS build
+RUN apk add --no-cache gcc musl-dev pkgconf tesseract-ocr-dev leptonica-dev
 WORKDIR /src
 COPY go.mod ./
 COPY go.sum ./
 COPY . .
-RUN CGO_ENABLED=0 go build -o /server ./cmd/server
+RUN go build -o /server ./cmd/server
 
 FROM alpine:3.20
 RUN apk add --no-cache \

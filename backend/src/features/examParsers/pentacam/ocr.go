@@ -7,10 +7,9 @@ import (
 	"image"
 	"image/draw"
 	"image/png"
-	"os"
-	"os/exec"
-	"strconv"
 	"strings"
+
+	"refratia/backend/src/shared/ocr"
 )
 
 type pentacamOCRRegion struct {
@@ -48,37 +47,12 @@ func extractOCRRegionPNG(data []byte, ocrRegion pentacamOCRRegion) ([]byte, erro
 	return buf.Bytes(), nil
 }
 
-func runTesseractTextPSM(ctx context.Context, pngData []byte, psm int) (string, error) {
-	f, err := os.CreateTemp("", "refratia-focus-*.png")
-	if err != nil {
-		return "", err
+func runTesseractTextPSM(executionContext context.Context, pngData []byte, psm int) (string, error) {
+	text, recognizeError := ocr.Recognize(executionContext, pngData, psm, "", false)
+	if recognizeError != nil {
+		return "", fmt.Errorf("tesseract OCR region: %w", recognizeError)
 	}
-	path := f.Name()
-	defer os.Remove(path)
-
-	if _, err := f.Write(pngData); err != nil {
-		f.Close()
-		return "", err
-	}
-	if err := f.Close(); err != nil {
-		return "", err
-	}
-
-	cmd := exec.CommandContext(
-		ctx,
-		"tesseract",
-		path,
-		"stdout",
-		"--psm",
-		strconv.Itoa(psm),
-	)
-
-	output, err := cmd.Output()
-	if err != nil {
-		return "", fmt.Errorf("tesseract OCR region: %w", err)
-	}
-
-	return strings.TrimSpace(string(output)), nil
+	return strings.TrimSpace(text), nil
 }
 
 func extractOCRTextsFromRegion(ctx context.Context, page []byte, ocrRegion pentacamOCRRegion) ([]string, error) {

@@ -3,14 +3,10 @@ package ocr
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"image"
 	"image/color"
 	_ "image/jpeg"
 	"image/png"
-	"os"
-	"os/exec"
-	"strconv"
 	"strings"
 )
 
@@ -115,28 +111,11 @@ func EncodePNG(img image.Image) ([]byte, error) {
 // RunTesseractText runs tesseract with the given PSM and an optional character
 // whitelist and returns the plain text.
 func RunTesseractText(ctx context.Context, pngData []byte, psm int, whitelist string) (string, error) {
-	f, err := os.CreateTemp("", "refratia-ocr-*.png")
-	if err != nil {
-		return "", err
+	text, recognizeError := Recognize(ctx, pngData, psm, whitelist, false)
+	if recognizeError != nil {
+		return "", recognizeError
 	}
-	path := f.Name()
-	defer os.Remove(path)
-	if _, err := f.Write(pngData); err != nil {
-		f.Close()
-		return "", err
-	}
-	if err := f.Close(); err != nil {
-		return "", err
-	}
-	args := []string{path, "stdout", "--psm", strconv.Itoa(psm)}
-	if whitelist != "" {
-		args = append(args, "-c", "tessedit_char_whitelist="+whitelist)
-	}
-	out, err := exec.CommandContext(ctx, "tesseract", args...).Output()
-	if err != nil {
-		return "", fmt.Errorf("tesseract: %w", err)
-	}
-	return strings.TrimRight(string(out), "\n"), nil
+	return strings.TrimRight(text, "\n"), nil
 }
 
 // AutoContrast stretches the 1st..99th grey percentile of img to 0..255.
