@@ -8,7 +8,7 @@ func TestValidateTouchedEyesDropsInvalidAndRecords(t *testing.T) {
 	analysis["exams"].(map[string]any)["refractometry"] = map[string]any{"eyes": map[string]any{
 		"OD": map[string]any{"axis_deg": 188.0, "sphere_d": 5.0},
 	}}
-	file := uploadedFile{}
+	file := UploadedFile{}
 	file.Metadata.SHA256 = "abcdef0123456789"
 	validateTouchedEyes(analysis, file, before)
 
@@ -33,7 +33,7 @@ func TestValidateTouchedEyesDropsInvalidAndRecords(t *testing.T) {
 
 func TestRecordIdentityNotReadLeavesEntryAndDiagnostics(t *testing.T) {
 	analysis := map[string]any{}
-	file := uploadedFile{}
+	file := UploadedFile{}
 	file.Metadata.Filename, file.Metadata.SHA256 = "f.pdf", "abcd"
 	recordIdentityNotRead(analysis, file, "OD")
 	entries := analysis["verificacao_identidade"].([]any)

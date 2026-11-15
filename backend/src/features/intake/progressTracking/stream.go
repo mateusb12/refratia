@@ -1,4 +1,4 @@
-package intake
+package progressTracking
 
 import (
 	"encoding/json"
@@ -8,16 +8,17 @@ import (
 	progress "refratia/backend/src/shared/progress"
 )
 
-type progressStream struct {
+type Stream struct {
 	mu      sync.Mutex
 	encoder *json.Encoder
 	flusher http.Flusher
 	last    int
+	live    *liveRun // analyze: every event is also kept for reconnects
 }
 
-func newProgressStream(
+func NewStream(
 	responseWriter http.ResponseWriter,
-) (*progressStream, bool) {
+) (*Stream, bool) {
 	flusher, ok := responseWriter.(http.Flusher)
 	if !ok {
 		return nil, false
@@ -38,13 +39,13 @@ func newProgressStream(
 		"no",
 	)
 
-	return &progressStream{
+	return &Stream{
 		encoder: json.NewEncoder(responseWriter),
 		flusher: flusher,
 	}, true
 }
 
-func (stream *progressStream) emit(
+func (stream *Stream) Emit(
 	event progress.Event,
 ) {
 	stream.mu.Lock()
@@ -58,31 +59,43 @@ func (stream *progressStream) emit(
 		}
 	}
 
+	stream.live.add(event)
+	// After the browser leaves, writes fail and the run goes on.
 	_ = stream.encoder.Encode(event)
 	stream.flusher.Flush()
 }
 
-func (stream *progressStream) reporter(
-	event progress.Event,
-) {
-	stream.emit(event)
+// Attach makes the stream feed run's reconnects and sends the run ID first:
+// the browser keeps it to reconnect. No-op for runs that are not live.
+func (stream *Stream) Attach(run *Run) {
+	if run == nil || run.live == nil {
+		return
+	}
+	stream.live = run.live
+	stream.Emit(progress.Event{Type: "run", Payload: map[string]any{"runId": run.runID}})
 }
 
-func (stream *progressStream) writeError(
+func (stream *Stream) Report(
+	event progress.Event,
+) {
+	stream.Emit(event)
+}
+
+func (stream *Stream) WriteError(
 	status int,
 	message string,
 ) {
-	stream.emit(progress.Event{
+	stream.Emit(progress.Event{
 		Type:    "error",
 		Status:  status,
 		Message: message,
 	})
 }
 
-func (stream *progressStream) writeResult(
+func (stream *Stream) WriteResult(
 	payload any,
 ) {
-	stream.emit(progress.Event{
+	stream.Emit(progress.Event{
 		Type:    "result",
 		Payload: payload,
 	})

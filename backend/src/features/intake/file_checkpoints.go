@@ -127,7 +127,7 @@ func withFileCheckpointStorage(
 
 func withCurrentCheckpointFile(
 	processingContext context.Context,
-	file uploadedFile,
+	file UploadedFile,
 ) context.Context {
 	return context.WithValue(
 		processingContext,
@@ -149,11 +149,11 @@ func fileCheckpointRunFromContext(
 
 func currentCheckpointFileFromContext(
 	processingContext context.Context,
-) (uploadedFile, bool) {
+) (UploadedFile, bool) {
 	file, found :=
 		processingContext.Value(
 			currentCheckpointFileKey{},
-		).(uploadedFile)
+		).(UploadedFile)
 
 	return file, found
 }
@@ -288,7 +288,7 @@ func saveUploadedFileBeforeProcessing(
 	processingContext context.Context,
 	storageClientInstance fileStorage.Repository,
 	bucketName string,
-	file uploadedFile,
+	file UploadedFile,
 ) error {
 	fileAlreadySaved, lookupError :=
 		uploadedFileCheckpointExists(
@@ -576,7 +576,7 @@ func identityEntriesForCheckpointFile(
 
 func buildAnalysisForFileCheckpoint(
 	analysis map[string]any,
-	file uploadedFile,
+	file UploadedFile,
 	examType string,
 	eye string,
 ) map[string]any {
@@ -1072,7 +1072,7 @@ func renameCheckpointFilenameReferences(
 
 func refreshCheckpointSourceMetadata(
 	analysis map[string]any,
-	file uploadedFile,
+	file UploadedFile,
 ) {
 	sourceFiles, _ :=
 		analysis["source_files"].([]any)
@@ -1101,7 +1101,7 @@ func refreshCheckpointSourceMetadata(
 
 func emitReusedFileCheckpoint(
 	processingContext context.Context,
-	file uploadedFile,
+	file UploadedFile,
 	checkpointAnalysis map[string]any,
 ) {
 	examType :=
@@ -1151,7 +1151,7 @@ func emitReusedFileCheckpoint(
 
 func prepareFileForIdempotentProcessing(
 	processingContext context.Context,
-	file uploadedFile,
+	file UploadedFile,
 	analysis map[string]any,
 ) (bool, error) {
 	checkpointRun :=

@@ -1,4 +1,6 @@
-package intake
+// Package benchmark serves /api/benchmark/extract-fields: the per-field
+// extraction results the benchmark compares against ground truth.
+package benchmark
 
 import (
 	"encoding/json"
@@ -18,6 +20,7 @@ import (
 	"refratia/backend/src/features/examParsers/refractometry"
 	"refratia/backend/src/features/examParsers/specularmicroscopy"
 	"refratia/backend/src/features/fileIdentification/classification"
+	"refratia/backend/src/features/intake"
 	"refratia/backend/src/shared/httpresponse"
 	"refratia/backend/src/shared/progress"
 )
@@ -528,8 +531,8 @@ func benchmarkEyeSuiteFields(
 	return fields, nil
 }
 
-// BenchmarkExtractFieldsHandler serves /api/benchmark/extract-fields; intake owns this endpoint.
-func BenchmarkExtractFieldsHandler(
+// ExtractFieldsHandler serves /api/benchmark/extract-fields.
+func ExtractFieldsHandler(
 	responseWriter http.ResponseWriter,
 	request *http.Request,
 ) {
@@ -538,23 +541,11 @@ func BenchmarkExtractFieldsHandler(
 		return
 	}
 
-	headers, requestError := intakeHeaders(responseWriter, request)
-	if requestError != nil {
-		httpresponse.WriteError(responseWriter, requestError.status, requestError.message)
+	files, ok := intake.ReadUploads(responseWriter, request)
+	if !ok {
 		return
 	}
-
 	defer request.MultipartForm.RemoveAll()
-
-	files, readErr := readIntakeFiles(headers)
-	if readErr != nil {
-		httpresponse.WriteError(
-			responseWriter,
-			http.StatusBadRequest,
-			"não foi possível ler o arquivo",
-		)
-		return
-	}
 
 	if len(files) != 1 {
 		httpresponse.WriteError(

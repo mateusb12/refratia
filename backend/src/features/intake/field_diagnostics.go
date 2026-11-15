@@ -43,7 +43,7 @@ func snapshotEyes(analysis map[string]any) map[string]string {
 // changed since `before`, and appends the C4 diagnostics to
 // analysis["extraction_diagnostics"]. It must run before the file's result is
 // emitted or checkpointed, so invalid values never leave the extractor.
-func validateTouchedEyes(analysis map[string]any, file uploadedFile, before map[string]string) {
+func validateTouchedEyes(analysis map[string]any, file UploadedFile, before map[string]string) {
 	after := snapshotEyes(analysis)
 	touched := map[string][]string{}
 	for eyeKey, fingerprint := range after {

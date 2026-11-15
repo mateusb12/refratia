@@ -87,7 +87,7 @@ func TestCompleteLocalExtractionHasZeroGaps(t *testing.T) {
 		},
 	}
 
-	files := []uploadedFile{
+	files := []UploadedFile{
 		{Metadata: FileMetadata{Filename: "bio.pdf"}},
 	}
 
@@ -295,7 +295,7 @@ func TestSpecularMicroscopyAOPartialProducesODGap(
 		},
 	}
 
-	files := []uploadedFile{
+	files := []UploadedFile{
 		{
 			Metadata: FileMetadata{
 				Filename: "micro.jpg",
@@ -350,7 +350,7 @@ func TestSpecularMicroscopyAOCompleteHasNoGaps(
 		},
 	}
 
-	files := []uploadedFile{
+	files := []UploadedFile{
 		{
 			Metadata: FileMetadata{
 				Filename: "micro.jpg",
@@ -396,7 +396,7 @@ func TestSpecularMicroscopyODOnlyCanBeComplete(
 		},
 	}
 
-	files := []uploadedFile{
+	files := []UploadedFile{
 		{
 			Metadata: FileMetadata{
 				Filename: "micro-od.jpg",
@@ -442,7 +442,7 @@ func TestSpecularMicroscopyOSOnlyCanBeComplete(
 		},
 	}
 
-	files := []uploadedFile{
+	files := []UploadedFile{
 		{
 			Metadata: FileMetadata{
 				Filename: "micro-os.jpg",
@@ -491,7 +491,7 @@ func TestSpecularMicroscopyPartialFileStaysInFallback(
 		},
 	}
 
-	files := []uploadedFile{
+	files := []UploadedFile{
 		{
 			Metadata: FileMetadata{
 				Filename: filename,

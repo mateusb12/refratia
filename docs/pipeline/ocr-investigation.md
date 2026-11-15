@@ -52,7 +52,7 @@ Totals over the app contract fields that have a valid ground-truth value:
 | `shared/examdate/examdate.go` `FromOCR` | `a/b/yyyy` is read as DMY unless b>12. | It knows nothing about the device. The Pentacam prints MDY. |
 | `shared/ocr/tsv.go` `GroupRows(words, tolPx)` | Row grouping. | The tolerance is in absolute pixels (10/12/40) at any DPI. |
 | `frontend/src/App.tsx` `reportHeaderSummary` + `utils/date.ts calculateAge` | Age = `patient.birth_date` against the **first** `verificacao_identidade[].timestamp_lido`. | <ul><li>Accepts `age === 0`.</li><li>Raw MDY strings are parsed as DMY unless day > 12.</li><li>The reference date depends on file order.</li></ul> |
-| `benchmark_detection.go` | `/api/benchmark/extract-fields`: per-file `benchmarkField{key,label,found,value}`. | Requires structured filenames. It is the closest existing thing to per-field diagnostics. |
+| `intake/benchmark/fields.go` | `/api/benchmark/extract-fields`: per-file `benchmarkField{key,label,found,value}`. | Requires structured filenames. It is the closest existing thing to per-field diagnostics. |
 
 ## 2. Corpus facts that the code does not model
 

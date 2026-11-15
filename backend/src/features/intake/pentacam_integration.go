@@ -13,7 +13,7 @@ import (
 
 func tryExtractPentacamLocal(
 	executionContext context.Context,
-	file uploadedFile,
+	file UploadedFile,
 	analysis map[string]any,
 ) bool {
 	defer validateTouchedEyes(analysis, file, snapshotEyes(analysis))
@@ -110,7 +110,7 @@ func tryExtractPentacamLocal(
 // an identity entry (without values, with its declared date order) and a
 // diagnostic per identity field, so a document whose panel could not be read
 // is never silently absent from the identity evidence.
-func recordIdentityNotRead(analysis map[string]any, file uploadedFile, eye string) {
+func recordIdentityNotRead(analysis map[string]any, file UploadedFile, eye string) {
 	verification, _ := analysis["verificacao_identidade"].([]any)
 	analysis["verificacao_identidade"] = append(verification, map[string]any{
 		"source":     file.Metadata.Filename,

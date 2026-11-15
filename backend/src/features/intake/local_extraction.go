@@ -12,6 +12,7 @@ import (
 	"refratia/backend/src/features/examParsers/retinography"
 	"refratia/backend/src/features/examParsers/specularmicroscopy"
 	"refratia/backend/src/features/fileIdentification/classification"
+	"refratia/backend/src/features/intake/progressTracking"
 
 	progress "refratia/backend/src/shared/progress"
 )
@@ -25,7 +26,7 @@ func emitLocalFileResult(
 	message string,
 	analysis map[string]any,
 ) {
-	auditFrom(executionContext).finishFile(filename, func(entry *auditFile) {
+	progressTracking.From(executionContext).FinishFile(filename, func(entry *progressTracking.File) {
 		entry.ExamType, entry.Eye, entry.Outcome, entry.Message = examType, eye, status, message
 	})
 	if status == "extracted" &&
@@ -83,7 +84,7 @@ var errAnteriorSegmentPhoto = errors.New("foto de segmento anterior")
 
 func tryExtractEyeSuiteLocal(
 	executionContext context.Context,
-	file uploadedFile,
+	file UploadedFile,
 	analysis map[string]any,
 ) bool {
 	defer validateTouchedEyes(analysis, file, snapshotEyes(analysis))
@@ -127,7 +128,7 @@ func tryExtractEyeSuiteLocal(
 
 func tryExtractRetinographyLocal(
 	executionContext context.Context,
-	file uploadedFile,
+	file UploadedFile,
 	analysis map[string]any,
 ) (bool, error) {
 	defer validateTouchedEyes(analysis, file, snapshotEyes(analysis))
@@ -257,7 +258,7 @@ func tryExtractRetinographyLocal(
 	return true, nil
 }
 
-func tryExtractSpecularMicroscopyLocal(executionContext context.Context, file uploadedFile, analysis map[string]any) (bool, error) {
+func tryExtractSpecularMicroscopyLocal(executionContext context.Context, file UploadedFile, analysis map[string]any) (bool, error) {
 	defer validateTouchedEyes(analysis, file, snapshotEyes(analysis))
 	result, errorValue := specularmicroscopy.Extract(executionContext, file.Data)
 	if errorValue != nil {
@@ -289,7 +290,7 @@ func tryExtractSpecularMicroscopyLocal(executionContext context.Context, file up
 
 func tryExtractRefractometryLocal(
 	executionContext context.Context,
-	file uploadedFile,
+	file UploadedFile,
 	analysis map[string]any,
 ) bool {
 	defer validateTouchedEyes(analysis, file, snapshotEyes(analysis))
@@ -345,7 +346,7 @@ func emitLocalPartial(
 
 func extractPatientLocal(
 	executionContext context.Context,
-	files []uploadedFile,
+	files []UploadedFile,
 ) map[string]any {
 	exams := map[string]any{}
 
@@ -385,7 +386,7 @@ func extractPatientLocal(
 			return analysis
 		}
 
-		auditFrom(fileCtx).startFile(file)
+		startAuditFile(fileCtx, file)
 
 		reused,
 			checkpointPrepareError :=
@@ -405,7 +406,7 @@ func extractPatientLocal(
 		}
 
 		if reused {
-			auditFrom(fileCtx).finishFile(file.Metadata.Filename, func(entry *auditFile) {
+			progressTracking.From(fileCtx).FinishFile(file.Metadata.Filename, func(entry *progressTracking.File) {
 				entry.Reused, entry.Outcome = true, "reused"
 			})
 			continue
@@ -431,7 +432,7 @@ func extractPatientLocal(
 			examEye,
 			analysis,
 		)
-		auditFrom(fileCtx).finishFile(file.Metadata.Filename, nil)
+		progressTracking.From(fileCtx).FinishFile(file.Metadata.Filename, nil)
 	}
 
 	return analysis
@@ -611,7 +612,7 @@ func localIdentitySources(analysis map[string]any) map[string]bool {
 }
 
 func specularMicroscopyFileExpectedEyes(
-	file uploadedFile,
+	file UploadedFile,
 ) []string {
 	examType := file.Metadata.ExamType
 
@@ -682,7 +683,7 @@ func specularMicroscopyEyeComplete(
 
 func specularMicroscopyLocalGaps(
 	analysis map[string]any,
-	files []uploadedFile,
+	files []UploadedFile,
 ) []string {
 	expected := map[string]bool{}
 
@@ -721,7 +722,7 @@ func specularMicroscopyLocalGaps(
 
 func specularMicroscopyFileNeedsFallback(
 	analysis map[string]any,
-	file uploadedFile,
+	file UploadedFile,
 ) bool {
 	expected :=
 		specularMicroscopyFileExpectedEyes(
@@ -746,7 +747,7 @@ func specularMicroscopyFileNeedsFallback(
 
 func specularMicroscopyLocalCompleteForFiles(
 	analysis map[string]any,
-	files []uploadedFile,
+	files []UploadedFile,
 ) bool {
 	hasSpecular := false
 
@@ -777,7 +778,7 @@ func specularMicroscopyLocalCompleteForFiles(
 
 func localResolvedExamKeysForFiles(
 	analysis map[string]any,
-	files []uploadedFile,
+	files []UploadedFile,
 ) map[string]bool {
 	resolved :=
 		localResolvedExamKeys(
@@ -813,12 +814,12 @@ func localResolvedExamKeysForFiles(
 	return resolved
 }
 
-func localFallbackFiles(analysis map[string]any, files []uploadedFile) []uploadedFile {
+func localFallbackFiles(analysis map[string]any, files []UploadedFile) []UploadedFile {
 	claimed := localClaimedFiles(analysis)
 	identitySources := localIdentitySources(analysis)
 	identityComplete := localPatientIdentityComplete(analysis)
 
-	result := make([]uploadedFile, 0, len(files))
+	result := make([]UploadedFile, 0, len(files))
 	for _, file := range files {
 		if specularMicroscopyFileNeedsFallback(
 			analysis,
@@ -843,7 +844,7 @@ func localFallbackFiles(analysis map[string]any, files []uploadedFile) []uploade
 	return result
 }
 
-func collectLocalGaps(analysis map[string]any, files []uploadedFile) []string {
+func collectLocalGaps(analysis map[string]any, files []UploadedFile) []string {
 	gaps := []string{}
 	seen := map[string]bool{}
 
@@ -904,7 +905,7 @@ func mergeFallbackAnalysis(local, fallback map[string]any) {
 
 func extractionPromptForLocalGaps(
 	analysis map[string]any,
-	files []uploadedFile,
+	files []UploadedFile,
 	gaps []string,
 ) string {
 	resolved :=
@@ -1009,7 +1010,7 @@ func stripLocallyResolvedExams(
 // recorded as a classification diagnostic.
 func resolveLocalClassification(
 	executionContext context.Context,
-	file uploadedFile,
+	file UploadedFile,
 	analysis map[string]any,
 ) (string, string) {
 	examType, _ := classification.ContractExamType(file.Metadata.ExamType)
@@ -1048,7 +1049,7 @@ func resolveLocalClassification(
 
 func recordClassificationConflict(
 	analysis map[string]any,
-	file uploadedFile,
+	file UploadedFile,
 	byContent string,
 ) {
 	diagnostics, _ := analysis["extraction_diagnostics"].([]any)
@@ -1068,7 +1069,7 @@ func recordClassificationConflict(
 // exactly one file_result for the file, whatever happens.
 func dispatchLocalFile(
 	executionContext context.Context,
-	file uploadedFile,
+	file UploadedFile,
 	examType, eye string,
 	analysis map[string]any,
 ) {

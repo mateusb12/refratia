@@ -79,7 +79,7 @@ func TestPentacamPartialProducesFieldLevelGaps(t *testing.T) {
 
 	gaps := collectLocalGaps(
 		analysis,
-		[]uploadedFile{
+		[]UploadedFile{
 			{
 				Metadata: FileMetadata{
 					Filename:    "pentacam-od.pdf",

@@ -29,13 +29,13 @@ func TestExtractPatientLocalEmitsOneFileResultPerFile(t *testing.T) {
 					results = append(results, event.Payload.(map[string]any))
 				}
 			})
-			file := uploadedFile{Data: []byte("not a document")}
+			file := UploadedFile{Data: []byte("not a document")}
 			file.Metadata.Filename = "anything"
 			file.Metadata.ContentType = testCase.contentType
 			file.Metadata.ExamType = testCase.examType
 			file.Metadata.Eye = "OD"
 			file.Metadata.SHA256 = "00"
-			extractPatientLocal(executionContext, []uploadedFile{file})
+			extractPatientLocal(executionContext, []UploadedFile{file})
 			if len(results) != 1 {
 				t.Fatalf("got %d file_result events, want 1", len(results))
 			}

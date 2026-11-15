@@ -10,14 +10,14 @@ import (
 )
 
 func TestPreparedPromptLabelIncludesPDFPage(t *testing.T) {
-	label := preparedPromptLabel(preparedFile{File: uploadedFile{Metadata: FileMetadata{Filename: "exame.pdf"}}, Page: 8})
+	label := preparedPromptLabel(preparedFile{File: UploadedFile{Metadata: FileMetadata{Filename: "exame.pdf"}}, Page: 8})
 	if label != "Arquivo: exame.pdf — página 8" {
 		t.Fatalf("unexpected page label: %q", label)
 	}
 }
 
 func TestPrepareExtractionFilesRejectsInvalidPDF(t *testing.T) {
-	_, errorValue := prepareExtractionFiles(context.Background(), []uploadedFile{{Metadata: FileMetadata{Filename: "exame.pdf", ContentType: "application/pdf"}, Data: []byte("not a pdf")}})
+	_, errorValue := prepareExtractionFiles(context.Background(), []UploadedFile{{Metadata: FileMetadata{Filename: "exame.pdf", ContentType: "application/pdf"}, Data: []byte("not a pdf")}})
 	if errorValue == nil {
 		t.Fatal("expected invalid PDF to fail during preprocessing")
 	}
@@ -80,7 +80,7 @@ func TestPentacamRepairFillsOnlyMissingMetrics(t *testing.T) {
 			},
 		},
 	}}
-	files := []uploadedFile{
+	files := []UploadedFile{
 		{Metadata: FileMetadata{Filename: "od.pdf"}},
 		{Metadata: FileMetadata{Filename: "os.pdf"}},
 		{Metadata: FileMetadata{Filename: "biometria.pdf"}},

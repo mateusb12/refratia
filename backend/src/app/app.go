@@ -11,6 +11,8 @@ import (
 	"gorm.io/gorm"
 
 	"refratia/backend/src/features/intake"
+	"refratia/backend/src/features/intake/benchmark"
+	"refratia/backend/src/features/intake/progressTracking"
 	"refratia/backend/src/features/persistence/cases"
 	"refratia/backend/src/features/persistence/exams"
 )
@@ -20,6 +22,7 @@ func Routes(sqlDatabase *gorm.DB) http.Handler {
 	caseHandler := cases.Handler{Database: sqlDatabase}
 	examHandler := exams.Handler{Database: sqlDatabase}
 	intakeHandler := intake.Handler{Database: sqlDatabase}
+	runs := progressTracking.Handler{Database: sqlDatabase}
 
 	router := http.NewServeMux()
 	router.HandleFunc("/health", healthHandler)
@@ -30,10 +33,11 @@ func Routes(sqlDatabase *gorm.DB) http.Handler {
 	router.HandleFunc("/api/exams/upload-url", examHandler.ServeUploadURL)
 	router.HandleFunc("/api/exams/confirm", examHandler.ServeConfirm)
 	router.HandleFunc("/api/file-checkpoints/check", intake.CheckFileCheckpoints)
-	router.HandleFunc("/api/intakes/analyze", intakeHandler.Audit("analyze", intakeHandler.AnalyzeIntake))
-	router.HandleFunc("/api/intakes/inspect", intakeHandler.Audit("inspect", intake.InspectIntakeHandler))
-	router.HandleFunc("/api/benchmark/extract-fields", intake.BenchmarkExtractFieldsHandler)
-	router.HandleFunc("/api/intakes/confirm", intakeHandler.Audit("confirm", intakeHandler.ConfirmIntake))
+	router.HandleFunc("/api/intakes/analyze", runs.Audit("analyze", intakeHandler.AnalyzeIntake))
+	router.HandleFunc("/api/intakes/inspect", runs.Audit("inspect", intake.InspectIntakeHandler))
+	router.HandleFunc("/api/benchmark/extract-fields", benchmark.ExtractFieldsHandler)
+	router.HandleFunc("/api/intakes/confirm", runs.Audit("confirm", intakeHandler.ConfirmIntake))
+	router.HandleFunc("/api/intakes/runs/", runs.ServeRun)
 	router.HandleFunc("/api/intakes/", intake.DeleteIntakeHandler)
 	return cors(router)
 }

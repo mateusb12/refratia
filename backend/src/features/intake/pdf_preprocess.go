@@ -8,17 +8,17 @@ import (
 	pdfutil "refratia/backend/src/shared/pdf"
 )
 
-// preparedFile is deliberately kept compatible with uploadedFile. A PDF is
+// preparedFile is deliberately kept compatible with UploadedFile. A PDF is
 // replaced by either its text layer or one PNG per page before it reaches the
 // vision model. The original filename is retained so source_files continue to
 // point to the user's document.
 type preparedFile struct {
-	File      uploadedFile
+	File      UploadedFile
 	Page      int
 	TextLayer string
 }
 
-func prepareExtractionFiles(executionContext context.Context, files []uploadedFile) ([]preparedFile, error) {
+func prepareExtractionFiles(executionContext context.Context, files []UploadedFile) ([]preparedFile, error) {
 	prepared := make([]preparedFile, 0, len(files))
 	for _, file := range files {
 		if file.Metadata.ContentType != "application/pdf" {
@@ -44,7 +44,7 @@ func prepareExtractionFiles(executionContext context.Context, files []uploadedFi
 			metadata.ContentType = "image/png"
 			metadata.Size = int64(len(image))
 			prepared = append(prepared, preparedFile{
-				File: uploadedFile{Metadata: metadata, Data: image},
+				File: UploadedFile{Metadata: metadata, Data: image},
 				Page: index + 1,
 			})
 		}

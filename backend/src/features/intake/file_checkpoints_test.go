@@ -116,7 +116,7 @@ func TestBuildAnalysisForPentacamCheckpointKeepsOnlyCurrentEye(
 		}
 
 	file :=
-		uploadedFile{
+		UploadedFile{
 			Metadata: FileMetadata{
 				Filename:    filename,
 				ContentType: "application/pdf",

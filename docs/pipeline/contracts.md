@@ -39,7 +39,7 @@ In the analyze response: `analysis.extraction_diagnostics: [{file_sha256, exam_t
 |---|---|
 | Benchmark | `backend/cmd/benchmark/**`, `backend/benchmark/**` (ground truth values read-only; report bugs to the lead), `docs/pipeline/benchmark*.md`, `package.json` script entry |
 | Persistence | `intake_handlers.go`, `patient_database.go`, `patient_upsert.go`, `exam_database.go`, `exams_storage.go`, `cases.go`, `main.go`, `database/**`, `fileStorage/**`, `features/patient/**` (identity/date canonicalization, merge), `features/intake/classification.go` (draft key naming only), their `_test.go`, `cmd/reconcile/**` |
-| OCR | `features/{pentacam,eyesuite,refractometry,retinography,specularmicroscopy}/**`, `shared/{ocr,pdf}/**`, `local_extraction.go`, `pentacam_integration.go`, `extraction.go`, `file_checkpoints.go`, `benchmark_detection.go`, `pdf_preprocess.go`, `features/intake/classification.go` (classification logic) |
+| OCR | `features/{pentacam,eyesuite,refractometry,retinography,specularmicroscopy}/**`, `shared/{ocr,pdf}/**`, `local_extraction.go`, `pentacam_integration.go`, `extraction.go`, `file_checkpoints.go`, `intake/benchmark/fields.go`, `pdf_preprocess.go`, `features/intake/classification.go` (classification logic) |
 | Lead | `docs/pipeline/contracts.md`, `testinfra/**`, `database/database.go` dotenv guard |
 
 Rules: no patient names, filenames or fixture values hardcoded in app code. Don't edit files you don't own; message the owner instead. Run the full benchmark before claiming a fix.

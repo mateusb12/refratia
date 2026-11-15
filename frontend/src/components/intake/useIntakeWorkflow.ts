@@ -13,6 +13,8 @@ import {
   updateIntakeFileProgress,
 } from './intakeProgress'
 
+const ACTIVE_RUN_KEY = 'refratia.activeIntakeRun'
+
 interface SavedCase {
   caseId: string
   patientName: string
@@ -39,6 +41,8 @@ export function useIntakeWorkflow({
   const [intakeBusy, setIntakeBusy] = useState(false)
   const [identityReview, setIdentityReview] = useState<Array<{ caseId: string; name: string }> | null>(null)
   const intakeAbortController = useRef<AbortController | null>(null)
+  const intakeRunId = useRef<number | null>(null)
+  const intakeReconnectStarted = useRef(false)
   const [intakeProgress, setIntakeProgress] = useState(0)
   const [intakeProgressStage, setIntakeProgressStage] = useState('')
   const [intakeProgressMessage, setIntakeProgressMessage] = useState('')
@@ -109,6 +113,122 @@ export function useIntakeWorkflow({
     return () => controller.abort()
   }, [apiUrl, intakeClassificationComplete, intakeFiles])
 
+  // Analysis runs on the server even if this tab closes; its ID is kept here
+  // so reopening the page reconnects to it.
+  function rememberRun(runId: number | null) {
+    intakeRunId.current = runId
+    try {
+      if (runId === null) window.localStorage.removeItem(ACTIVE_RUN_KEY)
+      else window.localStorage.setItem(ACTIVE_RUN_KEY, String(runId))
+    } catch { /* storage unavailable: no reconnect, the run still finishes */ }
+  }
+
+  async function readAnalysisResponse(response: Response): Promise<unknown> {
+    const contentType = response.headers.get('content-type') ?? ''
+    let result: unknown = null
+
+    if (contentType.includes('application/x-ndjson')) {
+      if (!response.body) throw new Error('O backend não disponibilizou o stream de progresso.')
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      const consumeLine = (line: string) => {
+        const trimmed = line.trim()
+        if (!trimmed) return
+        let event: IntakeStreamEvent
+        try {
+          event = JSON.parse(trimmed)
+        } catch {
+          throw new Error('O backend enviou um evento de progresso inválido.')
+        }
+        if (event.filename) setIntakeProgressFilename(event.filename)
+        setIntakeFileProgress((current) => updateIntakeFileProgress(current, event))
+        if (event.type === 'run') {
+          const runId = (event.payload as { runId?: unknown } | undefined)?.runId
+          if (typeof runId === 'number') rememberRun(runId)
+        } else if (event.type === 'progress') {
+          if (typeof event.percent === 'number') setIntakeProgress(Math.max(0, Math.min(100, Math.round(event.percent))))
+          if (event.stage) setIntakeProgressStage(event.stage)
+          if (event.message) setIntakeProgressMessage(event.message)
+        } else if (event.type === 'partial') {
+          if (event.payload && typeof event.payload === 'object' && 'exams' in event.payload) setIntakeLiveAnalysis(event.payload as IntakeAnalysis)
+          if (event.filename) setIntakeCompletedFiles((current) => current.includes(event.filename!) ? current : [...current, event.filename!])
+        } else if (event.type === 'error') {
+          throw new Error(event.message || `Falha na análise${event.status ? ` (HTTP ${event.status})` : ''}`)
+        } else if (event.type === 'result') {
+          result = event.payload
+        }
+      }
+
+      while (true) {
+        const { value, done } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() ?? ''
+        lines.forEach(consumeLine)
+      }
+      buffer += decoder.decode()
+      if (buffer.trim()) consumeLine(buffer)
+      return result
+    }
+
+    const responseText = await response.text()
+    try {
+      result = responseText ? JSON.parse(responseText) : null
+    } catch {
+      if (!response.ok) throw new Error(`Falha na análise (HTTP ${response.status}): ${responseText.slice(0, 300) || 'o servidor não retornou detalhes'}`)
+    }
+    if (!response.ok) {
+      const errorMessage = result && typeof result === 'object' && 'error' in result && typeof result.error === 'string'
+        ? result.error
+        : `Falha na análise (HTTP ${response.status})`
+      throw new Error(errorMessage)
+    }
+    return result
+  }
+
+  // followAnalysis shows the progress of a run (a new one, or one this page
+  // reconnects to) until its result.
+  async function followAnalysis(request: (signal: AbortSignal) => Promise<Response>) {
+    const controller = new AbortController()
+    intakeAbortController.current = controller
+    setIntakeBusy(true)
+    goToIntakeStep(4)
+    setIntakeLiveAnalysis(null)
+    setIntakeCompletedFiles([])
+    setIntakeElapsed(0)
+    setIntakeMessage('')
+
+    try {
+      const result = await readAnalysisResponse(await request(controller.signal))
+      if (!isIntakePreview(result)) throw new Error('A API de análise está desatualizada. Reinicie o backend e tente novamente.')
+      rememberRun(null)
+      setIntakeProgress(100)
+      setIntakeProgressStage('complete')
+      setIntakeProgressMessage('Análise concluída')
+      setIntakePreview(result)
+      setIntakeFiles([])
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        rememberRun(null)
+        setIntakeProgressStage('cancelled')
+        setIntakeProgressMessage('Análise cancelada')
+        setIntakeMessage('Análise cancelada. Os resultados já processados foram preservados.')
+      } else if (error instanceof TypeError) {
+        // Connection lost: the run may still be going; the saved ID reconnects on reload.
+        setIntakeMessage(`NetworkError: não foi possível conectar ao backend em ${apiUrl}. Verifique se o backend está ativo e recarregue a página.`)
+      } else {
+        rememberRun(null)
+        setIntakeMessage(error instanceof Error ? error.message : 'Não foi possível analisar os arquivos.')
+      }
+    } finally {
+      if (intakeAbortController.current === controller) intakeAbortController.current = null
+      setIntakeBusy(false)
+    }
+  }
+
   async function analyzeIntake() {
     if (!intakeFiles.length) return
 
@@ -121,123 +241,61 @@ export function useIntakeWorkflow({
       return
     }
 
-    const controller = new AbortController()
-    intakeAbortController.current = controller
-    setIntakeBusy(true)
-    goToIntakeStep(4)
     setIntakeProgress(1)
     setIntakeProgressStage('upload')
     setIntakeProgressMessage('Enviando documentos')
     setIntakeProgressFilename('')
-    setIntakeLiveAnalysis(null)
-    setIntakeCompletedFiles([])
     setIntakeFileProgress(createInitialIntakeFileProgress(intakeFiles))
-    setIntakeElapsed(0)
-    setIntakeMessage('')
 
-    try {
-      const body = new FormData()
-      intakeFiles.forEach((file) => body.append('files', file))
-      body.append('classifications', JSON.stringify(Object.values(intakeClassifications).filter((item) => item.examType && item.eye)))
-      body.append('processFiles', JSON.stringify(
-        intakeFiles
-          .filter((file) => intakeProcessFiles[intakeFileCheckpointKey(file)])
-          .map((file) => intakeCheckpointStates[intakeFileCheckpointKey(file)]?.sha256)
-          .filter((sha256): sha256 is string => Boolean(sha256)),
-      ))
+    const body = new FormData()
+    intakeFiles.forEach((file) => body.append('files', file))
+    body.append('classifications', JSON.stringify(Object.values(intakeClassifications).filter((item) => item.examType && item.eye)))
+    body.append('processFiles', JSON.stringify(
+      intakeFiles
+        .filter((file) => intakeProcessFiles[intakeFileCheckpointKey(file)])
+        .map((file) => intakeCheckpointStates[intakeFileCheckpointKey(file)]?.sha256)
+        .filter((sha256): sha256 is string => Boolean(sha256)),
+    ))
 
-      const response = await fetch(`${apiUrl}/api/intakes/analyze?stream=1${intakeForceReprocess ? '&force=1' : ''}`, {
-        method: 'POST',
-        headers: { Accept: 'application/x-ndjson' },
-        signal: controller.signal,
-        body,
-      })
-      const contentType = response.headers.get('content-type') ?? ''
-      let result: unknown = null
-
-      if (contentType.includes('application/x-ndjson')) {
-        if (!response.body) throw new Error('O backend não disponibilizou o stream de progresso.')
-        const reader = response.body.getReader()
-        const decoder = new TextDecoder()
-        let buffer = ''
-
-        const consumeLine = (line: string) => {
-          const trimmed = line.trim()
-          if (!trimmed) return
-          let event: IntakeStreamEvent
-          try {
-            event = JSON.parse(trimmed)
-          } catch {
-            throw new Error('O backend enviou um evento de progresso inválido.')
-          }
-          if (event.filename) setIntakeProgressFilename(event.filename)
-          setIntakeFileProgress((current) => updateIntakeFileProgress(current, event))
-          if (event.type === 'progress') {
-            if (typeof event.percent === 'number') setIntakeProgress(Math.max(0, Math.min(100, Math.round(event.percent))))
-            if (event.stage) setIntakeProgressStage(event.stage)
-            if (event.message) setIntakeProgressMessage(event.message)
-          } else if (event.type === 'partial') {
-            if (event.payload && typeof event.payload === 'object' && 'exams' in event.payload) setIntakeLiveAnalysis(event.payload as IntakeAnalysis)
-            if (event.filename) setIntakeCompletedFiles((current) => current.includes(event.filename!) ? current : [...current, event.filename!])
-          } else if (event.type === 'error') {
-            throw new Error(event.message || `Falha na análise${event.status ? ` (HTTP ${event.status})` : ''}`)
-          } else if (event.type === 'result') {
-            result = event.payload
-          }
-        }
-
-        while (true) {
-          const { value, done } = await reader.read()
-          if (done) break
-          buffer += decoder.decode(value, { stream: true })
-          const lines = buffer.split('\n')
-          buffer = lines.pop() ?? ''
-          lines.forEach(consumeLine)
-        }
-        buffer += decoder.decode()
-        if (buffer.trim()) consumeLine(buffer)
-      } else {
-        const responseText = await response.text()
-        try {
-          result = responseText ? JSON.parse(responseText) : null
-        } catch {
-          if (!response.ok) throw new Error(`Falha na análise (HTTP ${response.status}): ${responseText.slice(0, 300) || 'o servidor não retornou detalhes'}`)
-        }
-        if (!response.ok) {
-          const errorMessage = result && typeof result === 'object' && 'error' in result && typeof result.error === 'string'
-            ? result.error
-            : `Falha na análise (HTTP ${response.status})`
-          throw new Error(errorMessage)
-        }
-        setIntakeProgress(100)
-      }
-
-      if (!isIntakePreview(result)) throw new Error('A API de análise está desatualizada. Reinicie o backend e tente novamente.')
-      setIntakeProgress(100)
-      setIntakeProgressStage('complete')
-      setIntakeProgressMessage('Análise concluída')
-      setIntakePreview(result)
-      setIntakeFiles([])
-    } catch (error) {
-      if (error instanceof Error && error.name === 'AbortError') {
-        setIntakeProgressStage('cancelled')
-        setIntakeProgressMessage('Análise cancelada')
-        setIntakeMessage('Análise cancelada. Os resultados já processados foram preservados.')
-      } else if (error instanceof TypeError) {
-        setIntakeMessage(`NetworkError: não foi possível conectar ao backend em ${apiUrl}. Verifique se o backend está ativo.`)
-      } else {
-        setIntakeMessage(error instanceof Error ? error.message : 'Não foi possível analisar os arquivos.')
-      }
-    } finally {
-      if (intakeAbortController.current === controller) intakeAbortController.current = null
-      setIntakeBusy(false)
-    }
+    await followAnalysis((signal) => fetch(`${apiUrl}/api/intakes/analyze?stream=1${intakeForceReprocess ? '&force=1' : ''}`, {
+      method: 'POST',
+      headers: { Accept: 'application/x-ndjson' },
+      signal,
+      body,
+    }))
   }
+
+  useEffect(() => {
+    if (!apiUrl || intakeReconnectStarted.current) return
+    intakeReconnectStarted.current = true
+    let savedRun: string | null = null
+    try {
+      savedRun = window.localStorage.getItem(ACTIVE_RUN_KEY)
+    } catch { /* storage unavailable */ }
+    const runId = Number(savedRun)
+    if (!savedRun || !Number.isInteger(runId)) return
+
+    intakeRunId.current = runId
+    setIntakeProgress(0)
+    setIntakeProgressStage('reconnect')
+    setIntakeProgressMessage('Reconectando à análise em andamento')
+    setIntakeProgressFilename('')
+    setIntakeFileProgress({})
+    void followAnalysis((signal) => fetch(`${apiUrl}/api/intakes/runs/${runId}/stream`, {
+      headers: { Accept: 'application/x-ndjson' },
+      signal,
+    }))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apiUrl])
 
   function abortIntakeAnalysis() {
     const controller = intakeAbortController.current
     if (!controller || controller.signal.aborted) return
     setIntakeProgressMessage('Cancelando análise…')
+    // Closing the connection no longer stops the server: ask it to stop.
+    if (intakeRunId.current !== null) {
+      void fetch(`${apiUrl}/api/intakes/runs/${intakeRunId.current}/cancel`, { method: 'POST' }).catch(() => undefined)
+    }
     controller.abort()
   }
 

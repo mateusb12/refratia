@@ -23,6 +23,7 @@ import (
 	"gorm.io/gorm"
 
 	"refratia/backend/src/features/fileIdentification/classification"
+	"refratia/backend/src/features/intake/progressTracking"
 	"refratia/backend/src/features/persistence/cases"
 	"refratia/backend/src/features/persistence/exams"
 	patientfeature "refratia/backend/src/features/persistence/patient"
@@ -69,23 +70,16 @@ func InspectIntakeHandler(responseWriter http.ResponseWriter, request *http.Requ
 		responseWriter.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-	headers, requestError := intakeHeaders(responseWriter, request)
-	if requestError != nil {
-		httpresponse.WriteError(responseWriter, requestError.status, requestError.message)
+	files, ok := ReadUploads(responseWriter, request)
+	if !ok {
 		return
 	}
 	defer request.MultipartForm.RemoveAll()
 
-	files, readErr := readIntakeFiles(headers)
-	if readErr != nil {
-		httpresponse.WriteError(responseWriter, http.StatusBadRequest, "não foi possível ler um dos arquivos")
-		return
-	}
-
-	audit := auditFrom(request.Context())
+	audit := progressTracking.From(request.Context())
 	result := make([]classification.FileInspection, 0, len(files))
 	for _, file := range files {
-		audit.startFile(file)
+		startAuditFile(request.Context(), file)
 		inspection := classification.InspectFile(request.Context(), classification.File{
 			Filename:    file.Metadata.Filename,
 			SHA256:      file.Metadata.SHA256,
@@ -93,7 +87,7 @@ func InspectIntakeHandler(responseWriter http.ResponseWriter, request *http.Requ
 			Size:        file.Metadata.Size,
 			Data:        file.Data,
 		})
-		audit.finishFile(file.Metadata.Filename, func(entry *auditFile) {
+		audit.FinishFile(file.Metadata.Filename, func(entry *progressTracking.File) {
 			entry.ExamType, entry.Eye, entry.Pages = inspection.RecognizedExamType, inspection.RecognizedEye, inspection.Pages
 			entry.Outcome = "unrecognized"
 			if inspection.RecognizedExamType != "" {
@@ -197,12 +191,12 @@ func (handler Handler) AnalyzeIntake(responseWriter http.ResponseWriter, request
 	}
 
 	requestContext := request.Context()
-	var stream *progressStream
+	var stream *progressTracking.Stream
 
 	if request.URL.Query().Get("stream") == "1" {
 		var ok bool
 
-		stream, ok = newProgressStream(responseWriter)
+		stream, ok = progressTracking.NewStream(responseWriter)
 		if !ok {
 			httpresponse.WriteError(
 				responseWriter,
@@ -214,8 +208,10 @@ func (handler Handler) AnalyzeIntake(responseWriter http.ResponseWriter, request
 
 		requestContext = progress.WithReporter(
 			requestContext,
-			stream.reporter,
+			stream.Report,
 		)
+
+		stream.Attach(progressTracking.From(requestContext))
 
 		progress.Report(
 			requestContext,
@@ -227,8 +223,8 @@ func (handler Handler) AnalyzeIntake(responseWriter http.ResponseWriter, request
 
 	fail := func(status int, message string) {
 		if stream != nil {
-			auditFrom(requestContext).fail(status, message)
-			stream.writeError(status, message)
+			progressTracking.From(requestContext).Fail(status, message)
+			stream.WriteError(status, message)
 			return
 		}
 
@@ -283,7 +279,7 @@ func (handler Handler) AnalyzeIntake(responseWriter http.ResponseWriter, request
 	// alimentou. Antes isso só era feito na confirmação, fazendo a tela de
 	// debug exibir "sem campos" mesmo quando os valores estavam em analysis.exams.
 	exams.ClassifySourceFiles(analysis)
-	auditFrom(requestContext).countFields(analysis)
+	progressTracking.From(requestContext).CountFields(analysis)
 
 	// O nascimento canônico final (leitura do Pentacam em caso de inversão)
 	// precisa estar em patient.birth_date: a extração incremental pode tê-lo
@@ -302,7 +298,7 @@ func (handler Handler) AnalyzeIntake(responseWriter http.ResponseWriter, request
 		time.Now().UTC().Format("20060102T150405Z"),
 		randomToken(),
 	)
-	auditFrom(requestContext).setIntakeID(intakeID)
+	progressTracking.From(requestContext).SetIntakeID(intakeID)
 
 	patientMatch := map[string]any{
 		"status": "unresolved",
@@ -541,6 +537,8 @@ func (handler Handler) AnalyzeIntake(responseWriter http.ResponseWriter, request
 		if errorValue == nil {
 			previewFiles[index].SignedURL = presignedRequest.URL
 		}
+		// Lets a reconnect re-sign the link after it expires.
+		previewFiles[index].Key = storedFiles[index].Key
 	}
 
 	payload := map[string]any{
@@ -560,7 +558,7 @@ func (handler Handler) AnalyzeIntake(responseWriter http.ResponseWriter, request
 	)
 
 	if stream != nil {
-		stream.writeResult(payload)
+		stream.WriteResult(payload)
 		return
 	}
 
@@ -587,7 +585,7 @@ func (handler Handler) ConfirmIntake(responseWriter http.ResponseWriter, request
 		httpresponse.WriteError(responseWriter, http.StatusBadRequest, "rascunho inválido")
 		return
 	}
-	auditFrom(request.Context()).setIntakeID(confirmRequest.IntakeID)
+	progressTracking.From(request.Context()).SetIntakeID(confirmRequest.IntakeID)
 
 	client, storageErr := fileStorage.New(request.Context())
 	if storageErr != nil {
@@ -952,12 +950,41 @@ func DeleteIntakeHandler(responseWriter http.ResponseWriter, request *http.Reque
 }
 
 func writeConfirmation(executionContext context.Context, responseWriter http.ResponseWriter, caseID, analysisKey, action string) {
-	auditFrom(executionContext).setCase(caseID, action)
+	progressTracking.From(executionContext).SetCase(caseID, action)
 	responseWriter.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(responseWriter).Encode(map[string]any{
 		"caseId":      caseID,
 		"analysisKey": analysisKey,
 		"action":      action,
+	})
+}
+
+// ReadUploads reads the multipart "files" field, answering the error itself
+// when it fails. On success the caller defers request.MultipartForm.RemoveAll().
+func ReadUploads(responseWriter http.ResponseWriter, request *http.Request) ([]UploadedFile, bool) {
+	headers, requestError := intakeHeaders(responseWriter, request)
+	if requestError != nil {
+		httpresponse.WriteError(responseWriter, requestError.status, requestError.message)
+		return nil, false
+	}
+	files, readErr := readIntakeFiles(headers)
+	if readErr != nil {
+		request.MultipartForm.RemoveAll()
+		httpresponse.WriteError(responseWriter, http.StatusBadRequest, "não foi possível ler um dos arquivos")
+		return nil, false
+	}
+	return files, true
+}
+
+// startAuditFile opens the intake_runs per-file entry of file.
+func startAuditFile(executionContext context.Context, file UploadedFile) {
+	progressTracking.From(executionContext).StartFile(progressTracking.File{
+		Filename:    file.Metadata.Filename,
+		SHA256:      file.Metadata.SHA256,
+		ContentType: file.Metadata.ContentType,
+		Size:        file.Metadata.Size,
+		ExamType:    file.Metadata.ExamType,
+		Eye:         file.Metadata.Eye,
 	})
 }
 

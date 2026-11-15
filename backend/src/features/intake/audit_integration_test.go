@@ -11,6 +11,7 @@ import (
 	"net/textproto"
 	"testing"
 
+	"refratia/backend/src/features/intake/progressTracking"
 	"refratia/backend/src/shared/database"
 )
 
@@ -33,13 +34,13 @@ func postFiles(t *testing.T, handler http.HandlerFunc, files map[string][]byte) 
 	return recorder
 }
 
-func latestAudit(t *testing.T, kind string) (database.ProcessingAudit, auditDetails) {
+func latestAudit(t *testing.T, kind string) (database.IntakeRun, progressTracking.Details) {
 	t.Helper()
-	var row database.ProcessingAudit
+	var row database.IntakeRun
 	if findError := testHandler.Database.Where("kind = ?", kind).Order("id DESC").First(&row).Error; findError != nil {
 		t.Fatal(findError)
 	}
-	var details auditDetails
+	var details progressTracking.Details
 	if decodeError := json.Unmarshal([]byte(row.Details), &details); decodeError != nil {
 		t.Fatal(decodeError)
 	}
@@ -51,12 +52,12 @@ func TestAuditRecordsInspectRunAndFiles(t *testing.T) {
 	var blank bytes.Buffer
 	png.Encode(&blank, image.NewGray(image.Rect(0, 0, 40, 20)))
 
-	audited := testHandler.Audit("inspect", InspectIntakeHandler)
+	audited := progressTracking.Handler{Database: testHandler.Database}.Audit("inspect", InspectIntakeHandler)
 	if response := postFiles(t, audited, map[string][]byte{"blank.png": blank.Bytes()}); response.Code != http.StatusOK {
 		t.Fatalf("inspect status %d: %s", response.Code, response.Body.String())
 	}
-	_, details := latestAudit(t, "inspect")
-	if details.HTTPStatus != http.StatusOK || details.Error != "" || len(details.Files) != 1 {
+	row, details := latestAudit(t, "inspect")
+	if row.Status != database.RunDone || details.HTTPStatus != http.StatusOK || details.Error != "" || len(details.Files) != 1 {
 		t.Fatalf("unexpected audit: %+v", details)
 	}
 	if file := details.Files[0]; file.Filename != "blank.png" || file.SHA256 == "" || file.Outcome != "unrecognized" {
@@ -67,8 +68,8 @@ func TestAuditRecordsInspectRunAndFiles(t *testing.T) {
 	if response := postFiles(t, audited, map[string][]byte{}); response.Code < 400 {
 		t.Fatalf("expected an error for an empty upload, got %d", response.Code)
 	}
-	_, details = latestAudit(t, "inspect")
-	if details.HTTPStatus < 400 || details.Error == "" {
+	row, details = latestAudit(t, "inspect")
+	if row.Status != database.RunFailed || details.HTTPStatus < 400 || details.Error == "" {
 		t.Fatalf("error not audited: %+v", details)
 	}
 }

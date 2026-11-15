@@ -59,7 +59,7 @@ Retorne somente este objeto JSON, usando null apenas quando o campo não estiver
 
 No documento EyeSuite, leia AL como comprimento axial, K1/K2/K como ceratometria, -AST como astigmatismo, ACD, LT, WTW e Target Refraction. Preserve sinais negativos, casas decimais e eixos. A refração alvo pode estar impressa uma vez para cada olho ou uma vez para o exame; nesse caso replique o mesmo valor nos dois olhos.`
 
-type uploadedFile struct {
+type UploadedFile struct {
 	Metadata FileMetadata
 	Data     []byte
 }
@@ -79,8 +79,8 @@ type openAIResponse struct {
 	} `json:"error"`
 }
 
-func readIntakeFiles(headers []*multipart.FileHeader) ([]uploadedFile, error) {
-	files := make([]uploadedFile, 0, len(headers))
+func readIntakeFiles(headers []*multipart.FileHeader) ([]UploadedFile, error) {
+	files := make([]UploadedFile, 0, len(headers))
 	for _, header := range headers {
 		file, errorValue := header.Open()
 		if errorValue != nil {
@@ -92,7 +92,7 @@ func readIntakeFiles(headers []*multipart.FileHeader) ([]uploadedFile, error) {
 			return nil, errorValue
 		}
 		digest := sha256.Sum256(data)
-		files = append(files, uploadedFile{
+		files = append(files, UploadedFile{
 			Metadata: FileMetadata{Filename: header.Filename, OriginalFilename: header.Filename, ContentType: header.Header.Get("Content-Type"), Size: header.Size, SHA256: hex.EncodeToString(digest[:])},
 			Data:     data,
 		})
@@ -100,7 +100,7 @@ func readIntakeFiles(headers []*multipart.FileHeader) ([]uploadedFile, error) {
 	return files, nil
 }
 
-func intakeMetadata(files []uploadedFile) []FileMetadata {
+func intakeMetadata(files []UploadedFile) []FileMetadata {
 	result := make([]FileMetadata, len(files))
 	for index, file := range files {
 		result[index] = file.Metadata
@@ -142,7 +142,7 @@ func markOptionalFallbackUnavailable(
 func resolveLocalGapsWithFallback(
 	executionContext context.Context,
 	analysis map[string]any,
-	files []uploadedFile,
+	files []UploadedFile,
 	gaps []string,
 ) ([]preparedFile, error) {
 	fallbackFiles :=
@@ -228,7 +228,7 @@ func resolveLocalGapsWithFallback(
 
 func extractPatient(
 	executionContext context.Context,
-	files []uploadedFile,
+	files []UploadedFile,
 ) (map[string]any, error) {
 	progress.Report(
 		executionContext,
@@ -394,7 +394,7 @@ func extractPatient(
 	return analysis, nil
 }
 
-func prepareRepairFiles(files []uploadedFile, prepared []preparedFile) []preparedFile {
+func prepareRepairFiles(files []UploadedFile, prepared []preparedFile) []preparedFile {
 	wanted := map[string]bool{}
 	for _, file := range files {
 		wanted[file.Metadata.Filename] = true
@@ -408,7 +408,7 @@ func prepareRepairFiles(files []uploadedFile, prepared []preparedFile) []prepare
 	return result
 }
 
-func requestOpenAIJSON(executionContext context.Context, files []uploadedFile, prompt string, maxOutputTokens int) (string, error) {
+func requestOpenAIJSON(executionContext context.Context, files []UploadedFile, prompt string, maxOutputTokens int) (string, error) {
 	prepared := make([]preparedFile, 0, len(files))
 	for _, file := range files {
 		prepared = append(prepared, preparedFile{File: file})
@@ -501,7 +501,7 @@ func requestOpenAIPreparedJSON(executionContext context.Context, files []prepare
 	return output, nil
 }
 
-func pentacamFilesNeedingRepair(analysis map[string]any, files []uploadedFile) []uploadedFile {
+func pentacamFilesNeedingRepair(analysis map[string]any, files []UploadedFile) []UploadedFile {
 	exam := pentacamExam(analysis)
 	if exam == nil || !pentacamNeedsRepair(exam) {
 		return nil
@@ -513,7 +513,7 @@ func pentacamFilesNeedingRepair(analysis map[string]any, files []uploadedFile) [
 			wanted[filepath.Base(fmt.Sprint(source))] = true
 		}
 	}
-	result := make([]uploadedFile, 0, len(wanted))
+	result := make([]UploadedFile, 0, len(wanted))
 	for _, file := range files {
 		if wanted[file.Metadata.Filename] {
 			result = append(result, file)
@@ -522,7 +522,7 @@ func pentacamFilesNeedingRepair(analysis map[string]any, files []uploadedFile) [
 	return result
 }
 
-func iolFilesNeedingRepair(analysis map[string]any, files []uploadedFile) []uploadedFile {
+func iolFilesNeedingRepair(analysis map[string]any, files []UploadedFile) []UploadedFile {
 	exams, _ := analysis["exams"].(map[string]any)
 	exam, _ := exams["iol_calculation"].(map[string]any)
 	if exam == nil || !iolNeedsRepair(exam) {
@@ -534,7 +534,7 @@ func iolFilesNeedingRepair(analysis map[string]any, files []uploadedFile) []uplo
 			wanted[filepath.Base(fmt.Sprint(source))] = true
 		}
 	}
-	result := make([]uploadedFile, 0, len(wanted))
+	result := make([]UploadedFile, 0, len(wanted))
 	for _, file := range files {
 		if wanted[file.Metadata.Filename] {
 			result = append(result, file)
@@ -973,7 +973,7 @@ func recordMalformedExam(analysis map[string]any, examKey, reason string) {
 	notes["invalid_exams"] = append(items, map[string]any{"exam": examKey, "reason": reason})
 }
 
-func enrichSourceFiles(analysis map[string]any, files []uploadedFile) {
+func enrichSourceFiles(analysis map[string]any, files []UploadedFile) {
 	extracted, _ := analysis["source_files"].([]any)
 	sources := make([]any, 0, len(files))
 	for index, file := range files {
