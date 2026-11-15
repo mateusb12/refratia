@@ -125,7 +125,6 @@ func RenderPageAtDPI(
 		"-f",
 		strconv.Itoa(page),
 		"-singlefile",
-		"-png",
 		"-r",
 		strconv.Itoa(dpi),
 		inputPath,
@@ -139,8 +138,9 @@ func RenderPageAtDPI(
 		)
 	}
 
-	image, err := os.ReadFile(
-		prefix + ".png",
+	// Raw PPM, re-encoded in Go: see pngFromPPM.
+	ppmData, err := os.ReadFile(
+		prefix + ".ppm",
 	)
 	if err != nil {
 		return nil, fmt.Errorf(
@@ -150,7 +150,7 @@ func RenderPageAtDPI(
 		)
 	}
 
-	return image, nil
+	return pngFromPPM(ppmData)
 }
 
 // RenderAllPagesAtDPI renders pages 1..pages with a single pdftoppm call.
@@ -206,7 +206,6 @@ func renderPagesAtDPI(
 	command := exec.CommandContext(
 		ctx,
 		"pdftoppm",
-		"-png",
 		"-r",
 		strconv.Itoa(dpi),
 		inputPath,
@@ -228,15 +227,24 @@ func renderPagesAtDPI(
 
 	for page := 1; page <= pages; page++ {
 		// pdftoppm zero-pads the page number to the width of the page count
-		// (page-01.png for a 12-page PDF).
+		// (page-01.ppm for a 12-page PDF). Raw PPM, re-encoded in Go: see
+		// pngFromPPM.
 		path := fmt.Sprintf(
-			"%s-%0*d.png",
+			"%s-%0*d.ppm",
 			prefix,
 			len(strconv.Itoa(pages)),
 			page,
 		)
 
-		image, err := os.ReadFile(path)
+		ppmData, err := os.ReadFile(path)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"página %d: %w",
+				page,
+				err,
+			)
+		}
+		image, err := pngFromPPM(ppmData)
 		if err != nil {
 			return nil, fmt.Errorf(
 				"página %d: %w",

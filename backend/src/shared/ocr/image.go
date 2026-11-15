@@ -36,6 +36,25 @@ func PrepareGrayMode(src image.Image, r image.Rectangle, scale int, threshold ui
 	}
 	w, h := r.Dx(), r.Dy()
 	dst := image.NewGray(image.Rect(0, 0, w*scale, h*scale))
+	// Each source pixel is read once: the bilinear loop below touches every
+	// one ~4*scale^2 times, and src.At allocates on every call.
+	sourcePixels := make([][3]float64, w*h)
+	rgbaSource, isRGBA := src.(*image.RGBA)
+	for sourceY := 0; sourceY < h; sourceY++ {
+		for sourceX := 0; sourceX < w; sourceX++ {
+			if isRGBA {
+				offset := rgbaSource.PixOffset(r.Min.X+sourceX, r.Min.Y+sourceY)
+				sourcePixels[sourceY*w+sourceX] = [3]float64{
+					float64(rgbaSource.Pix[offset]),
+					float64(rgbaSource.Pix[offset+1]),
+					float64(rgbaSource.Pix[offset+2]),
+				}
+				continue
+			}
+			cr, cg, cb, _ := src.At(r.Min.X+sourceX, r.Min.Y+sourceY).RGBA()
+			sourcePixels[sourceY*w+sourceX] = [3]float64{float64(cr >> 8), float64(cg >> 8), float64(cb >> 8)}
+		}
+	}
 	at := func(x, y int) (float64, float64, float64) {
 		if x < 0 {
 			x = 0
@@ -49,8 +68,8 @@ func PrepareGrayMode(src image.Image, r image.Rectangle, scale int, threshold ui
 		if y >= h {
 			y = h - 1
 		}
-		cr, cg, cb, _ := src.At(r.Min.X+x, r.Min.Y+y).RGBA()
-		return float64(cr >> 8), float64(cg >> 8), float64(cb >> 8)
+		pixel := sourcePixels[y*w+x]
+		return pixel[0], pixel[1], pixel[2]
 	}
 	for y := 0; y < h*scale; y++ {
 		fy := (float64(y)+0.5)/float64(scale) - 0.5
@@ -93,7 +112,7 @@ func PrepareGrayMode(src image.Image, r image.Rectangle, scale int, threshold ui
 					v = 255
 				}
 			}
-			dst.SetGray(x, y, color.Gray{Y: v})
+			dst.Pix[y*dst.Stride+x] = v
 		}
 	}
 	return dst
