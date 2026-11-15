@@ -82,15 +82,25 @@ func InspectIntakeHandler(responseWriter http.ResponseWriter, request *http.Requ
 		return
 	}
 
+	audit := auditFrom(request.Context())
 	result := make([]classification.FileInspection, 0, len(files))
 	for _, file := range files {
-		result = append(result, classification.InspectFile(request.Context(), classification.File{
+		audit.startFile(file)
+		inspection := classification.InspectFile(request.Context(), classification.File{
 			Filename:    file.Metadata.Filename,
 			SHA256:      file.Metadata.SHA256,
 			ContentType: file.Metadata.ContentType,
 			Size:        file.Metadata.Size,
 			Data:        file.Data,
-		}))
+		})
+		audit.finishFile(file.Metadata.Filename, func(entry *auditFile) {
+			entry.ExamType, entry.Eye, entry.Pages = inspection.RecognizedExamType, inspection.RecognizedEye, inspection.Pages
+			entry.Outcome = "unrecognized"
+			if inspection.RecognizedExamType != "" {
+				entry.Outcome = "recognized"
+			}
+		})
+		result = append(result, inspection)
 	}
 
 	responseWriter.Header().Set("Content-Type", "application/json")
@@ -217,6 +227,7 @@ func (handler Handler) AnalyzeIntake(responseWriter http.ResponseWriter, request
 
 	fail := func(status int, message string) {
 		if stream != nil {
+			auditFrom(requestContext).fail(status, message)
 			stream.writeError(status, message)
 			return
 		}
@@ -272,6 +283,7 @@ func (handler Handler) AnalyzeIntake(responseWriter http.ResponseWriter, request
 	// alimentou. Antes isso só era feito na confirmação, fazendo a tela de
 	// debug exibir "sem campos" mesmo quando os valores estavam em analysis.exams.
 	exams.ClassifySourceFiles(analysis)
+	auditFrom(requestContext).countFields(analysis)
 
 	// O nascimento canônico final (leitura do Pentacam em caso de inversão)
 	// precisa estar em patient.birth_date: a extração incremental pode tê-lo
@@ -290,6 +302,7 @@ func (handler Handler) AnalyzeIntake(responseWriter http.ResponseWriter, request
 		time.Now().UTC().Format("20060102T150405Z"),
 		randomToken(),
 	)
+	auditFrom(requestContext).setIntakeID(intakeID)
 
 	patientMatch := map[string]any{
 		"status": "unresolved",
@@ -574,6 +587,7 @@ func (handler Handler) ConfirmIntake(responseWriter http.ResponseWriter, request
 		httpresponse.WriteError(responseWriter, http.StatusBadRequest, "rascunho inválido")
 		return
 	}
+	auditFrom(request.Context()).setIntakeID(confirmRequest.IntakeID)
 
 	client, storageErr := fileStorage.New(request.Context())
 	if storageErr != nil {
@@ -586,7 +600,7 @@ func (handler Handler) ConfirmIntake(responseWriter http.ResponseWriter, request
 	// Retry da mesma confirmação deve devolver exatamente o case já resolvido,
 	// inclusive quando aquele intake foi incorporado em um paciente preexistente.
 	if receipt, ok := cases.LoadConfirmationReceipt(request.Context(), client, bucket, confirmRequest.IntakeID); ok {
-		writeConfirmation(responseWriter, receipt.CaseID, receipt.AnalysisKey, receipt.Action)
+		writeConfirmation(request.Context(), responseWriter, receipt.CaseID, receipt.AnalysisKey, receipt.Action)
 		return
 	}
 
@@ -604,7 +618,7 @@ func (handler Handler) ConfirmIntake(responseWriter http.ResponseWriter, request
 			Bucket: aws.String(bucket),
 			Key:    aws.String(defaultAnalysisKey),
 		}); headErr == nil {
-			writeConfirmation(responseWriter, defaultCaseID, defaultAnalysisKey, "created")
+			writeConfirmation(request.Context(), responseWriter, defaultCaseID, defaultAnalysisKey, "created")
 			return
 		}
 
@@ -677,7 +691,7 @@ func (handler Handler) ConfirmIntake(responseWriter http.ResponseWriter, request
 	}
 	fileStorage.CleanupObjects(request.Context(), client, append(draftKeys, draftKey))
 
-	writeConfirmation(responseWriter, caseID, analysisKey, action)
+	writeConfirmation(request.Context(), responseWriter, caseID, analysisKey, action)
 }
 
 func (failure *intakeError) Error() string { return failure.message }
@@ -937,7 +951,8 @@ func DeleteIntakeHandler(responseWriter http.ResponseWriter, request *http.Reque
 	responseWriter.WriteHeader(http.StatusNoContent)
 }
 
-func writeConfirmation(responseWriter http.ResponseWriter, caseID, analysisKey, action string) {
+func writeConfirmation(executionContext context.Context, responseWriter http.ResponseWriter, caseID, analysisKey, action string) {
+	auditFrom(executionContext).setCase(caseID, action)
 	responseWriter.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(responseWriter).Encode(map[string]any{
 		"caseId":      caseID,

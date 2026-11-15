@@ -25,6 +25,9 @@ func emitLocalFileResult(
 	message string,
 	analysis map[string]any,
 ) {
+	auditFrom(executionContext).finishFile(filename, func(entry *auditFile) {
+		entry.ExamType, entry.Eye, entry.Outcome, entry.Message = examType, eye, status, message
+	})
 	if status == "extracted" &&
 		analysis != nil {
 		checkpointSaveError :=
@@ -382,6 +385,8 @@ func extractPatientLocal(
 			return analysis
 		}
 
+		auditFrom(fileCtx).startFile(file)
+
 		reused,
 			checkpointPrepareError :=
 			prepareFileForIdempotentProcessing(
@@ -400,6 +405,9 @@ func extractPatientLocal(
 		}
 
 		if reused {
+			auditFrom(fileCtx).finishFile(file.Metadata.Filename, func(entry *auditFile) {
+				entry.Reused, entry.Outcome = true, "reused"
+			})
 			continue
 		}
 
@@ -423,6 +431,7 @@ func extractPatientLocal(
 			examEye,
 			analysis,
 		)
+		auditFrom(fileCtx).finishFile(file.Metadata.Filename, nil)
 	}
 
 	return analysis

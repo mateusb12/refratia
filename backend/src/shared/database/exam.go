@@ -8,7 +8,7 @@ func (db *DB) Migrate() error {
 	if err := db.Gorm.Exec(`DROP INDEX IF EXISTS idx_exams_object_key`).Error; err != nil {
 		return err
 	}
-	if err := db.Gorm.AutoMigrate(&Patient{}, &Exam{}); err != nil {
+	if err := db.Gorm.AutoMigrate(&Patient{}, &Exam{}, &ProcessingAudit{}); err != nil {
 		return err
 	}
 	return db.Gorm.Exec(`UPDATE exams SET exam_type = 'unclassified' WHERE exam_type = ''`).Error

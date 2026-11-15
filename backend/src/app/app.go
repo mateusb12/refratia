@@ -30,10 +30,10 @@ func Routes(sqlDatabase *gorm.DB) http.Handler {
 	router.HandleFunc("/api/exams/upload-url", examHandler.ServeUploadURL)
 	router.HandleFunc("/api/exams/confirm", examHandler.ServeConfirm)
 	router.HandleFunc("/api/file-checkpoints/check", intake.CheckFileCheckpoints)
-	router.HandleFunc("/api/intakes/analyze", intakeHandler.AnalyzeIntake)
-	router.HandleFunc("/api/intakes/inspect", intake.InspectIntakeHandler)
+	router.HandleFunc("/api/intakes/analyze", intakeHandler.Audit("analyze", intakeHandler.AnalyzeIntake))
+	router.HandleFunc("/api/intakes/inspect", intakeHandler.Audit("inspect", intake.InspectIntakeHandler))
 	router.HandleFunc("/api/benchmark/extract-fields", intake.BenchmarkExtractFieldsHandler)
-	router.HandleFunc("/api/intakes/confirm", intakeHandler.ConfirmIntake)
+	router.HandleFunc("/api/intakes/confirm", intakeHandler.Audit("confirm", intakeHandler.ConfirmIntake))
 	router.HandleFunc("/api/intakes/", intake.DeleteIntakeHandler)
 	return cors(router)
 }
