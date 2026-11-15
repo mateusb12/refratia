@@ -2,6 +2,7 @@ package parallelwork
 
 import (
 	"context"
+	"runtime"
 	"sync"
 )
 
@@ -19,6 +20,9 @@ type indexedResult[T any] struct {
 // Map executes independent tasks with a bounded number of workers and
 // preserves input order in the returned values. The worker limit is explicit
 // so callers do not accidentally spawn one external OCR process per page.
+// It is also capped at GOMAXPROCS: the tasks run CPU-bound tesseract/poppler
+// processes, and more of them than cores only adds memory (each holds a
+// high-DPI page) without finishing sooner. Results do not depend on the count.
 func Map[T any, R any](
 	executionContext context.Context,
 	items []T,
@@ -30,6 +34,9 @@ func Map[T any, R any](
 	}
 	if workers < 1 {
 		workers = 1
+	}
+	if cores := runtime.GOMAXPROCS(0); workers > cores {
+		workers = cores
 	}
 	if workers > len(items) {
 		workers = len(items)
