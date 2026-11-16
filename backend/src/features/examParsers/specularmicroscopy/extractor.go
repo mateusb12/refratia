@@ -10,6 +10,7 @@ import (
 	"image/jpeg"
 	"image/png"
 	"os"
+	"refratia/backend/src/shared/profiling"
 	"regexp"
 	"strconv"
 	"strings"
@@ -46,6 +47,7 @@ var ErrNoClinicalData = errors.New("microscopia especular: densidade endotelial 
 // R/L are the labels printed by the NIDEK panel; they are mapped to OD/OS
 // only after the textual label has been found.
 func ParseOCRPanels(panels []OCRPanel) (map[string]any, []Evidence, error) {
+	defer profiling.Start(context.Background(), "parse.specularmicroscopy.ParseOCRPanels").End(nil) // ctx-less: attributed by time
 	eyes := map[string]any{}
 	evidence := make([]Evidence, 0, len(panels))
 

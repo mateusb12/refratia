@@ -14,6 +14,19 @@ Runtime about 17 min for the whole corpus (local OCR, about 2 min per patient fo
 7. Persistence after `confirm`: exactly 1 new `patients` row (name/birth checked); new `exams` rows == `expected_exam_records.count`; each row's (exam_type, eye, source file) matches (source derived from the sha256 prefix or original name in `object_key`/`filename`; when not derivable the match is on type+eye and says so); `patient_id` and `case_id` relations; every row's object exists in Garage with the same size; `paciente_compilado.json` marker exists. Then confirm again (same intakeId) and re-ingest (analyze + confirm again, checkpoints reused unless `-reingest-force`): no patient/row/object added or removed. Size-only changes (the merged manifest) are recorded, not failed.
 8. Output: `backend/benchmark/out/<timestamp>/{report.md,report.json,raw/,backend.log}` (gitignored; raw responses and logs contain patient data, keep local).
 
+## Timing profile (opt-in)
+```
+npm run benchmark -- -profile -compare backend/benchmark/out/<reference>/report.json
+```
+Runs the normal benchmark (same scoring, same exit codes) with the backend's `REFRATIA_PROFILE` set, and writes to the run directory:
+- `timings.jsonl`: one span per line (`ts_us`, `dur_us`, `src` server|bench, `run`, `req`, `kind`, `label`, `doc`, `stage`, `outcome`, `attrs`). Requests are labelled `p<n>/<step>` (n = position in the patient list; steps inspect, analyze, confirm1, confirm2, reingest, confirm3) and documents by upload index. No names, filenames, OCR text, values or error messages.
+- `profile.md` / `profile.json`: startup (exec to healthy, DB open, migrations, per-engine Tesseract init), per-request client vs server time and handler phases, per-document breakdown, per-stage calls / summed / covered wall / child CPU / first vs median call, OCR call sites (which parser helper asked, so retries show up as call counts), a per-request "what was in flight" split (OCR only, OCR plus other work, Go preprocessing only, rendering without OCR, other, idle; OCR-active time, time with exactly one OCR call, average OCR concurrency), and a call-site table for fresh analyzes (calls, summed, covered wall, and "only in flight" = time that site was the sole call running, i.e. what directly delayed the request).
+- The re-ingest stage table is titled WARM REPEAT when no re-ingest document reused a checkpoint (`reused=false` on every `doc` span): it then measures a second full extraction in the same process, not checkpoint reuse.
+
+Stages: `pdf.inspect`, `pdf.render`, `proc.pdfinfo|pdftotext|pdftoppm|tesseract` (subprocesses, with child CPU; `site=retinography` is the parser that bypasses the shared OCR code), `ocr.recognize` (attrs `backend`, `psm`, `wait_ms` = engine-pool wait), `ocr.engine_init`, `preprocess.*`, `parse.*`, `validate.*`, `checkpoint.*`, `garage.*`, `sql.*` (every gorm statement), `sql.transaction` (confirm BEGIN..COMMIT), `parallel.map` (fork to join), `analyze.*` / `confirm.*` (sequential handler phases), `startup.*`, and `startup.info` (OCR backend actually built, Tesseract version, GOMAXPROCS, OMP_THREAD_LIMIT).
+
+Read "covered wall" as the most that removing a stage could save; "summed" larger than "covered" means the calls ran in parallel. Never add stages together. `-profile-summary <timings.jsonl>` re-summarizes an existing file offline. Off by default: without `REFRATIA_PROFILE` every span is a nil no-op. The server can also be profiled outside the benchmark by setting `REFRATIA_PROFILE=/path/timings.jsonl`.
+
 ## Pass/fail
 Exit 1 on: a regression (field in `backend/benchmark/last_pass.json` that no longer passes, for the patients that were run), any failed persistence/identity/idempotency check, or any failing field with role decisive, cross_check or identity. `-update-baseline` rewrites `last_pass.json` (merging patients that were not run). Classification checks are informational.
 

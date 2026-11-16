@@ -8,6 +8,7 @@ import (
 	"refratia/backend/src/shared/fileStorage/garage"
 	"refratia/backend/src/shared/fileStorage/minio"
 	"refratia/backend/src/shared/fileStorage/s3repository"
+	"refratia/backend/src/shared/profiling"
 )
 
 func New(ctx context.Context) (Repository, error) {
@@ -19,6 +20,7 @@ func NewPresigner(ctx context.Context) (PresignRepository, error) {
 }
 
 func newRepository(ctx context.Context, configuredEndpoint string) (Repository, error) {
+	defer profiling.Start(ctx, "garage.client_config").End(nil)
 	driver := os.Getenv("FILE_STORAGE_DRIVER")
 	if driver == "" {
 		driver = "minio"
@@ -41,6 +43,9 @@ func newRepository(ctx context.Context, configuredEndpoint string) (Repository, 
 		return nil, err
 	}
 
+	if profiling.Enabled() {
+		return profiledRepository{repository}, nil
+	}
 	return repository, nil
 }
 

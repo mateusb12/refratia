@@ -1,7 +1,9 @@
 package eyesuite
 
 import (
+	"context"
 	"errors"
+	"refratia/backend/src/shared/profiling"
 	"regexp"
 	"strconv"
 	"strings"
@@ -13,6 +15,7 @@ import (
 var decimalPattern = regexp.MustCompile(`[+-]?\d+[,.]\d+`)
 
 func parseEyeSuiteTSV(tsv string) (map[string]any, error) {
+	defer profiling.Start(context.Background(), "parse.eyesuite.parseEyeSuiteTSV").End(nil) // ctx-less: attributed by time
 	words, pageWidth, err := ocr.ParseTSVWords(tsv)
 	if err != nil {
 		return nil, err
@@ -266,6 +269,7 @@ func parseEyeSuiteIdentityTSV(tsv string) (Identity, error) {
 }
 
 func parseEyeSuiteIdentityWords(words []ocr.Word) (Identity, error) {
+	defer profiling.Start(context.Background(), "parse.eyesuite.parseEyeSuiteIdentityWords").End(nil) // ctx-less: attributed by time
 	rows := ocr.GroupRows(words, 10)
 
 	anchor := -1

@@ -108,6 +108,9 @@ type env struct {
 	cmd               *exec.Cmd
 	bin               string
 	backendDir        string
+	prof              *profiler      // -profile; nil = off
+	patientIndex      map[string]int // anonymous p<n> labels for profiling
+	label             string         // profiling label of the request in flight
 }
 
 func die(f string, a ...any) { fmt.Fprintf(os.Stderr, "benchmark: "+f+"\n", a...); os.Exit(2) }
@@ -134,7 +137,15 @@ func realMain() (code int) {
 	rescore := flag.String("rescore", "", "re-score an earlier run dir offline from its raw/ files (no OCR, no backend)")
 	analyzeTO := flag.Duration("analyze-timeout", 25*time.Minute, "per-patient analyze timeout")
 	stepTO := flag.Duration("step-timeout", 5*time.Minute, "inspect/confirm timeout")
+	profile := flag.Bool("profile", false, "record timing spans: <out>/timings.jsonl, summarized into profile.md and profile.json")
+	profileSummary := flag.String("profile-summary", "", "only re-summarize this timings.jsonl (no backend, no infra)")
 	flag.Parse()
+	if *profileSummary != "" {
+		if err := writeProfileSummary(*profileSummary); err != nil {
+			die("profile summary: %v", err)
+		}
+		return 0
+	}
 
 	t0 := time.Now()
 	ctx := context.Background()
@@ -151,6 +162,10 @@ func realMain() (code int) {
 	slugs := []string{"creso-aversa", "daniela-nogueira", "francisco", "maria-gorete", "rolmey"}
 	if *patients != "" {
 		slugs = strings.Split(*patients, ",")
+	}
+	e.patientIndex = map[string]int{}
+	for i, slug := range slugs {
+		e.patientIndex[slug] = i + 1
 	}
 	run := &Run{Started: t0.Format(time.RFC3339), BackendDir: *backendDir, Requested: slugs,
 		Command: "npm run benchmark -- " + strings.Join(os.Args[1:], " ")}
@@ -189,6 +204,10 @@ func realMain() (code int) {
 	}
 	must(os.MkdirAll(filepath.Join(e.out, "raw"), 0o755))
 	must(os.MkdirAll(filepath.Join(e.out, "patients"), 0o755))
+	if *profile {
+		e.prof = &profiler{path: filepath.Join(e.out, "timings.jsonl"), run: filepath.Base(e.out)}
+		e.vars = append(e.vars, "REFRATIA_PROFILE="+e.prof.path, "REFRATIA_PROFILE_RUN="+e.prof.run)
+	}
 	defer e.stopBackend()
 	run.Commit = gitRev(*backendDir)
 	// signal-safe: write the final INCOMPLETE report (with the interrupted step) before exiting
@@ -211,9 +230,14 @@ func realMain() (code int) {
 	}
 	defer lock.Close()
 	if *resume == "" || !e.dbExists(ctx) {
+		t := time.Now()
 		e.resetInfra(ctx)
+		e.prof.span("bench.reset_infra", "", t, nil, nil)
 	}
-	must(e.buildBackend(*backendDir))
+	t := time.Now()
+	buildErr := e.buildBackend(*backendDir)
+	e.prof.span("bench.build", "", t, buildErr, nil)
+	must(buildErr)
 	must(e.launch())
 
 	done := map[string]bool{}
@@ -237,7 +261,14 @@ func realMain() (code int) {
 	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	return conclude(run, e, *baseline, *update, *compare, *outBase, t0, true)
+	code = conclude(run, e, *baseline, *update, *compare, *outBase, t0, true)
+	if e.prof != nil {
+		e.stopBackend() // nothing more is written to timings.jsonl
+		if err := writeProfileSummary(e.prof.path); err != nil {
+			fmt.Println("profile summary failed:", err)
+		}
+	}
+	return code
 }
 
 func saveJSON(path string, v any) {
@@ -448,17 +479,20 @@ func (e *env) launch() error {
 	cmd.Dir = e.backendDir
 	cmd.Env = append(append([]string{}, e.vars...), "PORT="+port)
 	cmd.Stdout, cmd.Stderr = logf, logf
+	started := time.Now()
 	if err := cmd.Start(); err != nil {
 		return err
 	}
 	e.cmd = cmd
 	e.api = "http://127.0.0.1:" + port
-	for i := 0; i < 120; i++ {
+	// 100 ms polls (120 s budget): exec-to-healthy is part of the startup profile
+	for i := 0; i < 1200; i++ {
 		if e.healthy() {
+			e.prof.span("bench.launch", "", started, nil, map[string]any{"polls": i + 1})
 			fmt.Printf("backend up on %s (built from %s)\n", e.api, e.backendDir)
 			return nil
 		}
-		time.Sleep(time.Second)
+		time.Sleep(100 * time.Millisecond)
 	}
 	e.stopBackend()
 	return fmt.Errorf("backend did not become healthy; see %s/backend.log", e.out)
@@ -504,6 +538,9 @@ func multipartBody(paths []string, cls any, process []string) (*bytes.Buffer, st
 func (e *env) post(ctx context.Context, url string, body io.Reader, ct, accept string) (*http.Response, error) {
 	req, _ := http.NewRequestWithContext(ctx, "POST", url, body)
 	req.Header.Set("Content-Type", ct)
+	if e.prof != nil && e.label != "" {
+		req.Header.Set("X-Refratia-Profile-Label", e.label)
+	}
 	if accept != "" {
 		req.Header.Set("Accept", accept)
 	}
@@ -535,7 +572,9 @@ func (e *env) inspect(ctx context.Context, paths []string) (map[string][2]string
 
 // analyze posts everything in ONE request like the frontend (stream=1 NDJSON).
 func (e *env) analyze(ctx context.Context, paths []string, cls []map[string]string, process []string) (int, map[string]any, []byte, error) {
+	t := time.Now()
 	buf, ct := multipartBody(paths, cls, process)
+	e.prof.span("client.build_body", e.label, t, nil, map[string]any{"bytes": buf.Len()})
 	q := "?stream=1"
 	if e.reForce && len(process) == 0 {
 		q += "&force=1"
@@ -756,9 +795,16 @@ func (e *env) runPatient(ctx context.Context, slug string, pr *PatientRun) {
 	}
 
 	// classification: what the UI would prefill (recognized); unrecognized files get the ground truth (a human would choose)
+	p := fmt.Sprintf("p%d/", e.patientIndex[slug])
+	timed := func(step string, t time.Time, err error) {
+		e.prof.span("client."+step, p+step, t, err, nil)
+	}
+	e.label = p + "inspect"
+	ti := time.Now()
 	ictx, cancel := withTO(ctx, e.stepTO)
 	rec, rawInspect, err := e.inspect(ictx, paths)
 	cancel()
+	timed("inspect", ti, err)
 	if err != nil {
 		infra("inspect", err.Error())
 		return
@@ -793,11 +839,13 @@ func (e *env) runPatient(ctx context.Context, slug string, pr *PatientRun) {
 
 	pre := e.snapshot(ctx)
 	e.setCur(slug + ": analyze")
+	e.label = p + "analyze"
 	t := time.Now()
 	actx, cancel := withTO(ctx, e.analyzeTO)
 	status, payload, raw, err := e.analyze(actx, paths, cls, shas)
 	cancel()
 	pr.AnalyzeSecs = time.Since(t).Seconds()
+	timed("analyze", t, err)
 	pr.AnalyzeStatus = status
 	if raw != nil {
 		os.WriteFile(filepath.Join(e.out, "raw", slug+".analyze.json"), raw, 0o644)
@@ -823,9 +871,12 @@ func (e *env) runPatient(ctx context.Context, slug string, pr *PatientRun) {
 	sn := &Snaps{Pre: pre, ByName: byName}
 	intakeID, _ := payload["intakeId"].(string)
 	e.setCur(slug + ": confirm")
+	e.label = p + "confirm1"
+	t = time.Now()
 	cctx, cancel := withTO(ctx, e.stepTO)
 	cs, cbody := e.confirm(cctx, intakeID)
 	cancel()
+	timed("confirm1", t, nil)
 	if cs == 0 {
 		infra("confirm_no_response", sval(cbody, "error"))
 		return
@@ -836,10 +887,13 @@ func (e *env) runPatient(ctx context.Context, slug string, pr *PatientRun) {
 	sn.Post1 = e.snapshot(ctx)
 
 	e.setCur(slug + ": confirm retry")
+	e.label = p + "confirm2"
+	t = time.Now()
 	cctx, cancel = withTO(ctx, e.stepTO)
 	var cb2 map[string]any
 	sn.CS2, cb2 = e.confirm(cctx, intakeID)
 	cancel()
+	timed("confirm2", t, nil)
 	saveJSON(filepath.Join(e.out, "raw", slug+".confirm2.json"), cb2)
 	sn.Post2 = e.snapshot(ctx)
 
@@ -849,9 +903,12 @@ func (e *env) runPatient(ctx context.Context, slug string, pr *PatientRun) {
 	if e.reForce {
 		proc = shas
 	}
+	e.label = p + "reingest"
+	t = time.Now()
 	actx, cancel = withTO(ctx, e.analyzeTO)
 	st3, p3, raw3, err3 := e.analyze(actx, paths, cls, proc)
 	cancel()
+	timed("reingest", t, err3)
 	if st3 == 0 {
 		infra("reingest_analyze_no_response", fmt.Sprint(err3))
 		return
@@ -861,10 +918,13 @@ func (e *env) runPatient(ctx context.Context, slug string, pr *PatientRun) {
 	} else {
 		os.WriteFile(filepath.Join(e.out, "raw", slug+".reingest.analyze.json"), raw3, 0o644)
 		id3, _ := p3["intakeId"].(string)
+		e.label = p + "confirm3"
+		t = time.Now()
 		cctx, cancel = withTO(ctx, e.stepTO)
 		var cb3 map[string]any
 		sn.CS3, cb3 = e.confirm(cctx, id3)
 		cancel()
+		timed("confirm3", t, nil)
 		sn.Action3 = sval(cb3, "action")
 		saveJSON(filepath.Join(e.out, "raw", slug+".confirm3.json"), cb3)
 		sn.Post3 = e.snapshot(ctx)

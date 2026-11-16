@@ -7,10 +7,12 @@
 package extractionfields
 
 import (
+	"context"
 	_ "embed"
 	"encoding/json"
 	"fmt"
 	"math"
+	"refratia/backend/src/shared/profiling"
 	"sort"
 	"strings"
 	"time"
@@ -214,6 +216,7 @@ func check(examKey string, l located, v any) string {
 // (never coerced) and reported as unreadable/validation. Every spec field of
 // the exam gets exactly one diagnostic per eye: valid, missing or unreadable.
 func ValidateEyes(fileSHA256, examKey string, exam map[string]any, eyeNames []string) []Diagnostic {
+	defer profiling.Start(context.Background(), "validate.extractionfields.ValidateEyes").End(nil) // ctx-less: attributed by time
 	locs := locations[examKey]
 	eyes, _ := exam["eyes"].(map[string]any)
 	var out []Diagnostic

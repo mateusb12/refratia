@@ -7,11 +7,13 @@ import (
 	"image/color"
 	_ "image/jpeg"
 	"image/png"
+	"refratia/backend/src/shared/profiling"
 	"strings"
 )
 
 // DecodeImage decodes PNG/JPEG bytes.
 func DecodeImage(data []byte) (image.Image, error) {
+	defer profiling.Start(context.Background(), "preprocess.decode").Caller("/shared/ocr.").End(nil) // ctx-less: the summary attributes it by time
 	img, _, err := image.Decode(bytes.NewReader(data))
 	return img, err
 }
@@ -30,6 +32,7 @@ func PrepareGray(src image.Image, r image.Rectangle, scale int, threshold uint8)
 // readable on yellow/white fills (and is what PrepareGray's red/blue-safe mode
 // gives up), so cells are read in both modes.
 func PrepareGrayMode(src image.Image, r image.Rectangle, scale int, threshold uint8, luma bool) *image.Gray {
+	defer profiling.Start(context.Background(), "preprocess.prepare_gray").End(nil) // ctx-less: the summary attributes it by time
 	r = r.Intersect(src.Bounds())
 	if r.Empty() || scale < 1 {
 		return image.NewGray(image.Rect(0, 0, 1, 1))
@@ -120,6 +123,7 @@ func PrepareGrayMode(src image.Image, r image.Rectangle, scale int, threshold ui
 
 // EncodePNG encodes any image as PNG.
 func EncodePNG(img image.Image) ([]byte, error) {
+	defer profiling.Start(context.Background(), "preprocess.encode_png").Caller("/shared/ocr.").End(nil) // ctx-less: the summary attributes it by time
 	var buf bytes.Buffer
 	if err := png.Encode(&buf, img); err != nil {
 		return nil, err
@@ -139,6 +143,7 @@ func RunTesseractText(ctx context.Context, pngData []byte, psm int, whitelist st
 
 // AutoContrast stretches the 1st..99th grey percentile of img to 0..255.
 func AutoContrast(img *image.Gray) {
+	defer profiling.Start(context.Background(), "preprocess.auto_contrast").End(nil) // ctx-less: the summary attributes it by time
 	var hist [256]int
 	for _, v := range img.Pix {
 		hist[v]++
@@ -178,6 +183,7 @@ func AutoContrast(img *image.Gray) {
 // Binarize returns a copy of img with pixels below percent% of 255 set to
 // black and the rest white.
 func Binarize(img *image.Gray, percent int) *image.Gray {
+	defer profiling.Start(context.Background(), "preprocess.binarize").End(nil) // ctx-less: the summary attributes it by time
 	out := image.NewGray(img.Bounds())
 	cut := uint8(percent * 255 / 100)
 	for i, v := range img.Pix {
@@ -193,6 +199,7 @@ func Binarize(img *image.Gray, percent int) *image.Gray {
 // ThickenDark grows dark strokes by one pixel (3x3 minimum filter), which
 // closes the slash of slashed-zero fonts so it reads as a clean glyph.
 func ThickenDark(img *image.Gray) *image.Gray {
+	defer profiling.Start(context.Background(), "preprocess.thicken").End(nil) // ctx-less: the summary attributes it by time
 	b := img.Bounds()
 	out := image.NewGray(b)
 	for y := b.Min.Y; y < b.Max.Y; y++ {

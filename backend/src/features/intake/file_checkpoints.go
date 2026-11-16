@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"refratia/backend/src/shared/profiling"
 	"sort"
 	"strings"
 	"time"
@@ -290,6 +291,7 @@ func saveUploadedFileBeforeProcessing(
 	bucketName string,
 	file UploadedFile,
 ) error {
+	defer profiling.Start(processingContext, "checkpoint.save_source").End(nil)
 	fileAlreadySaved, lookupError :=
 		uploadedFileCheckpointExists(
 			processingContext,
@@ -350,6 +352,7 @@ func loadProcessedFileCheckpoint(
 	bool,
 	error,
 ) {
+	defer profiling.Start(processingContext, "checkpoint.load_result").End(nil)
 	checkpointObject, downloadError :=
 		storageClientInstance.GetObject(
 			processingContext,
@@ -435,6 +438,7 @@ func saveProcessedFileCheckpoint(
 	bucketName string,
 	checkpoint processedFileCheckpoint,
 ) error {
+	defer profiling.Start(processingContext, "checkpoint.save_result").End(nil)
 	encodedCheckpoint, encodeError :=
 		json.MarshalIndent(
 			checkpoint,

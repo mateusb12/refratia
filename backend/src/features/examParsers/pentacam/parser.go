@@ -1,8 +1,10 @@
 package pentacam
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"refratia/backend/src/shared/profiling"
 	"regexp"
 	"strconv"
 	"strings"
@@ -12,6 +14,7 @@ import (
 )
 
 func parsePentacamTSVPages(pages map[int]string) (map[string]any, error) {
+	defer profiling.Start(context.Background(), "parse.pentacam.parsePentacamTSVPages").End(nil) // ctx-less: attributed by time
 	texts := map[int]string{}
 
 	for page, tsv := range pages {
@@ -27,6 +30,7 @@ func parsePentacamTSVPages(pages map[int]string) (map[string]any, error) {
 }
 
 func parsePentacamPageTexts(pages map[int]string) (map[string]any, error) {
+	defer profiling.Start(context.Background(), "parse.pentacam.parsePentacamPageTexts").End(nil) // ctx-less: attributed by time
 	for _, page := range []int{4, 6, 7, 8, 9} {
 		if strings.TrimSpace(pages[page]) == "" {
 			return nil, fmt.Errorf("Pentacam: página %d ausente", page)

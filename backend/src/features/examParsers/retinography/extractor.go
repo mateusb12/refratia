@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"strings"
 
+	"refratia/backend/src/shared/profiling"
 	progress "refratia/backend/src/shared/progress"
 )
 
@@ -59,6 +60,7 @@ var (
 )
 
 func ParseText(text string) (Record, error) {
+	defer profiling.Start(context.Background(), "parse.retinography.ParseText").End(nil) // ctx-less: attributed by time
 	text = strings.ReplaceAll(text, "\r\n", "\n")
 
 	record := Record{
@@ -220,6 +222,7 @@ func Extract(
 func preprocess(
 	src image.Image,
 ) ([]byte, error) {
+	defer profiling.Start(context.Background(), "preprocess.retinography").End(nil) // ctx-less: the summary attributes it by time
 	bounds := src.Bounds()
 
 	width := bounds.Dx()
@@ -466,7 +469,10 @@ func runTesseractText(
 		tesseractPSM,
 	)
 
+	// Bypasses ocr.Recognize: one tesseract process per call, in every build.
+	span := profiling.Start(ctx, "proc.tesseract").Set("site", "retinography").Set("psm", tesseractPSM).Caller("/retinography.runTesseractText")
 	output, err := command.CombinedOutput()
+	span.EndCmd(command, err)
 	if err != nil {
 		return "", fmt.Errorf(
 			"retinografia: tesseract: %s: %w",

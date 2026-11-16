@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"image"
+	"refratia/backend/src/shared/profiling"
 	"regexp"
 	"sort"
 	"strings"
@@ -164,6 +165,7 @@ func locateIdentityRows(words []ocr.Word, spans []labelSpan) identityRows {
 }
 
 func parsePentacamIdentityWords(words []ocr.Word) (Identity, error) {
+	defer profiling.Start(context.Background(), "parse.pentacam.parsePentacamIdentityWords").End(nil) // ctx-less: attributed by time
 	for i := range words {
 		if words[i].Height == 0 {
 			words[i].Height = 20

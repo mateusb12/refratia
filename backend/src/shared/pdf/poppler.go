@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"refratia/backend/src/shared/profiling"
 )
 
 const defaultRenderDPI = 180
@@ -18,7 +20,10 @@ const defaultRenderDPI = 180
 func Inspect(
 	ctx context.Context,
 	data []byte,
-) (int, string, error) {
+) (pages int, textLayer string, err error) {
+	span := profiling.Start(ctx, "pdf.inspect").Caller("/shared/pdf.")
+	defer func() { span.Set("pages", pages).End(err) }()
+
 	pagesOutput, err := runCommand(
 		ctx,
 		"pdfinfo",
@@ -27,8 +32,6 @@ func Inspect(
 	if err != nil {
 		return 0, "", err
 	}
-
-	pages := 0
 
 	for _, line := range strings.Split(
 		pagesOutput,
@@ -52,7 +55,7 @@ func Inspect(
 		)
 	}
 
-	textLayer, err := runCommand(
+	textLayer, err = runCommand(
 		ctx,
 		"pdftotext",
 		data,
@@ -84,7 +87,10 @@ func RenderPageAtDPI(
 	data []byte,
 	page,
 	dpi int,
-) ([]byte, error) {
+) (png []byte, err error) {
+	span := profiling.Start(ctx, "pdf.render").Caller("/shared/pdf.").Set("dpi", dpi).Set("pages", 1)
+	defer func() { span.End(err) }()
+
 	input, err := os.CreateTemp(
 		"",
 		"refratia-page-*.pdf",
@@ -131,7 +137,10 @@ func RenderPageAtDPI(
 		prefix,
 	)
 
-	if output, err := command.CombinedOutput(); err != nil {
+	procSpan := profiling.Start(ctx, "proc.pdftoppm").Set("dpi", dpi).Set("pages", 1)
+	output, err := command.CombinedOutput()
+	procSpan.EndCmd(command, err)
+	if err != nil {
 		return nil, fmt.Errorf(
 			"pdftoppm: %s",
 			strings.TrimSpace(string(output)),
@@ -150,7 +159,7 @@ func RenderPageAtDPI(
 		)
 	}
 
-	return pngFromPPM(ppmData)
+	return timedPNGFromPPM(ctx, ppmData)
 }
 
 // RenderAllPagesAtDPI renders pages 1..pages with a single pdftoppm call.
@@ -168,7 +177,10 @@ func renderPagesAtDPI(
 	data []byte,
 	pages,
 	dpi int,
-) ([][]byte, error) {
+) (images [][]byte, err error) {
+	span := profiling.Start(ctx, "pdf.render").Caller("/shared/pdf.").Set("dpi", dpi).Set("pages", pages)
+	defer func() { span.End(err) }()
+
 	input, err := os.CreateTemp(
 		"",
 		"refratia-pages-*.pdf",
@@ -212,14 +224,17 @@ func renderPagesAtDPI(
 		prefix,
 	)
 
-	if output, err := command.CombinedOutput(); err != nil {
+	procSpan := profiling.Start(ctx, "proc.pdftoppm").Set("dpi", dpi).Set("pages", pages)
+	output, err := command.CombinedOutput()
+	procSpan.EndCmd(command, err)
+	if err != nil {
 		return nil, fmt.Errorf(
 			"pdftoppm: %s",
 			strings.TrimSpace(string(output)),
 		)
 	}
 
-	images := make(
+	images = make(
 		[][]byte,
 		0,
 		pages,
@@ -244,7 +259,7 @@ func renderPagesAtDPI(
 				err,
 			)
 		}
-		image, err := pngFromPPM(ppmData)
+		image, err := timedPNGFromPPM(ctx, ppmData)
 		if err != nil {
 			return nil, fmt.Errorf(
 				"página %d: %w",
@@ -305,7 +320,9 @@ func runCommand(
 		args...,
 	)
 
+	span := profiling.Start(ctx, "proc."+name)
 	output, err := command.Output()
+	span.EndCmd(command, err)
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok &&
 			len(exitErr.Stderr) > 0 {
@@ -327,4 +344,11 @@ func runCommand(
 	}
 
 	return string(output), nil
+}
+
+func timedPNGFromPPM(ctx context.Context, ppmData []byte) ([]byte, error) {
+	span := profiling.Start(ctx, "preprocess.ppm_to_png").Set("ppm_bytes", len(ppmData))
+	png, err := pngFromPPM(ppmData)
+	span.End(err)
+	return png, err
 }

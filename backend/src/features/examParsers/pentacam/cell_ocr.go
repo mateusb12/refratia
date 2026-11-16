@@ -8,6 +8,7 @@ import (
 	"image/png"
 	"refratia/backend/src/features/fileIdentification/extractionfields"
 	"refratia/backend/src/shared/ocr"
+	"refratia/backend/src/shared/profiling"
 	"regexp"
 	"strconv"
 	"strings"
@@ -220,6 +221,7 @@ func pentacamBinaryUpscale(
 	scale int,
 	threshold uint8,
 ) ([]byte, error) {
+	defer profiling.Start(context.Background(), "preprocess.pentacam_binary_upscale").End(nil) // ctx-less: the summary attributes it by time
 	src, _, err := image.Decode(bytes.NewReader(data))
 	if err != nil {
 		return nil, err

@@ -69,6 +69,9 @@ func Open(ctx context.Context) (*DB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create postgres ORM connection: %w", err)
 	}
+	if err := profileSQL(gormDB); err != nil {
+		return nil, fmt.Errorf("profile postgres: %w", err)
+	}
 	sqlDB, err := gormDB.DB()
 	if err != nil {
 		return nil, fmt.Errorf("get postgres SQL connection: %w", err)

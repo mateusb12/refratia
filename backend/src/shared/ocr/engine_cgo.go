@@ -15,7 +15,10 @@ import (
 	"errors"
 	"runtime"
 	"sync"
+	"time"
 	"unsafe"
+
+	"refratia/backend/src/shared/profiling"
 )
 
 // One engine per core, matching parallelwork's cap. A TessBaseAPI is not safe
@@ -34,18 +37,27 @@ func WarmUp() error {
 		enginePool = make(chan *C.TessBaseAPI, engineCount)
 		language := C.CString("eng")
 		defer C.free(unsafe.Pointer(language))
-		for range engineCount {
+		for index := range engineCount {
+			span := profiling.Start(context.Background(), "ocr.engine_init").Set("engine", index).Set("engines", engineCount)
 			engine := C.TessBaseAPICreate()
 			if C.TessBaseAPIInit3(engine, nil, language) != 0 {
 				C.TessBaseAPIDelete(engine)
 				enginePoolError = errors.New("tesseract: could not load the eng model")
+				span.End(enginePoolError)
 				return
 			}
+			span.End(nil)
 			enginePool <- engine
 		}
 	})
 	return enginePoolError
 }
+
+// Backend names the OCR implementation this binary was built with.
+const Backend = "libtesseract"
+
+// Version is the linked libtesseract version.
+func Version() string { return C.GoString(C.TessVersion()) }
 
 func recognize(executionContext context.Context, pngData []byte, psm int, whitelist string, tsv bool) (string, error) {
 	if len(pngData) == 0 {
@@ -56,11 +68,14 @@ func recognize(executionContext context.Context, pngData []byte, psm int, whitel
 	}
 
 	var engine *C.TessBaseAPI
+	waitStart := time.Now()
 	select {
 	case engine = <-enginePool:
 	case <-executionContext.Done():
+		profiling.Annotate(executionContext, "wait_ms", float64(time.Since(waitStart).Microseconds())/1000)
 		return "", executionContext.Err()
 	}
+	profiling.Annotate(executionContext, "wait_ms", float64(time.Since(waitStart).Microseconds())/1000)
 	defer func() { enginePool <- engine }()
 	// ponytail: a running recognition is not interrupted on cancel (the CLI
 	// was killed); cells take milliseconds, a full page a few seconds.

@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+
+	"refratia/backend/src/shared/profiling"
 )
 
 // tsvHeader is the first line the tesseract CLI prints for `tsv` output.
@@ -18,7 +20,11 @@ const tsvHeader = "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft
 // starting the CLI costs ~90 ms of model loading per call, which dominated
 // the ~1,500 cell reads of a Pentacam report.
 func Recognize(executionContext context.Context, pngData []byte, psm int, whitelist string, tsv bool) (string, error) {
-	return recognize(executionContext, pngData, psm, whitelist, tsv)
+	span := profiling.Start(executionContext, "ocr.recognize").Caller("/shared/ocr.", "/shared/document.").
+		Set("backend", Backend).Set("psm", psm).Set("tsv", tsv).Set("whitelist", whitelist != "").Set("png_bytes", len(pngData))
+	text, err := recognize(span.Into(executionContext), pngData, psm, whitelist, tsv)
+	span.End(err)
+	return text, err
 }
 
 // recognizeWithCLI is the process-per-call path: the !cgo build uses it, and
@@ -45,7 +51,10 @@ func recognizeWithCLI(executionContext context.Context, pngData []byte, psm int,
 	if tsv {
 		arguments = append(arguments, "tsv")
 	}
-	output, runError := exec.CommandContext(executionContext, "tesseract", arguments...).Output()
+	span := profiling.Start(executionContext, "proc.tesseract").Set("site", "ocr.cli")
+	command := exec.CommandContext(executionContext, "tesseract", arguments...)
+	output, runError := command.Output()
+	span.EndCmd(command, runError)
 	if runError != nil {
 		if exitError, isExitError := runError.(*exec.ExitError); isExitError && len(exitError.Stderr) > 0 {
 			return "", fmt.Errorf("tesseract: %s", strings.TrimSpace(string(exitError.Stderr)))

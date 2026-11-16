@@ -30,6 +30,7 @@ import (
 	"refratia/backend/src/shared/database"
 	"refratia/backend/src/shared/fileStorage"
 	"refratia/backend/src/shared/httpresponse"
+	"refratia/backend/src/shared/profiling"
 	progress "refratia/backend/src/shared/progress"
 )
 
@@ -78,15 +79,18 @@ func InspectIntakeHandler(responseWriter http.ResponseWriter, request *http.Requ
 
 	audit := progressTracking.From(request.Context())
 	result := make([]classification.FileInspection, 0, len(files))
-	for _, file := range files {
+	for index, file := range files {
 		startAuditFile(request.Context(), file)
-		inspection := classification.InspectFile(request.Context(), classification.File{
+		docContext := profiling.WithDoc(request.Context(), index)
+		classifySpan := profiling.Start(docContext, "classify").Set("content_type", file.Metadata.ContentType).Set("bytes", file.Metadata.Size)
+		inspection := classification.InspectFile(docContext, classification.File{
 			Filename:    file.Metadata.Filename,
 			SHA256:      file.Metadata.SHA256,
 			ContentType: file.Metadata.ContentType,
 			Size:        file.Metadata.Size,
 			Data:        file.Data,
 		})
+		classifySpan.Set("exam_type", inspection.RecognizedExamType).Set("pages", inspection.Pages).End(nil)
 		audit.FinishFile(file.Metadata.Filename, func(entry *progressTracking.File) {
 			entry.ExamType, entry.Eye, entry.Pages = inspection.RecognizedExamType, inspection.RecognizedEye, inspection.Pages
 			entry.Outcome = "unrecognized"
@@ -106,6 +110,10 @@ func (handler Handler) AnalyzeIntake(responseWriter http.ResponseWriter, request
 		responseWriter.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
+
+	phases := profiling.StartPhases(request.Context(), "analyze")
+	defer phases.End()
+	phases.Next("read_uploads")
 
 	headers, requestError := intakeHeaders(responseWriter, request)
 	if requestError != nil {
@@ -231,6 +239,7 @@ func (handler Handler) AnalyzeIntake(responseWriter http.ResponseWriter, request
 		httpresponse.WriteError(responseWriter, status, message)
 	}
 
+	phases.Next("storage_client")
 	client, storageClientError :=
 		fileStorage.New(requestContext)
 
@@ -242,6 +251,7 @@ func (handler Handler) AnalyzeIntake(responseWriter http.ResponseWriter, request
 		return
 	}
 
+	phases.Next("cleanup_drafts")
 	cleanupExpiredDrafts(
 		requestContext,
 		client,
@@ -262,6 +272,7 @@ func (handler Handler) AnalyzeIntake(responseWriter http.ResponseWriter, request
 		"Iniciando extração local",
 	)
 
+	phases.Next("extract")
 	analysis, extractionErr := extractPatient(
 		progress.WithRange(requestContext, 8, 88),
 		files,
@@ -278,6 +289,7 @@ func (handler Handler) AnalyzeIntake(responseWriter http.ResponseWriter, request
 	// O preview também precisa saber qual exame/lateralidade cada arquivo
 	// alimentou. Antes isso só era feito na confirmação, fazendo a tela de
 	// debug exibir "sem campos" mesmo quando os valores estavam em analysis.exams.
+	phases.Next("post_extract")
 	exams.ClassifySourceFiles(analysis)
 	progressTracking.From(requestContext).CountFields(analysis)
 
@@ -320,6 +332,7 @@ func (handler Handler) AnalyzeIntake(responseWriter http.ResponseWriter, request
 		analysis["identity_warnings"] = list
 	}
 
+	phases.Next("find_case")
 	if identifiable {
 		patientMatch["status"] = "new"
 
@@ -344,6 +357,7 @@ func (handler Handler) AnalyzeIntake(responseWriter http.ResponseWriter, request
 		}
 	}
 
+	phases.Next("similar_birthdate")
 	if identifiable && !foundExisting {
 		// Mesmo nascimento, nome diferente: possível erro de OCR ou homônimo.
 		// Sinalizado para revisão; nunca fundido nem "adivinhado".
@@ -381,6 +395,7 @@ func (handler Handler) AnalyzeIntake(responseWriter http.ResponseWriter, request
 		}
 	}
 
+	phases.Next("store_drafts")
 	progress.Report(
 		requestContext,
 		93,
@@ -510,6 +525,7 @@ func (handler Handler) AnalyzeIntake(responseWriter http.ResponseWriter, request
 		"Gerando pré-visualização",
 	)
 
+	phases.Next("presign")
 	presigner, presignErr := fileStorage.NewPresigner(requestContext)
 	if presignErr != nil {
 		fail(
@@ -557,6 +573,7 @@ func (handler Handler) AnalyzeIntake(responseWriter http.ResponseWriter, request
 		"Análise concluída",
 	)
 
+	phases.Next("write_result")
 	if stream != nil {
 		stream.WriteResult(payload)
 		return
@@ -576,6 +593,9 @@ func (handler Handler) ConfirmIntake(responseWriter http.ResponseWriter, request
 		return
 	}
 
+	phases := profiling.StartPhases(request.Context(), "confirm")
+	defer phases.End()
+	phases.Next("read_body")
 	request.Body = http.MaxBytesReader(responseWriter, request.Body, 1<<20)
 	var confirmRequest struct {
 		IntakeID         string            `json:"intakeId"`
@@ -587,6 +607,7 @@ func (handler Handler) ConfirmIntake(responseWriter http.ResponseWriter, request
 	}
 	progressTracking.From(request.Context()).SetIntakeID(confirmRequest.IntakeID)
 
+	phases.Next("storage_client")
 	client, storageErr := fileStorage.New(request.Context())
 	if storageErr != nil {
 		httpresponse.WriteError(responseWriter, http.StatusInternalServerError, "storage indisponível")
@@ -595,6 +616,7 @@ func (handler Handler) ConfirmIntake(responseWriter http.ResponseWriter, request
 
 	bucket := os.Getenv("BUCKET_NAME")
 
+	phases.Next("load_receipt_and_draft")
 	// Retry da mesma confirmação deve devolver exatamente o case já resolvido,
 	// inclusive quando aquele intake foi incorporado em um paciente preexistente.
 	if receipt, ok := cases.LoadConfirmationReceipt(request.Context(), client, bucket, confirmRequest.IntakeID); ok {
@@ -649,6 +671,7 @@ func (handler Handler) ConfirmIntake(responseWriter http.ResponseWriter, request
 		}
 	}
 
+	phases.Next("commit")
 	receipt, commitErr := handler.commitIntake(request.Context(), client, bucket, draft, defaultCaseID, confirmRequest.IdentityDecision)
 	if commitErr != nil {
 		var httpErr *intakeError
@@ -669,6 +692,7 @@ func (handler Handler) ConfirmIntake(responseWriter http.ResponseWriter, request
 	}
 	caseID, analysisKey, action := receipt.CaseID, receipt.AnalysisKey, receipt.Action
 
+	phases.Next("store_receipt")
 	// O receipt precisa existir antes de consumirmos o draft.
 	// Se sua gravação falhar, o case já pode ter sido atualizado, mas o draft
 	// permanece disponível para um retry idempotente da mesma confirmação.
@@ -683,12 +707,14 @@ func (handler Handler) ConfirmIntake(responseWriter http.ResponseWriter, request
 		return
 	}
 
+	phases.Next("cleanup_drafts")
 	draftKeys := make([]string, 0, len(draft.Files)+1)
 	for _, file := range draft.Files {
 		draftKeys = append(draftKeys, file.Key)
 	}
 	fileStorage.CleanupObjects(request.Context(), client, append(draftKeys, draftKey))
 
+	phases.Next("write_response")
 	writeConfirmation(request.Context(), responseWriter, caseID, analysisKey, action)
 }
 
@@ -723,6 +749,7 @@ func (handler Handler) commitIntake(
 
 	// C2: same birth date + similar-but-different name and no exact match is a
 	// possible OCR typo: ask for a decision, write nothing (no Garage, no SQL).
+	precheck := profiling.Start(executionContext, "confirm.commit.precheck")
 	var exact int64
 	if errorValue := handler.Database.Model(&database.Patient{}).Where("identity_key = ?", identityKey).Count(&exact).Error; errorValue != nil {
 		return cases.ConfirmationReceipt{}, errorValue
@@ -773,13 +800,21 @@ func (handler Handler) commitIntake(
 		}
 	}
 
+	precheck.End(nil)
 	var receipt cases.ConfirmationReceipt
+	// sql.transaction is BEGIN..COMMIT, i.e. how long the patient row lock is
+	// held; the Garage calls inside it show up as their own garage.* spans.
+	transactionSpan := profiling.Start(executionContext, "sql.transaction")
+	transactionPhases := profiling.StartPhases(executionContext, "confirm.tx")
+	defer transactionPhases.End()
 	errorValue = handler.Database.Transaction(func(transaction *gorm.DB) error {
+		transactionPhases.Next("lock")
 		patient, errorValue := patientfeature.Lock(transaction, identityKey, fullName, birthDate)
 		if errorValue != nil {
 			return errorValue
 		}
 
+		transactionPhases.Next("load_case")
 		caseID := defaultCaseID
 		action := "created"
 		var existingAnalysis map[string]any
@@ -802,6 +837,7 @@ func (handler Handler) commitIntake(
 				caseID, existingAnalysis, action = legacyID, legacy, "updated"
 			}
 		}
+		transactionPhases.Next("copy_objects")
 		analysisKey := fmt.Sprintf(fileStorage.CasesPrefix+"%s/paciente_compilado.json", caseID)
 
 		result := make([]FileMetadata, 0, len(draft.Files))
@@ -824,6 +860,7 @@ func (handler Handler) commitIntake(
 			result = append(result, file)
 		}
 
+		transactionPhases.Next("merge_and_put_compiled")
 		setStoredPaths(draft.Analysis, result)
 		finalAnalysis := draft.Analysis
 		if existingAnalysis != nil {
@@ -846,6 +883,7 @@ func (handler Handler) commitIntake(
 			return &intakeError{status: http.StatusBadGateway, message: "não foi possível armazenar o JSON compilado"}
 		}
 
+		transactionPhases.Next("cleanup_orphans")
 		// Se exatamente o mesmo arquivo for reenviado, source_files é deduplicado
 		// por SHA-256. Nesse caso não deixamos a cópia redundante órfã no bucket.
 		referenced := patientfeature.ReferencedSourcePaths(finalAnalysis)
@@ -878,6 +916,7 @@ func (handler Handler) commitIntake(
 		}
 		fileStorage.CleanupObjects(executionContext, client, orphanedCopies)
 
+		transactionPhases.Next("sql_writes")
 		if handler.afterGarageWrites != nil {
 			if errorValue := handler.afterGarageWrites(); errorValue != nil {
 				return errorValue
@@ -904,8 +943,11 @@ func (handler Handler) commitIntake(
 		}
 
 		receipt = cases.ConfirmationReceipt{CaseID: caseID, AnalysisKey: analysisKey, Action: action}
+		transactionPhases.Next("commit")
 		return nil
 	})
+	transactionPhases.End()
+	transactionSpan.End(errorValue)
 	return receipt, errorValue
 }
 
@@ -962,6 +1004,7 @@ func writeConfirmation(executionContext context.Context, responseWriter http.Res
 // ReadUploads reads the multipart "files" field, answering the error itself
 // when it fails. On success the caller defers request.MultipartForm.RemoveAll().
 func ReadUploads(responseWriter http.ResponseWriter, request *http.Request) ([]UploadedFile, bool) {
+	defer profiling.Start(request.Context(), "upload.read").End(nil)
 	headers, requestError := intakeHeaders(responseWriter, request)
 	if requestError != nil {
 		httpresponse.WriteError(responseWriter, requestError.status, requestError.message)

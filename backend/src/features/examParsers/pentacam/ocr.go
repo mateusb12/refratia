@@ -7,6 +7,7 @@ import (
 	"image"
 	"image/draw"
 	"image/png"
+	"refratia/backend/src/shared/profiling"
 	"strings"
 
 	"refratia/backend/src/shared/ocr"
@@ -17,6 +18,7 @@ type pentacamOCRRegion struct {
 }
 
 func extractOCRRegionPNG(data []byte, ocrRegion pentacamOCRRegion) ([]byte, error) {
+	defer profiling.Start(context.Background(), "preprocess.pentacam_region").End(nil) // ctx-less: the summary attributes it by time
 	img, _, err := image.Decode(bytes.NewReader(data))
 	if err != nil {
 		return nil, err

@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -18,6 +19,7 @@ import (
 	"gorm.io/gorm"
 
 	"refratia/backend/src/shared/database"
+	"refratia/backend/src/shared/profiling"
 )
 
 // Run collects what one intake request did; Audit writes it to
@@ -204,6 +206,7 @@ func (handler Handler) Audit(kind string, next http.HandlerFunc) http.HandlerFun
 			return
 		}
 		audit := &Run{started: time.Now(), open: map[string]*File{}}
+		requestSpan := profiling.Start(request.Context(), "request")
 		row := database.IntakeRun{Kind: kind, Status: database.RunRunning, Details: "{}"}
 		if createError := handler.Database.Create(&row).Error; createError != nil {
 			log.Printf("intake run (%s): %v", kind, createError)
@@ -211,6 +214,10 @@ func (handler Handler) Audit(kind string, next http.HandlerFunc) http.HandlerFun
 		audit.runID = row.ID
 
 		executionContext := context.WithValue(request.Context(), contextKey{}, audit)
+		if profiling.Enabled() {
+			executionContext = profiling.WithRequest(executionContext, fmt.Sprintf("%s-%d-%d", kind, row.ID, audit.started.UnixMicro()%1e6), kind, profileLabel(request))
+			requestSpan.In(executionContext)
+		}
 		var cancelled func() bool
 		if kind == "analyze" && row.ID != 0 {
 			detached, cancel := context.WithCancel(context.WithoutCancel(executionContext))
@@ -220,7 +227,9 @@ func (handler Handler) Audit(kind string, next http.HandlerFunc) http.HandlerFun
 			audit.live = startLiveRun(row.ID, cancel)
 		}
 		writer := &auditWriter{ResponseWriter: responseWriter}
+		handlerSpan := profiling.Start(executionContext, "handler")
 		next(writer, request.WithContext(executionContext))
+		handlerSpan.Set("status", writer.status).End(nil)
 
 		audit.mutex.Lock()
 		details := audit.details
@@ -261,6 +270,8 @@ func (handler Handler) Audit(kind string, next http.HandlerFunc) http.HandlerFun
 		} else if saveError := handler.Database.Save(&row).Error; saveError != nil {
 			log.Printf("intake run %d (%s): %v", row.ID, kind, saveError)
 		}
+		requestSpan.Set("status", details.HTTPStatus).Set("run_status", row.Status).Set("files", len(details.Files))
+		requestSpan.End(nil)
 		audit.live.finish()
 	}
 }
@@ -279,4 +290,17 @@ func appCommit() string {
 		}
 	}
 	return ""
+}
+
+// profileLabel is the caller's anonymous tag for profiling (the benchmark
+// sends "p1/analyze"); anything but [a-z0-9/_-] is dropped so it can never
+// carry a name.
+func profileLabel(request *http.Request) string {
+	label := []byte{}
+	for _, character := range []byte(request.Header.Get("X-Refratia-Profile-Label")) {
+		if len(label) < 32 && (character >= 'a' && character <= 'z' || character >= '0' && character <= '9' || character == '/' || character == '_' || character == '-') {
+			label = append(label, character)
+		}
+	}
+	return string(label)
 }

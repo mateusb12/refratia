@@ -4,6 +4,8 @@ import (
 	"context"
 	"runtime"
 	"sync"
+
+	"refratia/backend/src/shared/profiling"
 )
 
 type indexed[T any] struct {
@@ -41,6 +43,11 @@ func Map[T any, R any](
 	if workers > len(items) {
 		workers = len(items)
 	}
+
+	// The span ends at the join (all results in): its duration is the fork's
+	// elapsed time; the items' own spans show how busy the workers were.
+	span := profiling.Start(executionContext, "parallel.map").Caller("/shared/parallelwork.").Set("workers", workers).Set("items", len(items))
+	defer func() { span.End(executionContext.Err()) }()
 
 	workContext, cancel := context.WithCancel(executionContext)
 	defer cancel()

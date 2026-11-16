@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"refratia/backend/src/shared/profiling"
 	"sort"
 	"strings"
 
@@ -379,6 +380,9 @@ func extractPatientLocal(
 			file,
 		)
 
+		fileCtx = profiling.WithDoc(fileCtx, index)
+		docSpan := profiling.Start(fileCtx, "doc").Set("content_type", file.Metadata.ContentType).Set("bytes", file.Metadata.Size).Set("declared_type", file.Metadata.ExamType)
+
 		if checkpointStorageError :=
 			currentFileCheckpointStorageError(
 				fileCtx,
@@ -388,6 +392,7 @@ func extractPatientLocal(
 
 		startAuditFile(fileCtx, file)
 
+		checkpointSpan := profiling.Start(fileCtx, "checkpoint.prepare")
 		reused,
 			checkpointPrepareError :=
 			prepareFileForIdempotentProcessing(
@@ -395,6 +400,8 @@ func extractPatientLocal(
 				file,
 				analysis,
 			)
+		checkpointSpan.Set("reused", reused).End(checkpointPrepareError)
+		docSpan.Set("reused", reused)
 
 		if checkpointPrepareError != nil {
 			rememberFileCheckpointStorageError(
@@ -402,6 +409,7 @@ func extractPatientLocal(
 				checkpointPrepareError,
 			)
 
+			docSpan.End(checkpointPrepareError)
 			return analysis
 		}
 
@@ -409,10 +417,14 @@ func extractPatientLocal(
 			progressTracking.From(fileCtx).FinishFile(file.Metadata.Filename, func(entry *progressTracking.File) {
 				entry.Reused, entry.Outcome = true, "reused"
 			})
+			docSpan.End(nil)
 			continue
 		}
 
+		classifySpan := profiling.Start(fileCtx, "classify")
 		examType, examEye := resolveLocalClassification(fileCtx, file, analysis)
+		classifySpan.Set("exam_type", examType).End(nil)
+		docSpan.Set("exam_type", examType)
 
 		progress.Report(
 			fileCtx,
@@ -425,6 +437,7 @@ func extractPatientLocal(
 			),
 		)
 
+		extractSpan := profiling.Start(fileCtx, "extract").Set("exam_type", examType)
 		dispatchLocalFile(
 			fileCtx,
 			file,
@@ -432,7 +445,9 @@ func extractPatientLocal(
 			examEye,
 			analysis,
 		)
+		extractSpan.End(fileCtx.Err())
 		progressTracking.From(fileCtx).FinishFile(file.Metadata.Filename, nil)
+		docSpan.End(fileCtx.Err())
 	}
 
 	return analysis

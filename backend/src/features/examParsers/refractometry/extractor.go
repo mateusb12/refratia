@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"image"
 	"math"
+	"refratia/backend/src/shared/profiling"
 	"regexp"
 	"sort"
 	"strconv"
@@ -524,6 +525,7 @@ func onQuarterGrid(v float64) bool {
 }
 
 func parseAverageRow(text string) ([3]float64, bool) {
+	defer profiling.Start(context.Background(), "parse.refractometry.parseAverageRow").End(nil) // ctx-less: attributed by time
 	var result [3]float64
 	marker := averagePattern.FindStringIndex(text)
 	if marker == nil {
