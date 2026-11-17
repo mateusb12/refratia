@@ -1,6 +1,9 @@
 package intake
 
-import "testing"
+import (
+	"errors"
+	"testing"
+)
 
 func identityAnalysis(order string) map[string]any {
 	return map[string]any{
@@ -21,7 +24,7 @@ func TestMergeCheckpointAcceptsDayMonthSwappedIdentity(t *testing.T) {
 	other := identityAnalysis("MDY")
 	other["patient"].(map[string]any)["full_name"] = "BIA LIMA COSTA"
 	other["verificacao_identidade"].([]any)[0].(map[string]any)["nome_lido"] = "BIA LIMA COSTA"
-	if _, errorValue := mergeFileCheckpointAnalysis(identityAnalysis("DMY"), other); errorValue == nil {
-		t.Fatal("different patients must not merge")
+	if _, errorValue := mergeFileCheckpointAnalysis(identityAnalysis("DMY"), other); !errors.Is(errorValue, errCheckpointConflict) {
+		t.Fatalf("different patients must be a conflict (extracted instead): %v", errorValue)
 	}
 }

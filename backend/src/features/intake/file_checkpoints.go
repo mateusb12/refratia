@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"refratia/backend/src/shared/profiling"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -27,7 +28,14 @@ import (
 	progress "refratia/backend/src/shared/progress"
 )
 
-const fileCheckpointVersion = "v1"
+// fileCheckpointVersion keys every checkpoint object. Bump it whenever an
+// extractor's output changes: older checkpoints then miss and the document is
+// extracted again. v2: v1 results were never written (completeness checked
+// legacy labels), and v2 records the classification inputs. v3: the result
+// holds only the file's own identity reading, never the batch's patient. v4:
+// whole-exam writers (IOL, specular) keep the exam as written and replace it
+// on a hit.
+const fileCheckpointVersion = "v4"
 
 type fileCheckpointProcessingRun struct {
 	StorageClient fileStorage.Repository
@@ -43,14 +51,40 @@ type fileCheckpointProcessingRunKey struct{}
 
 type currentCheckpointFileKey struct{}
 
+// extractionStartKey carries the analysis as it was before the current file's
+// extraction, so its checkpoint holds only what that extraction wrote.
+type extractionStartKey struct{}
+
+type extractionStart struct {
+	eyes            map[string]string // snapshotEyes
+	identityEntries int               // len(verificacao_identidade)
+}
+
+func withExtractionStart(processingContext context.Context, analysis map[string]any) context.Context {
+	entries, _ := analysis["verificacao_identidade"].([]any)
+	return context.WithValue(processingContext, extractionStartKey{}, extractionStart{snapshotEyes(analysis), len(entries)})
+}
+
+// errCheckpointConflict: the checkpoint disagrees with the batch's identity;
+// the file is extracted instead, as if it had no checkpoint.
+var errCheckpointConflict = errors.New("checkpoint identity conflict")
+
 type processedFileCheckpoint struct {
-	ProcessorVersion string         `json:"processorVersion"`
-	SHA256           string         `json:"sha256"`
-	Filename         string         `json:"filename"`
-	ContentType      string         `json:"contentType"`
-	Size             int64          `json:"size"`
-	ProcessedAt      time.Time      `json:"processedAt"`
-	Analysis         map[string]any `json:"analysis"`
+	ProcessorVersion string    `json:"processorVersion"`
+	SHA256           string    `json:"sha256"`
+	Filename         string    `json:"filename"`
+	ContentType      string    `json:"contentType"`
+	Size             int64     `json:"size"`
+	ProcessedAt      time.Time `json:"processedAt"`
+	// Contract exam key and eye the result was extracted and checked as.
+	ExamType string `json:"examType"`
+	Eye      string `json:"eye"`
+	// The pre-OCR classification inputs (declared type/eye, else the
+	// filename's). Content classification is a function of the bytes, so the
+	// SHA-256 already covers it.
+	HintExamType string         `json:"hintExamType"`
+	HintEye      string         `json:"hintEye"`
+	Analysis     map[string]any `json:"analysis"`
 }
 
 type fileCheckpointLookupRequest struct {
@@ -342,6 +376,9 @@ func saveUploadedFileBeforeProcessing(
 	return nil
 }
 
+// loadProcessedFileCheckpoint returns the checkpoint, or the reason it can't
+// be used ("not_found", "version", "unreadable"). Only a storage failure is an
+// error: a corrupt or foreign checkpoint is a miss and the file is extracted.
 func loadProcessedFileCheckpoint(
 	processingContext context.Context,
 	storageClientInstance fileStorage.Repository,
@@ -349,7 +386,7 @@ func loadProcessedFileCheckpoint(
 	sha256Value string,
 ) (
 	processedFileCheckpoint,
-	bool,
+	string,
 	error,
 ) {
 	defer profiling.Start(processingContext, "checkpoint.load_result").End(nil)
@@ -371,12 +408,12 @@ func loadProcessedFileCheckpoint(
 			downloadError,
 		) {
 			return processedFileCheckpoint{},
-				false,
+				"not_found",
 				nil
 		}
 
 		return processedFileCheckpoint{},
-			false,
+			"",
 			downloadError
 	}
 
@@ -394,41 +431,15 @@ func loadProcessedFileCheckpoint(
 			&checkpoint,
 		)
 
-	if decodeError != nil {
-		return processedFileCheckpoint{},
-			false,
-			fmt.Errorf(
-				"checkpoint inválido: %w",
-				decodeError,
-			)
-	}
-
-	if checkpoint.ProcessorVersion !=
-		fileCheckpointVersion {
-		return processedFileCheckpoint{},
-			false,
-			nil
-	}
-
-	if checkpoint.SHA256 !=
-		sha256Value {
-		return processedFileCheckpoint{},
-			false,
-			fmt.Errorf(
-				"checkpoint possui SHA-256 divergente",
-			)
-	}
-
-	if checkpoint.Analysis == nil {
-		return processedFileCheckpoint{},
-			false,
-			fmt.Errorf(
-				"checkpoint não possui análise",
-			)
+	switch {
+	case decodeError != nil, checkpoint.SHA256 != sha256Value, checkpoint.Analysis == nil:
+		return processedFileCheckpoint{}, "unreadable", nil
+	case checkpoint.ProcessorVersion != fileCheckpointVersion:
+		return processedFileCheckpoint{}, "version", nil
 	}
 
 	return checkpoint,
-		true,
+		"",
 		nil
 }
 
@@ -537,6 +548,14 @@ func cloneCheckpointValue(
 	return clonedSource
 }
 
+// wholeExamWriters are the exams whose writer replaces the whole exam, so the
+// batch keeps only the last file of the type (tryExtractEyeSuiteLocal,
+// tryExtractSpecularMicroscopyLocal). The others write one eye at a time.
+var wholeExamWriters = map[string]bool{
+	"iol_calculation":     true,
+	"specular_microscopy": true,
+}
+
 func checkpointExamKey(
 	examType string,
 ) string {
@@ -544,29 +563,31 @@ func checkpointExamKey(
 	return key
 }
 
+// identityEntriesForCheckpointFile returns the identity readings this file's
+// extraction appended (entries past before). ok is false when an earlier file
+// of the batch already left a reading under the same filename: the writers
+// then skip theirs, and attribution by name is ambiguous.
 func identityEntriesForCheckpointFile(
 	analysis map[string]any,
 	filename string,
-) []any {
+	before int,
+) (result []any, ok bool) {
 	entries, _ :=
 		analysis["verificacao_identidade"].([]any)
 
-	result :=
-		make(
-			[]any,
-			0,
-		)
-
-	for _, rawEntry := range entries {
+	for index, rawEntry := range entries {
 		entry, _ :=
 			rawEntry.(map[string]any)
 
 		source, _ :=
 			entry["source"].(string)
 
-		if filepath.Base(source) !=
-			filename {
+		if source != filename {
 			continue
+		}
+
+		if index < before {
+			return nil, false
 		}
 
 		result = append(
@@ -575,7 +596,7 @@ func identityEntriesForCheckpointFile(
 		)
 	}
 
-	return result
+	return result, true
 }
 
 func buildAnalysisForFileCheckpoint(
@@ -583,7 +604,20 @@ func buildAnalysisForFileCheckpoint(
 	file UploadedFile,
 	examType string,
 	eye string,
+	eyesBefore map[string]string,
+	identityBefore int,
 ) map[string]any {
+	identityEntries, attributable :=
+		identityEntriesForCheckpointFile(
+			analysis,
+			file.Metadata.Filename,
+			identityBefore,
+		)
+
+	if !attributable {
+		return nil
+	}
+
 	examKey :=
 		checkpointExamKey(
 			examType,
@@ -603,46 +637,55 @@ func buildAnalysisForFileCheckpoint(
 		return nil
 	}
 
+	// Only what the extraction itself wrote for this file: source_files and
+	// the envelope metadata are filled after extraction (enrichSourceFiles),
+	// so a checkpoint carrying them would change Merge's re-upload grouping
+	// and the analysis date.
 	checkpointAnalysis :=
 		map[string]any{
-			"exams":        map[string]any{},
-			"source_files": []any{},
+			"exams": map[string]any{},
 		}
-
-	for _, metadataKey := range []string{
-		"schema_version",
-		"generated_on",
-		"language",
-		"conventions",
-	} {
-		if metadataValue, found :=
-			analysis[metadataKey]; found {
-			checkpointAnalysis[metadataKey] =
-				cloneCheckpointValue(
-					metadataValue,
-				)
-		}
-	}
 
 	checkpointExam :=
 		cloneCheckpointMap(
 			rawExam,
 		)
 
-	if eye == "OD" ||
-		eye == "OS" {
-		eyes, _ :=
-			checkpointExam["eyes"].(map[string]any)
-
-		if currentEye, found :=
-			eyes[eye]; found {
-			checkpointExam["eyes"] =
-				map[string]any{
-					eye: cloneCheckpointValue(
-						currentEye,
-					),
-				}
+	// A whole-exam writer leaves the exam holding this file alone, so it is
+	// kept as written; it must be this file's (source is set to it alone).
+	if wholeExamWriters[examKey] {
+		if sources, _ := rawExam["source"].([]any); len(sources) != 1 || sources[0] != file.Metadata.Filename {
+			return nil
 		}
+		// An eye equal to the previous file's got no field diagnostics here
+		// (validateTouchedEyes); alone it would: not checkpointed.
+		after := snapshotEyes(analysis)
+		eyes, _ := checkpointExam["eyes"].(map[string]any)
+		for eyeName := range eyes {
+			if eyeKey := examKey + "/" + eyeName; eyesBefore[eyeKey] == after[eyeKey] {
+				return nil
+			}
+		}
+	} else if eyes, hasEyes := checkpointExam["eyes"].(map[string]any); hasEyes {
+		// Keep only the eyes this file wrote (changed since before its
+		// extraction), and only its declared eye: the shared exam also holds
+		// what other files of the upload extracted.
+		after := snapshotEyes(analysis)
+		kept := map[string]any{}
+		for eyeName, payload := range eyes {
+			eyeKey := examKey + "/" + eyeName
+			if eyesBefore[eyeKey] == after[eyeKey] {
+				continue
+			}
+			if (eye == "OD" || eye == "OS") && eyeName != eye {
+				continue
+			}
+			kept[eyeName] = payload
+		}
+		if len(kept) == 0 {
+			return nil
+		}
+		checkpointExam["eyes"] = kept
 	}
 
 	checkpointExam["source"] =
@@ -656,93 +699,31 @@ func buildAnalysisForFileCheckpoint(
 	checkpointExams[examKey] =
 		checkpointExam
 
-	sourceMetadata :=
-		map[string]any{
-			"path":       file.Metadata.Filename,
-			"type":       file.Metadata.ContentType,
-			"size_bytes": file.Metadata.Size,
-			"sha256":     file.Metadata.SHA256,
-			"exam":       examKey,
-		}
-
-	if eye != "" {
-		sourceMetadata["eye"] =
-			eye
-	}
-
-	if existingSources, found :=
-		analysis["source_files"].([]any); found {
-		for _, rawSource := range existingSources {
-			existingSource, _ :=
-				rawSource.(map[string]any)
-
-			if existingSource == nil {
-				continue
-			}
-
-			path, _ :=
-				existingSource["path"].(string)
-
-			filename, _ :=
-				existingSource["filename"].(string)
-
-			if filepath.Base(path) !=
-				file.Metadata.Filename &&
-				filename !=
-					file.Metadata.Filename {
-				continue
-			}
-
-			sourceMetadata =
-				cloneCheckpointMap(
-					existingSource,
-				)
-
-			sourceMetadata["path"] =
-				file.Metadata.Filename
-
-			sourceMetadata["type"] =
-				file.Metadata.ContentType
-
-			sourceMetadata["size_bytes"] =
-				file.Metadata.Size
-
-			sourceMetadata["sha256"] =
-				file.Metadata.SHA256
-
-			sourceMetadata["exam"] =
-				examKey
-
-			if eye != "" {
-				sourceMetadata["eye"] =
-					eye
-			}
-
-			break
+	// The file's field diagnostics travel with its result: the preview and the
+	// run audit read them per file_sha256.
+	diagnostics, _ := analysis["extraction_diagnostics"].([]any)
+	fileDiagnostics := []any{}
+	for _, rawDiagnostic := range diagnostics {
+		if diagnostic, _ := rawDiagnostic.(map[string]any); diagnostic["file_sha256"] == file.Metadata.SHA256 {
+			fileDiagnostics = append(fileDiagnostics, cloneCheckpointValue(diagnostic))
 		}
 	}
-
-	checkpointAnalysis["source_files"] =
-		[]any{
-			sourceMetadata,
-		}
-
-	identityEntries :=
-		identityEntriesForCheckpointFile(
-			analysis,
-			file.Metadata.Filename,
-		)
+	if len(fileDiagnostics) > 0 {
+		checkpointAnalysis["extraction_diagnostics"] = fileDiagnostics
+	}
 
 	if len(identityEntries) > 0 {
 		checkpointAnalysis["verificacao_identidade"] =
 			identityEntries
+	}
 
-		if patient, found :=
-			analysis["patient"].(map[string]any); found {
-			checkpointAnalysis["patient"] =
-				cloneCheckpointMap(
-					patient,
-				)
+	// The batch's patient is every file's evidence. A file contributes only
+	// the name it read: the identity writers fill an empty full_name with it
+	// (birth_date is derived from the readings).
+	for _, rawEntry := range identityEntries {
+		if name, found := rawEntry.(map[string]any)["nome_lido"]; found {
+			checkpointAnalysis["patient"] = map[string]any{"full_name": name}
+			break
 		}
 	}
 
@@ -825,15 +806,34 @@ func retinaCheckpointIsComplete(
 	) != ""
 }
 
+// pentacamTKCPrintedDash reports whether the document fileSHA256 recorded, for
+// eye, a TKC observed as not applicable: the printed dash (recognition stage;
+// a region not_applicable means the screen was absent, not read).
+func pentacamTKCPrintedDash(analysis map[string]any, fileSHA256, eye string) bool {
+	diagnostics, _ := analysis["extraction_diagnostics"].([]any)
+	for _, rawDiagnostic := range diagnostics {
+		diagnostic, _ := rawDiagnostic.(map[string]any)
+		if fileSHA256 != "" && diagnostic["file_sha256"] == fileSHA256 &&
+			diagnostic["exam_type"] == "pentacam_corneal_tomography" && diagnostic["eye"] == eye &&
+			diagnostic["field"] == "tkc" && diagnostic["status"] == "not_applicable" && diagnostic["stage"] == "recognition" {
+			return true
+		}
+	}
+	return false
+}
+
+// fileCheckpointResultIsComplete: fileSHA256 is the document the result
+// belongs to (its diagnostics are matched by it).
 func fileCheckpointResultIsComplete(
 	analysis map[string]any,
 	examType string,
 	eye string,
+	fileSHA256 string,
 ) bool {
-	switch strings.ToUpper(
-		strings.TrimSpace(examType),
-	) {
-	case "PENTACAM":
+	// Callers pass contract keys (pentacam_corneal_tomography, ...);
+	// legacy labels (PENTACAM, ...) map onto the same keys.
+	switch checkpointExamKey(examType) {
+	case "pentacam_corneal_tomography":
 		exams, _ :=
 			analysis["exams"].(map[string]any)
 
@@ -856,19 +856,20 @@ func fileCheckpointResultIsComplete(
 				return false
 			}
 
-			return len(
-				pentacamEyeLocalGaps(
-					eye,
-					currentEye,
-				),
-			) == 0
+			gaps := pentacamEyeLocalGaps(eye, currentEye)
+			// An absent TKC is complete only as this document's printed dash.
+			gaps = slices.DeleteFunc(gaps, func(gap string) bool {
+				return gap == "pentacam."+eye+".topometric_indices_8mm.tkc" &&
+					pentacamTKCPrintedDash(analysis, fileSHA256, eye)
+			})
+			return len(gaps) == 0
 		}
 
-		return pentacamLocalComplete(
-			analysis,
-		)
+		// Without the file's eye the result can't be told apart from the
+		// other report's eye in the same exam: not checkpointed.
+		return false
 
-	case "EYESUITE":
+	case "iol_calculation":
 		exams, _ :=
 			analysis["exams"].(map[string]any)
 
@@ -881,7 +882,7 @@ func fileCheckpointResultIsComplete(
 
 		return !iolNeedsRepair(exam)
 
-	case "MICROSCOPIA_ESPECULAR":
+	case "specular_microscopy":
 		if eye == "AO" {
 			return specularMicroscopyLocalComplete(
 				analysis,
@@ -914,7 +915,7 @@ func fileCheckpointResultIsComplete(
 		return found &&
 			cellDensity > 0
 
-	case "RETINA":
+	case "fundus_retinography":
 		return retinaCheckpointIsComplete(
 			analysis,
 			eye,
@@ -947,58 +948,96 @@ func mergeFileCheckpointAnalysis(
 			currentAnalysis,
 			checkpointAnalysis,
 		) {
-		return nil,
-			fmt.Errorf(
-				"arquivos pertencem a pacientes diferentes",
-			)
+		return nil, errCheckpointConflict
 	}
 
-	currentVerification, _ :=
-		currentAnalysis["verificacao_identidade"].([]any)
+	// An exam id the batch already holds must match (the retina extractor
+	// rejects a photo of another id).
+	currentExams, _ := currentAnalysis["exams"].(map[string]any)
+	checkpointExams, _ := checkpointAnalysis["exams"].(map[string]any)
+	for examKey, rawExam := range checkpointExams {
+		checkpointID, _ := rawExam.(map[string]any)["id"].(string)
+		currentExam, _ := currentExams[examKey].(map[string]any)
+		currentID, _ := currentExam["id"].(string)
+		if strings.TrimSpace(currentID) != "" && strings.TrimSpace(checkpointID) != "" &&
+			!strings.EqualFold(strings.TrimSpace(currentID), strings.TrimSpace(checkpointID)) {
+			return nil, errCheckpointConflict
+		}
+	}
 
-	checkpointVerification, _ :=
-		checkpointAnalysis["verificacao_identidade"].([]any)
-
+	// Merge takes only the per-eye exams; whole-exam writers replace theirs,
+	// and the patient and the per-file lists are applied below the way the
+	// extractors write them.
+	perEyeExams := map[string]any{}
+	for examKey, exam := range checkpointExams {
+		if !wholeExamWriters[examKey] {
+			perEyeExams[examKey] = exam
+		}
+	}
 	mergedAnalysis :=
 		patientfeature.Merge(
 			currentAnalysis,
-			checkpointAnalysis,
+			map[string]any{"exams": perEyeExams},
 		)
 
-	if len(currentVerification) > 0 ||
-		len(checkpointVerification) > 0 {
-		combinedVerification :=
-			make(
-				[]any,
-				0,
-				len(currentVerification)+
-					len(checkpointVerification),
-			)
+	// Merge always writes source_files; extraction leaves it to
+	// enrichSourceFiles, so keep the fresh shape.
+	if sources, _ := mergedAnalysis["source_files"].([]any); len(sources) == 0 {
+		if _, had := currentAnalysis["source_files"]; !had {
+			delete(mergedAnalysis, "source_files")
+		}
+	}
 
-		currentVerificationCopy, _ :=
-			cloneCheckpointValue(
-				currentVerification,
-			).([]any)
+	// Extractors append their file to exam.source; Merge replaces it.
+	mergedExams, _ := mergedAnalysis["exams"].(map[string]any)
+	for examKey, exam := range checkpointExams {
+		if wholeExamWriters[examKey] {
+			mergedExams[examKey] = cloneCheckpointValue(exam)
+		}
+	}
+	for examKey := range perEyeExams {
+		currentExam, _ := currentExams[examKey].(map[string]any)
+		mergedExam, _ := mergedExams[examKey].(map[string]any)
+		if currentExam == nil || mergedExam == nil {
+			continue
+		}
+		sources, _ := cloneCheckpointValue(currentExam["source"]).([]any)
+		checkpointSources, _ := checkpointExams[examKey].(map[string]any)["source"].([]any)
+		for _, source := range checkpointSources {
+			if !slices.Contains(sources, source) {
+				sources = append(sources, source)
+			}
+		}
+		mergedExam["source"] = sources
+	}
 
-		checkpointVerificationCopy, _ :=
-			cloneCheckpointValue(
-				checkpointVerification,
-			).([]any)
+	// Per-file evidence lists accumulate across files; Merge would replace them.
+	for _, listKey := range []string{"verificacao_identidade", "extraction_diagnostics"} {
+		currentEntries, _ := currentAnalysis[listKey].([]any)
+		checkpointEntries, _ := checkpointAnalysis[listKey].([]any)
+		if len(currentEntries)+len(checkpointEntries) == 0 {
+			continue
+		}
+		combined, _ := cloneCheckpointValue(currentEntries).([]any)
+		checkpointCopy, _ := cloneCheckpointValue(checkpointEntries).([]any)
+		mergedAnalysis[listKey] = append(combined, checkpointCopy...)
+	}
 
-		combinedVerification =
-			append(
-				combinedVerification,
-				currentVerificationCopy...,
-			)
-
-		combinedVerification =
-			append(
-				combinedVerification,
-				checkpointVerificationCopy...,
-			)
-
-		mergedAnalysis["verificacao_identidade"] =
-			combinedVerification
+	// As mergeLocalPatientIdentity: fill an empty name, then derive the
+	// identity from all readings.
+	if checkpointPatient, found := checkpointAnalysis["patient"].(map[string]any); found {
+		patient, _ := mergedAnalysis["patient"].(map[string]any)
+		if patient == nil {
+			patient = map[string]any{}
+			mergedAnalysis["patient"] = patient
+		}
+		if current, _ := patient["full_name"].(string); strings.TrimSpace(current) == "" {
+			patient["full_name"] = checkpointPatient["full_name"]
+		}
+		patientfeature.NormalizeIdentityFields(mergedAnalysis)
+		if _, resolved := patientfeature.CanonicalBirthDate(mergedAnalysis); !resolved {
+			delete(patient, "birth_date")
+		}
 	}
 
 	return mergedAnalysis,
@@ -1106,17 +1145,10 @@ func refreshCheckpointSourceMetadata(
 func emitReusedFileCheckpoint(
 	processingContext context.Context,
 	file UploadedFile,
+	examType string,
+	eye string,
 	checkpointAnalysis map[string]any,
 ) {
-	examType :=
-		classification.ExamTypeFromFilename(
-			file.Metadata.Filename,
-		)
-
-	eye :=
-		classification.EyeFromFilename(
-			file.Metadata.Filename,
-		)
 
 	progress.Report(
 		processingContext,
@@ -1153,29 +1185,35 @@ func emitReusedFileCheckpoint(
 	)
 }
 
+// prepareFileForIdempotentProcessing merges a reusable checkpoint into
+// analysis and reports true, or reports why the file must be extracted
+// ("forced", "selected", "not_found", "version", "unreadable",
+// "classification_inputs", "incomplete", "identity_conflict").
 func prepareFileForIdempotentProcessing(
 	processingContext context.Context,
 	file UploadedFile,
 	analysis map[string]any,
-) (bool, error) {
+) (bool, string, error) {
 	checkpointRun :=
 		fileCheckpointRunFromContext(
 			processingContext,
 		)
 
 	if checkpointRun == nil {
-		return false,
-			nil
+		return false, "", nil
 	}
 
-	shouldReuse := !checkpointRun.Force
-	if shouldReuse && checkpointRun.ProcessFiles != nil {
-		shouldReuse = !checkpointRun.ProcessFiles[file.Metadata.SHA256]
+	missReason := "forced"
+	if !checkpointRun.Force {
+		missReason = ""
+		if checkpointRun.ProcessFiles[file.Metadata.SHA256] {
+			missReason = "selected"
+		}
 	}
 
-	if shouldReuse {
+	if missReason == "" {
 		checkpoint,
-			found,
+			loadMiss,
 			loadError :=
 			loadProcessedFileCheckpoint(
 				processingContext,
@@ -1185,7 +1223,7 @@ func prepareFileForIdempotentProcessing(
 			)
 
 		if loadError != nil {
-			return false,
+			return false, "",
 				fmt.Errorf(
 					"não foi possível consultar resultado anterior de %s: %w",
 					file.Metadata.Filename,
@@ -1193,7 +1231,18 @@ func prepareFileForIdempotentProcessing(
 				)
 		}
 
-		if found {
+		hintExamType, hintEye := localClassificationHint(file)
+		switch {
+		case loadMiss != "":
+			missReason = loadMiss
+		case checkpoint.HintExamType != hintExamType || checkpoint.HintEye != hintEye:
+			missReason = "classification_inputs"
+		case !fileCheckpointResultIsComplete(checkpoint.Analysis, checkpoint.ExamType, checkpoint.Eye, checkpoint.SHA256):
+			missReason = "incomplete"
+		}
+
+		var mergedAnalysis map[string]any
+		if missReason == "" {
 			reusedAnalysis :=
 				cloneCheckpointMap(
 					checkpoint.Analysis,
@@ -1213,18 +1262,23 @@ func prepareFileForIdempotentProcessing(
 				file,
 			)
 
-			mergedAnalysis,
-				mergeError :=
+			var mergeError error
+			mergedAnalysis, mergeError =
 				mergeFileCheckpointAnalysis(
 					analysis,
 					reusedAnalysis,
 				)
 
-			if mergeError != nil {
-				return false,
+			switch {
+			case errors.Is(mergeError, errCheckpointConflict):
+				missReason = "identity_conflict"
+			case mergeError != nil:
+				return false, "",
 					mergeError
 			}
+		}
 
+		if missReason == "" {
 			replaceAnalysisContents(
 				analysis,
 				mergedAnalysis,
@@ -1233,17 +1287,18 @@ func prepareFileForIdempotentProcessing(
 			emitReusedFileCheckpoint(
 				processingContext,
 				file,
+				checkpoint.ExamType,
+				checkpoint.Eye,
 				analysis,
 			)
 
-			return true,
-				nil
+			return true, "", nil
 		}
 
 		// Com uma seleção explícita, o toggle desligado também permite
 		// deixar de fora um arquivo sem checkpoint anterior.
 		if checkpointRun.ProcessFiles != nil {
-			return true, nil
+			return true, "", nil
 		}
 	}
 
@@ -1256,12 +1311,11 @@ func prepareFileForIdempotentProcessing(
 		)
 
 	if saveError != nil {
-		return false,
+		return false, missReason,
 			saveError
 	}
 
-	return false,
-		nil
+	return false, missReason, nil
 }
 
 func saveCompletedFileCheckpointFromContext(
@@ -1307,17 +1361,23 @@ func saveCompletedFileCheckpointFromContext(
 		analysis,
 		examType,
 		eye,
+		file.Metadata.SHA256,
 	) {
 		return nil
 	}
 
+	start, _ := processingContext.Value(extractionStartKey{}).(extractionStart)
 	checkpointAnalysis :=
 		buildAnalysisForFileCheckpoint(
 			analysis,
 			file,
 			examType,
 			eye,
+			start.eyes,
+			start.identityEntries,
 		)
+
+	hintExamType, hintEye := localClassificationHint(file)
 
 	if checkpointAnalysis == nil {
 		return nil
@@ -1334,6 +1394,10 @@ func saveCompletedFileCheckpointFromContext(
 			ContentType:      file.Metadata.ContentType,
 			Size:             file.Metadata.Size,
 			ProcessedAt:      time.Now().UTC(),
+			ExamType:         examType,
+			Eye:              eye,
+			HintExamType:     hintExamType,
+			HintEye:          hintEye,
 			Analysis:         checkpointAnalysis,
 		},
 	)
@@ -1438,7 +1502,7 @@ func CheckFileCheckpoints(
 			}
 
 		checkpoint,
-			processed,
+			checkpointMiss,
 			checkpointLoadError :=
 			loadProcessedFileCheckpoint(
 				request.Context(),
@@ -1456,7 +1520,13 @@ func CheckFileCheckpoints(
 			return
 		}
 
-		if processed {
+		if checkpointMiss == "" &&
+			!fileCheckpointResultIsComplete(checkpoint.Analysis, checkpoint.ExamType, checkpoint.Eye, checkpoint.SHA256) {
+			checkpointMiss = "incomplete" // analyze would extract it again
+		}
+
+		if checkpointMiss == "" {
+			result.ExamType, result.Eye = checkpoint.ExamType, checkpoint.Eye
 			result.ProcessedAt =
 				checkpoint.ProcessedAt.
 					Format(

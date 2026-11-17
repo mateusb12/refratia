@@ -18,7 +18,7 @@ func TestProcessedCheckpointKeyUsesVersionAndSHA256(
 		)
 
 	expected :=
-		fileStorage.CheckpointsPrefix + "v1/" +
+		fileStorage.CheckpointsPrefix + fileCheckpointVersion + "/" +
 			hash +
 			"/result.json"
 
@@ -44,7 +44,7 @@ func TestUploadedCheckpointKeyUsesVersionAndSHA256(
 		)
 
 	expected :=
-		fileStorage.CheckpointsPrefix + "v1/" +
+		fileStorage.CheckpointsPrefix + fileCheckpointVersion + "/" +
 			hash +
 			"/source"
 
@@ -132,6 +132,8 @@ func TestBuildAnalysisForPentacamCheckpointKeepsOnlyCurrentEye(
 			file,
 			"PENTACAM",
 			"OD",
+			nil,
+			0,
 		)
 
 	if checkpointAnalysis == nil {
@@ -163,13 +165,10 @@ func TestBuildAnalysisForPentacamCheckpointKeepsOnlyCurrentEye(
 		)
 	}
 
-	sources :=
-		checkpointAnalysis["source_files"].([]any)
-
-	if len(sources) != 1 {
-		testingContext.Fatalf(
-			"checkpoint should contain one source, got %d",
-			len(sources),
-		)
+	// source_files is filled after extraction; the checkpoint holds only
+	// what the extractor wrote.
+	if _, found := checkpointAnalysis["source_files"]; found {
+		testingContext.Fatal("checkpoint must not carry source_files")
 	}
+
 }

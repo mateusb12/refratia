@@ -30,6 +30,17 @@ func emitLocalFileResult(
 	progressTracking.From(executionContext).FinishFile(filename, func(entry *progressTracking.File) {
 		entry.ExamType, entry.Eye, entry.Outcome, entry.Message = examType, eye, status, message
 	})
+	if profiling.Enabled() {
+		// Why a fresh result is (not) checkpointed; the repeat then reports not_found.
+		eligibility := "saved"
+		if status != "extracted" {
+			eligibility = "status_" + status
+		} else if file, _ := currentCheckpointFileFromContext(executionContext); analysis == nil ||
+			!fileCheckpointResultIsComplete(analysis, examType, eye, file.Metadata.SHA256) {
+			eligibility = "incomplete"
+		}
+		profiling.Start(executionContext, "checkpoint.eligibility").Set("result", eligibility).End(nil)
+	}
 	if status == "extracted" &&
 		analysis != nil {
 		checkpointSaveError :=
@@ -98,6 +109,13 @@ func tryExtractEyeSuiteLocal(
 		return false
 	}
 
+	mergeEyeSuiteResult(analysis, file, bundle)
+	return true
+}
+
+// mergeEyeSuiteResult is the EyeSuite writer after parsing: it replaces the
+// whole iol_calculation exam.
+func mergeEyeSuiteResult(analysis map[string]any, file UploadedFile, bundle eyesuite.Result) {
 	exams, _ := analysis["exams"].(map[string]any)
 
 	if exams == nil {
@@ -123,8 +141,6 @@ func tryExtractEyeSuiteLocal(
 			"DMY",
 		)
 	}
-
-	return true
 }
 
 func tryExtractRetinographyLocal(
@@ -140,7 +156,11 @@ func tryExtractRetinographyLocal(
 	if errorValue != nil {
 		return false, errorValue
 	}
+	return mergeRetinographyResult(analysis, file, result)
+}
 
+// mergeRetinographyResult writes one retina photo's OCR result into analysis.
+func mergeRetinographyResult(analysis map[string]any, file UploadedFile, result retinography.Result) (bool, error) {
 	if result.Mode == "Cornea" {
 		return false, errAnteriorSegmentPhoto
 	}
@@ -265,6 +285,12 @@ func tryExtractSpecularMicroscopyLocal(executionContext context.Context, file Up
 	if errorValue != nil {
 		return false, errorValue
 	}
+	return mergeSpecularResult(analysis, file, result)
+}
+
+// mergeSpecularResult is the specular writer after OCR: it replaces the whole
+// specular_microscopy exam.
+func mergeSpecularResult(analysis map[string]any, file UploadedFile, result specularmicroscopy.Result) (bool, error) {
 	eyes, _ := result.Exam["eyes"].(map[string]any)
 	if len(eyes) == 0 {
 		return false, fmt.Errorf("microscopia especular: nenhum olho extraído")
@@ -394,13 +420,14 @@ func extractPatientLocal(
 
 		checkpointSpan := profiling.Start(fileCtx, "checkpoint.prepare")
 		reused,
+			checkpointMiss,
 			checkpointPrepareError :=
 			prepareFileForIdempotentProcessing(
 				fileCtx,
 				file,
 				analysis,
 			)
-		checkpointSpan.Set("reused", reused).End(checkpointPrepareError)
+		checkpointSpan.Set("reused", reused).Set("miss", checkpointMiss).End(checkpointPrepareError)
 		docSpan.Set("reused", reused)
 
 		if checkpointPrepareError != nil {
@@ -420,6 +447,8 @@ func extractPatientLocal(
 			docSpan.End(nil)
 			continue
 		}
+
+		fileCtx = withExtractionStart(fileCtx, analysis)
 
 		classifySpan := profiling.Start(fileCtx, "classify")
 		examType, examEye := resolveLocalClassification(fileCtx, file, analysis)
@@ -1023,11 +1052,9 @@ func stripLocallyResolvedExams(
 // file. The declared classification (frontend or file name) is a hint; for
 // PDFs the device title printed on the page decides, and a disagreement is
 // recorded as a classification diagnostic.
-func resolveLocalClassification(
-	executionContext context.Context,
-	file UploadedFile,
-	analysis map[string]any,
-) (string, string) {
+// localClassificationHint is the classification before any OCR: the declared
+// type and eye, else the filename's.
+func localClassificationHint(file UploadedFile) (string, string) {
 	examType, _ := classification.ContractExamType(file.Metadata.ExamType)
 	if examType == "" {
 		examType = classification.ExamTypeFromFilename(file.Metadata.Filename)
@@ -1037,6 +1064,15 @@ func resolveLocalClassification(
 	if eye == "" {
 		eye = classification.EyeFromFilename(file.Metadata.Filename)
 	}
+	return examType, eye
+}
+
+func resolveLocalClassification(
+	executionContext context.Context,
+	file UploadedFile,
+	analysis map[string]any,
+) (string, string) {
+	examType, eye := localClassificationHint(file)
 
 	// Content decides when it recognises the device; otherwise the declared
 	// type stands. Images are only inspected when nothing was declared, to
