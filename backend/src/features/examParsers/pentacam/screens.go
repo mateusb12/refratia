@@ -8,6 +8,7 @@ import (
 
 	"refratia/backend/src/shared/document"
 	"refratia/backend/src/shared/ocr"
+	"refratia/backend/src/shared/parallelwork"
 	pdfutil "refratia/backend/src/shared/pdf"
 )
 
@@ -73,6 +74,10 @@ func titleAfterHeader(words []ocr.Word, tolerance int) string {
 	return ""
 }
 
+// screenReadWorkers bounds the title-band OCR of one document.
+// ponytail: fixed 3 like the 450 dpi render fan-out; leaves engines for other requests.
+const screenReadWorkers = 3
+
 // DetectScreens renders every page once at low resolution, reads the title
 // band and returns screen -> 1-based page. A screen that is absent from the
 // report is simply not in the map. When a screen appears on several pages
@@ -83,20 +88,27 @@ func DetectScreens(executionContext context.Context, data []byte, pageCount int)
 		return nil, renderError
 	}
 
-	screens := map[Screen]int{}
-	for index, pagePNG := range pages {
+	// Pages are independent: read the title bands concurrently, then merge in
+	// page order so the first page still wins.
+	titles, readError := parallelwork.Map(executionContext, pages, screenReadWorkers, func(workContext context.Context, pagePNG []byte) (string, error) {
 		pageImage, decodeError := ocr.DecodeImage(pagePNG)
 		if decodeError != nil {
-			continue
+			return "", nil
 		}
 		bounds := pageImage.Bounds()
 		// The header sits in the upper half; the lower half only holds data.
 		band := image.Rect(bounds.Min.X, bounds.Min.Y, bounds.Max.X, bounds.Min.Y+bounds.Dy()*45/100)
-		words, ocrError := document.OCRRegionWords(executionContext, pageImage, band, 2, 6)
+		words, ocrError := document.OCRRegionWords(workContext, pageImage, band, 2, 6)
 		if ocrError != nil {
-			continue
+			return "", nil
 		}
-		title := titleAfterHeader(words, 12)
+		return titleAfterHeader(words, 12), nil
+	})
+	if readError != nil { // only a canceled request: the page readers never fail
+		return nil, readError
+	}
+	screens := map[Screen]int{}
+	for index, title := range titles {
 		screen := ScreenForTitle(title)
 		if screen == "" {
 			continue
