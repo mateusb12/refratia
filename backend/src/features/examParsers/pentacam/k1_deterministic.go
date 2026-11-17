@@ -39,7 +39,7 @@ func readPentacamK1DeterministicFromPage(
 	values := map[float64]*evidence{}
 
 	for regionIndex, regionSpec := range ocrRegions {
-		cell, err := extractOCRRegionPNG(page, regionSpec)
+		cell, err := cropPentacamFixedRegionToPNG(ctx, page, regionSpec)
 		if err != nil {
 			continue
 		}

@@ -17,11 +17,39 @@ type pentacamOCRRegion struct {
 	X, Y, W, H int
 }
 
-func extractOCRRegionPNG(data []byte, ocrRegion pentacamOCRRegion) ([]byte, error) {
-	defer profiling.Start(context.Background(), "preprocess.pentacam_region").End(nil) // ctx-less: the summary attributes it by time
-	img, _, err := image.Decode(bytes.NewReader(data))
-	if err != nil {
-		return nil, err
+type decodedPagesKey struct{}
+
+// withDecodedPageImages lets the region readers crop from the pages extractPDF has
+// already decoded instead of decoding the 450 dpi PNG again for every region.
+// A page is matched by identity (its PNG's backing array): the readers get the
+// very slices held in extractPDF's pages map. Anything else is decoded as before.
+func withDecodedPageImages(ctx context.Context, pages map[int][]byte, images map[int]image.Image) context.Context {
+	decodedImagesByPageData := make(map[*byte]image.Image, len(images))
+	for page, data := range pages {
+		if decoded := images[page]; decoded != nil && len(data) > 0 {
+			decodedImagesByPageData[&data[0]] = decoded
+		}
+	}
+	return context.WithValue(ctx, decodedPagesKey{}, decodedImagesByPageData)
+}
+
+func findDecodedPageImage(ctx context.Context, pageData []byte) image.Image {
+	if decodedImagesByPageData, _ := ctx.Value(decodedPagesKey{}).(map[*byte]image.Image); len(pageData) > 0 {
+		return decodedImagesByPageData[&pageData[0]]
+	}
+	return nil
+}
+
+func cropPentacamFixedRegionToPNG(ctx context.Context, data []byte, ocrRegion pentacamOCRRegion) ([]byte, error) {
+	span := profiling.Start(context.Background(), "preprocess.pentacam_region") // ctx-less: the summary attributes it by time
+	defer span.End(nil)
+	img := findDecodedPageImage(ctx, data)
+	span.Set("reused", img != nil)
+	if img == nil {
+		var err error
+		if img, _, err = image.Decode(bytes.NewReader(data)); err != nil {
+			return nil, err
+		}
 	}
 
 	b := img.Bounds()
@@ -58,7 +86,7 @@ func runTesseractTextPSM(executionContext context.Context, pngData []byte, psm i
 }
 
 func extractOCRTextsFromRegion(ctx context.Context, page []byte, ocrRegion pentacamOCRRegion) ([]string, error) {
-	image, err := extractOCRRegionPNG(page, ocrRegion)
+	image, err := cropPentacamFixedRegionToPNG(ctx, page, ocrRegion)
 	if err != nil {
 		return nil, err
 	}

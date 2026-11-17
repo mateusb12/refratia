@@ -30,6 +30,7 @@ import (
 	"refratia/backend/src/shared/database"
 	"refratia/backend/src/shared/fileStorage"
 	"refratia/backend/src/shared/httpresponse"
+	"refratia/backend/src/shared/parallelwork"
 	"refratia/backend/src/shared/profiling"
 	progress "refratia/backend/src/shared/progress"
 )
@@ -66,6 +67,10 @@ type identityDecision struct {
 	CaseID string `json:"caseId"`
 }
 
+// inspectWorkers bounds how many uploads one inspect request reads at once.
+// ponytail: fixed 3 like the Pentacam render fan-out; leaves engines for other requests.
+const inspectWorkers = 3
+
 func InspectIntakeHandler(responseWriter http.ResponseWriter, request *http.Request) {
 	if request.Method != http.MethodPost {
 		responseWriter.WriteHeader(http.StatusMethodNotAllowed)
@@ -78,10 +83,17 @@ func InspectIntakeHandler(responseWriter http.ResponseWriter, request *http.Requ
 	defer request.MultipartForm.RemoveAll()
 
 	audit := progressTracking.From(request.Context())
-	result := make([]classification.FileInspection, 0, len(files))
+	// Files are independent, so they are inspected in parallel; results and
+	// audit entries keep upload order. Audit durations therefore include the
+	// wait for a free worker.
+	indexes := make([]int, len(files))
 	for index, file := range files {
+		indexes[index] = index
 		startAuditFile(request.Context(), file)
-		docContext := profiling.WithDoc(request.Context(), index)
+	}
+	result, inspectError := parallelwork.Map(request.Context(), indexes, inspectWorkers, func(workContext context.Context, index int) (classification.FileInspection, error) {
+		file := files[index]
+		docContext := profiling.WithDoc(workContext, index)
 		classifySpan := profiling.Start(docContext, "classify").Set("content_type", file.Metadata.ContentType).Set("bytes", file.Metadata.Size)
 		inspection := classification.InspectFile(docContext, classification.File{
 			Filename:    file.Metadata.Filename,
@@ -98,7 +110,11 @@ func InspectIntakeHandler(responseWriter http.ResponseWriter, request *http.Requ
 				entry.Outcome = "recognized"
 			}
 		})
-		result = append(result, inspection)
+		return inspection, nil
+	})
+	if inspectError != nil { // only a canceled request: InspectFile never fails
+		audit.Fail(0, inspectError.Error()) // the client is gone; record it instead of a 200 nobody reads
+		return
 	}
 
 	responseWriter.Header().Set("Content-Type", "application/json")

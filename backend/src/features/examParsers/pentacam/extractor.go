@@ -176,6 +176,7 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 		}
 	}
 	anchored, conflicts := readAnchored(executionContext, screensToPages(screens), pageImages)
+	executionContext = withDecodedPageImages(executionContext, pages, pageImages)
 
 	var extraHints []FieldHint
 	values := map[string]any{}

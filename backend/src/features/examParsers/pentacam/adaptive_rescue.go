@@ -57,7 +57,8 @@ func readPentacamAdaptiveNumberFromPage(
 	candidates := map[float64]*evidence{}
 
 	for regionIndex, c := range spec.Crops {
-		cell, err := extractOCRRegionPNG(
+		cell, err := cropPentacamFixedRegionToPNG(
+			ctx,
 			page,
 			pentacamOCRRegion{
 				X: c.X,

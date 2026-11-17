@@ -91,7 +91,7 @@ func pentacamReadNumericCell(
 	page []byte,
 	spec pentacamCellSpec,
 ) (float64, bool) {
-	ocrRegion, err := extractOCRRegionPNG(page, spec.OCRRegion)
+	ocrRegion, err := cropPentacamFixedRegionToPNG(ctx, page, spec.OCRRegion)
 	if err != nil {
 		return 0, false
 	}

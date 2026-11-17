@@ -34,7 +34,8 @@ func readPentacamBADDDeterministicFromPage(
 		return 0, false
 	}
 
-	cell, err := extractOCRRegionPNG(
+	cell, err := cropPentacamFixedRegionToPNG(
+		ctx,
 		page,
 		pentacamOCRRegion{
 			X: 1745,
