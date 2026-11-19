@@ -2,6 +2,7 @@ import { type ReactNode } from 'react'
 import clsx from 'clsx'
 import { ArrowLeft, Check, Database, UploadCloud } from 'lucide-react'
 import ExamProtocolChecklist from './ExamProtocolChecklist'
+import { hasCompleteOpticalBiometry } from './examProtocol'
 import IntakeCheckpointPreflight from './IntakeCheckpointPreflight'
 import IntakeFileClassification from './IntakeFileClassification'
 import IntakeProcessingProgress from './IntakeProcessingProgress'
@@ -108,6 +109,16 @@ export default function NewAnalysisPage({
           : intake.intakeWorkflowStep >= 3 ? 'Confira os dados' : 'Confira os documentos'
         : 'Envie os exames'
   const reportGenerated = workflowStep === steps.length || Boolean(reportData)
+  const opticalBiometryComplete = workflowStep < 3
+    ? hasCompleteOpticalBiometry(intake.intakeFiles)
+    : (() => {
+      const eyes = new Set(
+        Object.values(intake.intakeClassifications)
+          .filter((item) => item.examType === 'iol_calculation')
+          .map((item) => item.eye),
+      )
+      return eyes.has('AO') || (eyes.has('OD') && eyes.has('OS'))
+    })()
 
   const {
     intakeBusy,
@@ -244,14 +255,19 @@ export default function NewAnalysisPage({
 
                         {workflowStep < 4 && <PrimaryButton
                           disabled={
-                            workflowStep >= 3 && (
-                              intakeBusy ||
-                              intakeCheckpointBusy ||
-                              !intakeClassificationComplete
-                            )
+                            workflowStep < 3
+                              ? !opticalBiometryComplete
+                              : intakeBusy ||
+                                intakeCheckpointBusy ||
+                                !intakeClassificationComplete ||
+                                !opticalBiometryComplete
                           }
                           onClick={() => {
                             if (workflowStep < 3) {
+                              if (!opticalBiometryComplete) {
+                                setIntakeMessage('Envie a biometria óptica (EyeSuite) completa — AO ou OD e OS — antes de continuar para a análise.')
+                                return
+                              }
                               goToIntakeStep(3)
                               return
                             }
@@ -271,6 +287,12 @@ export default function NewAnalysisPage({
                       </div>
                     </div>
                     {workflowStep < 3 && <ExamProtocolChecklist files={intakeFiles} />}
+
+                    {workflowStep < 4 && !opticalBiometryComplete && (
+                      <p className="mb-0 mt-3 rounded-lg border border-danger/30 bg-danger-soft p-3 text-sm font-semibold text-danger" role="alert">
+                        A análise está bloqueada: a biometria óptica (EyeSuite) é obrigatória. Envie um arquivo AO ou os arquivos OD e OS para liberar a próxima etapa.
+                      </p>
+                    )}
 
                     {workflowStep === 3 && <>
                     <IntakeFileClassification

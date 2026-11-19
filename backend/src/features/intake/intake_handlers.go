@@ -214,6 +214,15 @@ func (handler Handler) AnalyzeIntake(responseWriter http.ResponseWriter, request
 		return
 	}
 
+	if !hasCompleteOpticalBiometry(files) {
+		httpresponse.WriteError(
+			responseWriter,
+			http.StatusUnprocessableEntity,
+			"biometria óptica (EyeSuite) obrigatória: envie AO ou os arquivos OD e OS",
+		)
+		return
+	}
+
 	requestContext := request.Context()
 	var stream *progressTracking.Stream
 
@@ -601,6 +610,24 @@ func (handler Handler) AnalyzeIntake(responseWriter http.ResponseWriter, request
 	)
 
 	json.NewEncoder(responseWriter).Encode(payload)
+}
+
+func hasCompleteOpticalBiometry(files []UploadedFile) bool {
+	hasAO, hasOD, hasOS := false, false, false
+	for _, file := range files {
+		if file.Metadata.ExamType != "iol_calculation" && file.Metadata.ExamType != "EYESUITE" {
+			continue
+		}
+		switch file.Metadata.Eye {
+		case "AO":
+			hasAO = true
+		case "OD":
+			hasOD = true
+		case "OS":
+			hasOS = true
+		}
+	}
+	return hasAO || (hasOD && hasOS)
 }
 
 func (handler Handler) ConfirmIntake(responseWriter http.ResponseWriter, request *http.Request) {
