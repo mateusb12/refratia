@@ -109,16 +109,19 @@ export default function NewAnalysisPage({
           : intake.intakeWorkflowStep >= 3 ? 'Confira os dados' : 'Confira os documentos'
         : 'Envie os exames'
   const reportGenerated = workflowStep === steps.length || Boolean(reportData)
-  const opticalBiometryComplete = workflowStep < 3
-    ? hasCompleteOpticalBiometry(intake.intakeFiles)
-    : (() => {
-      const eyes = new Set(
-        Object.values(intake.intakeClassifications)
-          .filter((item) => item.examType === 'iol_calculation')
-          .map((item) => item.eye),
-      )
-      return eyes.has('AO') || (eyes.has('OD') && eyes.has('OS'))
-    })()
+  const opticalBiometryComplete = (() => {
+    const eyes = new Set(
+      Object.values(intake.intakeClassifications)
+        .filter((item) => item.examType === 'iol_calculation')
+        .map((item) => item.eye),
+    )
+    const classifiedBiometryComplete = eyes.has('AO') || (eyes.has('OD') && eyes.has('OS'))
+
+    // Keep the filename signal while the async inspection is still filling in
+    // the classifications. The individual file classifications are still
+    // required by `intakeClassificationComplete` before analysis.
+    return classifiedBiometryComplete || hasCompleteOpticalBiometry(intake.intakeFiles)
+  })()
 
   const {
     intakeBusy,

@@ -51,7 +51,7 @@ function isCheckpointStatus(
   )
 }
 
-async function calculateFileSHA256(
+export async function calculateFileSHA256(
   file: File,
 ) {
   const bytes =

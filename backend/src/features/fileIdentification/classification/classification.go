@@ -190,7 +190,7 @@ func CanonicalClassificationFromFilename(
 	}
 
 	stem := strings.TrimSuffix(filename, fileExtension(filename))
-	examMatch := regexp.MustCompile(`(?i)(^|[[:space:]_-])(PENTACAM|EYESUITE|BIOMETRIA|AUTO|RETINA|OCT|CORNEA|ANTSEG|TOPOGRAFIA|TOPO|MICROSCOPIA([_[:space:]]+ESPECULAR)?)([[:space:]_-]|$)`).FindStringSubmatch(stem)
+	examMatch := regexp.MustCompile(`(?i)(^|[[:space:]_-])(PENTACAM|EYESUITE|BIOMETRIA|BIO|AUTO|RETINA|OCT|CORNEA|ANTSEG|TOPOGRAFIA|TOPO|MICROSCOPIA([_[:space:]]+ESPECULAR)?)([[:space:]_-]|$)`).FindStringSubmatch(stem)
 	if len(examMatch) != 5 {
 		return "", "", false
 	}
@@ -216,7 +216,7 @@ func examTypeFromFilenameLabel(label string) (string, bool) {
 	switch strings.ToUpper(strings.TrimSpace(label)) {
 	case "PENTACAM":
 		return "pentacam_corneal_tomography", true
-	case "EYESUITE", "BIOMETRIA", "AUTO":
+	case "EYESUITE", "BIOMETRIA", "BIO", "AUTO":
 		if strings.EqualFold(strings.TrimSpace(label), "AUTO") {
 			return "refractometry", true
 		}

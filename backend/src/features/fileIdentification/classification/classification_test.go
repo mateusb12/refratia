@@ -182,6 +182,7 @@ func TestClassificationFromFlexibleFilenameFormat(t *testing.T) {
 		{"PENTACAM CRESO AVERSA OD .pdf", "pentacam_corneal_tomography", "OD"},
 		{"PENTACAM CRESO AVERSA OS .pdf", "pentacam_corneal_tomography", "OS"},
 		{"BIOMETRIA SKRT AO.pdf", "iol_calculation", "AO"},
+		{"BIO SRK-T AO.pdf", "iol_calculation", "AO"},
 		{"MICROSCOPIA ESPECULAR.jpeg", "specular_microscopy", "AO"},
 	}
 

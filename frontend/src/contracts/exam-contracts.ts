@@ -164,7 +164,7 @@ export function resolveExamKeyFromSource(
 
   const canonicalPrefix = stem?.split('__')[0]
   const spacedPrefix = stem?.match(
-    /^(AUTO|BIOMETRIA|PENTACAM|RETINA|OCT|EYESUITE|MICROSCOPIA(?:_ESPECULAR)?)(?:\s+|$)/,
+    /^(AUTO|BIOMETRIA|BIO|PENTACAM|RETINA|OCT|EYESUITE|MICROSCOPIA(?:_ESPECULAR)?)(?:\s+|$)/,
   )?.[1]
   const prefix = spacedPrefix ?? canonicalPrefix
 
@@ -173,6 +173,7 @@ export function resolveExamKeyFromSource(
       return 'refractometry'
 
     case 'BIOMETRIA':
+    case 'BIO':
     case 'EYESUITE':
       return 'iol_calculation'
 

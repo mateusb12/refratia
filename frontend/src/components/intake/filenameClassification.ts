@@ -12,6 +12,7 @@ function escapeRegExp(value: string) {
 const examTypes: Record<string, IntakeExamType> = {
   PENTACAM: 'pentacam_corneal_tomography',
   BIOMETRIA: 'iol_calculation',
+  BIO: 'iol_calculation',
   AUTO: 'refractometry',
   EYESUITE: 'iol_calculation',
   MICROSCOPIA_ESPECULAR: 'specular_microscopy',

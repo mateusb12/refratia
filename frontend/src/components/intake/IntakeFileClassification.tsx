@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Eye, FileSearch, LoaderCircle, TriangleAlert, X } from 'lucide-react'
+import { calculateFileSHA256 } from './intakeCheckpoint'
 import { classifyFilename } from './filenameClassification'
 
 export type IntakeExamType =
@@ -76,6 +77,38 @@ export default function IntakeFileClassification({
   useEffect(() => {
     if (!files.length || !apiUrl) return
     const controller = new AbortController()
+    let active = true
+    let serverFinished = false
+
+    // Render the local filename classification immediately. The server also
+    // inspects PDF content, which can take longer than the user should have
+    // to wait before seeing and correcting the files.
+    void Promise.all(files.map(async (file): Promise<Inspection> => {
+      const sha256 = await calculateFileSHA256(file)
+      const filenameClassification = classifyFilename(file.name)
+      return {
+        filename: file.name,
+        sha256,
+        contentType: file.type,
+        size: file.size,
+        recognizedExamType: filenameClassification?.examType,
+        recognizedEye: filenameClassification?.eye,
+        candidates: [],
+      }
+    })).then((localItems) => {
+      if (!active || serverFinished) return
+      setItems(localItems)
+      const next: Record<string, IntakeClassification> = {}
+      localItems.forEach((item) => {
+        next[item.sha256] = {
+          sha256: item.sha256,
+          examType: item.recognizedExamType || '',
+          eye: item.recognizedEye || '',
+        }
+      })
+      onChange(next)
+    }).catch(() => undefined)
+
     const body = new FormData()
     files.forEach((file) => body.append('files', file))
     setLoading(true)
@@ -93,6 +126,8 @@ export default function IntakeFileClassification({
         return payload as { files: Inspection[] }
       })
       .then((payload) => {
+        if (!active) return
+        serverFinished = true
         const inspectedItems = payload.files
         setItems(inspectedItems)
         const next: Record<string, IntakeClassification> = {}
@@ -116,7 +151,10 @@ export default function IntakeFileClassification({
         if (!controller.signal.aborted) setError(inspectionError instanceof Error ? inspectionError.message : 'Falha na inspeção.')
       })
       .finally(() => setLoading(false))
-    return () => controller.abort()
+    return () => {
+      active = false
+      controller.abort()
+    }
     // A nova seleção de arquivos é a única mudança que deve refazer a inspeção.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [files, apiUrl])
