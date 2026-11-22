@@ -38,8 +38,11 @@ import (
 // Z31 axis no longer reads the duplicate of the magnitude cell. v6: Pentacam
 // eyes carry the Belin ABCD staging line. v7: staging grades keep their "+". v8: Pentacam
 // birth dates are checked for plausibility after padding, and a malformed exam
-// date sends the identity reader to the next screen.
-const fileCheckpointVersion = "v8"
+// date sends the identity reader to the next screen. v9: Pentacam ISV cells with
+// the border glued to the leading digit are read from the cell interior, KI is
+// found on colour-filled cells, and EyeSuite K axes survive a stray tick
+// before "@".
+const fileCheckpointVersion = "v9"
 
 type fileCheckpointProcessingRun struct {
 	StorageClient fileStorage.Repository

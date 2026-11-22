@@ -185,7 +185,7 @@ func parseEyeSuiteEye(words []ocr.Word) (map[string]any, error) {
 var (
 	measurementDatePattern = regexp.MustCompile(`\b[A-Z]{2,}\d+\s+(\d{1,2}/\d{1,2}/\d{4})\b`)
 	lensStatusPattern      = regexp.MustCompile(`(?i)\b(?:pseudophakic|aphakic|phakic)\b`)
-	powerRadiusAxis        = regexp.MustCompile(`(\d+[,.]\d+)\s*/\s*(\d+[,.]\d+)(?:\s*@\s*(\d{1,3}))?`)
+	powerRadiusAxis        = regexp.MustCompile(`(\d+[,.]\d+)\s*/\s*(\d+[,.]\d+)(?:[^\d@\s/]{0,2}\s*@\s*(\d{1,3})\b)?`)
 )
 
 func integerAfter(text, labelPattern string) (float64, bool) {
@@ -215,8 +215,11 @@ func powerRadiusAxisAfter(text, labelPattern string) (power, radius, axis float6
 		return f
 	}
 	power, radius = parse(m[1]), parse(m[2])
+	// An axis is 0-180; anything larger is an OCR misread, treat as not read.
 	if m[3] != "" {
-		axis, hasAxis = parse(m[3]), true
+		if a := parse(m[3]); a <= 180 {
+			axis, hasAxis = a, true
+		}
 	}
 	return power, radius, axis, hasAxis, true
 }

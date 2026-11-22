@@ -1,6 +1,8 @@
 package pentacam
 
 import (
+	"image"
+	"image/color"
 	"refratia/backend/src/shared/ocr"
 	"testing"
 )
@@ -156,5 +158,59 @@ func TestLeadingNonDigits(t *testing.T) {
 		if got := leadingNonDigits(text); got != want {
 			t.Errorf("leadingNonDigits(%q)=%d want %d", text, got, want)
 		}
+	}
+}
+
+// The value word "15" printed a few px above the "IS:" label must not be
+// taken for the label: a label span needs a letter.
+func TestPickLabelNeedsALetter(t *testing.T) {
+	spans := []labelSpan{
+		{text: "15", left: 100, right: 130, top: 100, bottom: 130, cy: 115, height: 30},
+		{text: "is", left: 100, right: 130, top: 108, bottom: 138, cy: 123, height: 30},
+	}
+	got, ok := pickLabel(spans, anchorField{Label: lbl(`[i1l][s5][vy]?`)}, nil)
+	if !ok || got.text != "is" {
+		t.Fatalf("want the letter span, got %+v %v", got, ok)
+	}
+}
+
+func TestExtendsWordDigits(t *testing.T) {
+	cases := []struct {
+		v      float64
+		digits string
+		want   bool
+	}{{14, "4", true}, {4, "4", false}, {24, "4", true}, {41, "4", false}, {14, "14", false}}
+	for _, c := range cases {
+		if got := extendsWordDigits(c.v, c.digits); got != c.want {
+			t.Errorf("%v vs %q: got %v", c.v, c.digits, got)
+		}
+	}
+}
+
+// A dark border column then white cell with dark digits: the interior starts
+// right after the border.
+func TestCellInteriorSkipsBorder(t *testing.T) {
+	img := image.NewGray(image.Rect(0, 0, 200, 60))
+	for y := 0; y < 60; y++ {
+		for x := 0; x < 200; x++ {
+			v := uint8(255)
+			if x >= 50 && x < 53 { // border
+				v = 0
+			} else if x >= 70 && x < 75 { // digit
+				v = 0
+			}
+			img.SetGray(x, y, color.Gray{v})
+		}
+	}
+	r := cellInterior(img, w("fi4", 48, 10, 60, 40))
+	if r.Min.X < 53 || r.Min.X > 56 || r.Max.X != 48+60+4 || r.Min.Y != 18 || r.Max.Y != 46 {
+		t.Fatalf("interior %v", r)
+	}
+}
+
+func TestCellInteriorZeroHeightWordIsEmpty(t *testing.T) {
+	img := image.NewGray(image.Rect(0, 0, 100, 100))
+	if r := cellInterior(img, ocr.Word{Left: 20, Top: 10, Width: 30, Height: 0}); !r.Empty() {
+		t.Fatalf("got %v, want empty", r)
 	}
 }

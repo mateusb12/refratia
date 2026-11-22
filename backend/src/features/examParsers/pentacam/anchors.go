@@ -8,7 +8,9 @@ import (
 	"regexp"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
+	"unicode"
 
 	"refratia/backend/src/features/fileIdentification/extractionfields"
 	"refratia/backend/src/shared/document"
@@ -66,7 +68,7 @@ var anchorFields = []anchorField{
 	{Key: "iha", Spec: "iha", Screens: []Screen{ScreenTopometric}, Label: lbl(`iha`)},
 	{Key: "ihd", Spec: "ihd", Screens: []Screen{ScreenTopometric}, Label: lbl(`ihd`)},
 	{Key: "iva", Spec: "iva", Screens: []Screen{ScreenTopometric}, Label: lbl(`iva|[a-z0-9]{2,4}`), ColumnOf: "isv"},
-	{Key: "ki", Spec: "ki", Screens: []Screen{ScreenTopometric}, Label: lbl(`k[i1l]`), ColumnOf: "isv"},
+	{Key: "ki", Spec: "ki", Screens: []Screen{ScreenTopometric}, Label: lbl(`k[i1lt]`), ColumnOf: "isv"},
 	{Key: "cki", Spec: "cki", Screens: []Screen{ScreenTopometric}, Label: lbl(`cki`)},
 
 	// Belin/Ambrósio screen: "D:" is the bottom-most single-letter label of
@@ -117,6 +119,7 @@ func normLabelWord(s string) string {
 
 type labelSpan struct {
 	wide, second       bool
+	indexCell          bool // a cell of the Índices column (ColumnOf): colour-filled when out of norm
 	text               string
 	left, right, top   int
 	bottom, cy, height int
@@ -265,6 +268,7 @@ func readAnchored(
 				span.wide = true
 			}
 			span.second = j.field.Second
+			span.indexCell = j.field.ColumnOf != ""
 			var allVotes map[float64]int
 			value, votes, candidates, rect, ok := readValueBox(c, img, cache[j.screen].words, span, j.rule, &allVotes)
 			if !ok {
@@ -607,7 +611,7 @@ func pickLabel(spans []labelSpan, field anchorField, located map[string]labelSpa
 	var best *labelSpan
 	for i := range spans {
 		s := spans[i]
-		if !field.Label.MatchString(s.text) {
+		if !field.Label.MatchString(s.text) || !hasLetter(s.text) {
 			continue
 		}
 		if ref != nil && (s.top <= ref.top+ref.height/2 || s.left < ref.left-ref.height || s.left > ref.left+2*ref.height) {
@@ -624,7 +628,7 @@ func pickLabel(spans []labelSpan, field anchorField, located map[string]labelSpa
 		// n-th match from the left among those on the same row as the best one.
 		var row []labelSpan
 		for _, s := range spans {
-			if field.Label.MatchString(s.text) && abs(s.cy-best.cy) <= best.height {
+			if field.Label.MatchString(s.text) && hasLetter(s.text) && abs(s.cy-best.cy) <= best.height {
 				row = append(row, s)
 			}
 		}
@@ -659,6 +663,7 @@ func readValueBox(
 	// The value cell is the first numeric word to the right of the label within
 	// the row band; a word with letters in between is the next label, so stop.
 	var tokenValue *float64
+	interior, wordDigits := false, ""
 	variants := []image.Rectangle{rect}
 	best := -1
 	var candidates []int
@@ -695,6 +700,14 @@ func readValueBox(
 			}
 		}
 	}
+	if best < 0 && label.indexCell {
+		// An Índices cell filled with colour (white digits on red) yields no
+		// page-OCR word at all; it is about 5h wide and starts ~2h right of the
+		// label. Only those cells: elsewhere an empty cell must not reach the
+		// neighbouring column.
+		rect = image.Rect(rect.Min.X, rect.Min.Y, label.right+h/4+13*h/2, rect.Max.Y)
+		variants = []image.Rectangle{rect}
+	}
 	if best >= 0 {
 		w := words[best]
 		// The OCR word still carries the cell border on its left and the unit
@@ -703,8 +716,16 @@ func readValueBox(
 		// ("|12" -> "fi2") or lost, and the crops then agree on the shortened
 		// number ("2"). For integer cells two or more non-digit glyphs before
 		// the first digit therefore mean the value cannot be trusted.
+		// Instead of giving up at once, the cell interior (border skipped) is read
+		// below; the result is only trusted when it is longer than the word's
+		// digits and ends with them, else the cell stays suspect.
 		if rule.Kind == "int" && leadingNonDigits(w.Text) >= 2 && strings.ContainsAny(w.Text, "0123456789") {
-			return 0, suspectCell, 0, rect, false
+			interior = true
+			for _, ch := range w.Text {
+				if ch >= '0' && ch <= '9' {
+					wordDigits += string(ch)
+				}
+			}
 		}
 		extents := trimWordBox(w)
 		if _, parses := normalizePrinted(w.Text, rule); !parses {
@@ -719,9 +740,17 @@ func readValueBox(
 		if v, ok := normalizePrinted(w.Text, rule); ok {
 			tokenValue = &v
 		}
+		if interior {
+			variants = []image.Rectangle{cellInterior(img, w)}
+			tokenValue = nil
+			rect = variants[0]
+		}
 	}
 	rect = rect.Intersect(img.Bounds())
 	if rect.Empty() {
+		if interior {
+			return 0, suspectCell, 0, rect, false
+		}
 		return 0, 0, 0, rect, false
 	}
 
@@ -805,10 +834,50 @@ func readValueBox(
 	}
 	// A competing reading (3 vs 9 in a pixel font) must not be outvoted by a
 	// small margin: with rivals the winner needs 80% of the valid reads.
-	if bestVotes < 2 || rival || (len(votes) > 1 && bestVotes*5 < total*4) {
+	rejected := bestVotes < 2 || rival || (len(votes) > 1 && bestVotes*5 < total*4)
+	if interior && (rejected || !extendsWordDigits(bestValue, wordDigits)) {
+		// Still suspect: the fixed-box fallback must not fill in the shortened number.
+		return 0, suspectCell, 0, rect, false
+	}
+	if rejected {
 		return 0, bestVotes, len(votes), rect, false
 	}
 	return bestValue, bestVotes, len(votes), rect, true
+}
+
+// extendsWordDigits reports whether the integer v prints strictly more digits
+// than the OCR word did and ends with them (the word lost leading digits).
+func extendsWordDigits(v float64, wordDigits string) bool {
+	s := strconv.Itoa(int(v))
+	return len(s) > len(wordDigits) && strings.HasSuffix(s, wordDigits)
+}
+
+// cellInterior is the word's box without the cell border on its left: skip the
+// light margin, then the dark border columns, and read what follows.
+// The pixel constants assume the 450-dpi page render of extractor.go (the
+// border is a few pixels wide there); the check in extendsWordDigits makes any
+// misplaced crop fail closed.
+func cellInterior(img image.Image, w ocr.Word) image.Rectangle {
+	y0, y1 := w.Top+w.Height/5, w.Top+w.Height-w.Height/10
+	if y1 <= y0 {
+		return image.Rectangle{}
+	}
+	col := func(x int) int {
+		s := 0
+		for y := y0; y < y1; y++ {
+			r, g, b, _ := img.At(x, y).RGBA()
+			s += int(min(r, g, b) >> 8)
+		}
+		return s / (y1 - y0)
+	}
+	x := w.Left - 6
+	for x < w.Left+30 && col(x) >= 110 {
+		x++
+	}
+	for x < w.Left+40 && col(x) < 225 {
+		x++
+	}
+	return image.Rect(x+1, y0, w.Left+w.Width+4, y1).Intersect(img.Bounds())
 }
 
 // dropDuplicateCells keeps the first of the candidate words (left to right) that
@@ -834,6 +903,10 @@ func dropDuplicateCells(words []ocr.Word, candidates []int) []int {
 	}
 	return distinct
 }
+
+// hasLetter: a label always has a letter; the value word "15" must not match
+// the ISV label pattern ([i1l][s5]).
+func hasLetter(s string) bool { return strings.IndexFunc(s, unicode.IsLetter) >= 0 }
 
 func leadingNonDigits(text string) int {
 	n := 0

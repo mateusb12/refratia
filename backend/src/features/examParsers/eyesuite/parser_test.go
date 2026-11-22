@@ -145,3 +145,22 @@ func TestParseEyeSuiteIdentityKeepsNameAndBirthWithoutTimestamp(t *testing.T) {
 		t.Fatalf("unexpected identity: %+v", got)
 	}
 }
+
+func TestPowerRadiusAxisAfterNoisyTick(t *testing.T) {
+	for _, c := range []struct {
+		in      string
+		axis    float64
+		hasAxis bool
+	}{
+		{"K1 [D/mm/°] 44,15/7,64 @ 168", 168, true},
+		{"K1 [D/mm/°] 43,68/7,73' @ 54", 54, true},
+		{"K1 [D/mm/°] 41,11/8,21'@ 3", 3, true},
+		{"K1 [D/mm/°] 43,95/7,68' 144", 0, false},
+		{"K1 [D/mm/°] 44,15/7,64 @ 268", 0, false},
+	} {
+		power, radius, axis, hasAxis, ok := powerRadiusAxisAfter(c.in, `\bK1\b`)
+		if !ok || power == 0 || radius == 0 || hasAxis != c.hasAxis || axis != c.axis {
+			t.Errorf("%q: power=%v radius=%v axis=%v has=%v ok=%v", c.in, power, radius, axis, hasAxis, ok)
+		}
+	}
+}
