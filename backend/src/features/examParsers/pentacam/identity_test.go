@@ -114,3 +114,48 @@ func TestIdentityNameStopsAtGapAndIgnoresDigitWords(t *testing.T) {
 		t.Fatalf("name leaked screen text: %q", got.FullName)
 	}
 }
+
+// A year with a lost digit is "not read", never a conflicting value; the
+// device's unpadded M/D/YYYY is a valid reading.
+func TestDropMalformedDatesTreatsLostDigitAsNotRead(t *testing.T) {
+	got := dropMalformedDates(Identity{FullName: "A B", BirthDateRaw: "01/28/198", ExamDateRaw: "9/21/2026"})
+	if got.BirthDateRaw != "" || got.BirthDateIssue != "missing" || got.ExamDateRaw != "09/21/2026" {
+		t.Fatalf("unexpected identity: %+v", got)
+	}
+	if got := dropMalformedDates(Identity{BirthDateRaw: "1/2/1980", BirthDateIssue: "conflicting"}); got.BirthDateIssue != "conflicting" {
+		t.Fatalf("a real conflict must stay: %+v", got)
+	}
+}
+
+// Unpadded dates (as the device prints them) still get the plausibility check:
+// an implausible birth date is conflicting, a plausible one is kept, padded.
+func TestDropMalformedDatesChecksPlausibilityOfUnpaddedDates(t *testing.T) {
+	if got := dropMalformedDates(Identity{BirthDateRaw: "2/5/2020", ExamDateRaw: "11/6/2026"}); got.BirthDateRaw != "" || got.BirthDateIssue != "conflicting" {
+		t.Fatalf("age 6 must be conflicting: %+v", got)
+	}
+	if got := dropMalformedDates(Identity{BirthDateRaw: "11/6/2026", ExamDateRaw: "11/6/2026"}); got.BirthDateIssue != "conflicting" {
+		t.Fatalf("birth == exam must be conflicting: %+v", got)
+	}
+	if got := dropMalformedDates(Identity{BirthDateRaw: "2/5/1970", ExamDateRaw: "11/6/2026"}); got.BirthDateRaw != "02/05/1970" || got.BirthDateIssue != "" {
+		t.Fatalf("plausible unpadded date must be kept padded: %+v", got)
+	}
+}
+
+// A malformed exam date (birth date unverifiable) or birth date sends the reader
+// to the next screen; a well-formed pair or an already-flagged conflict does not.
+func TestNeedsAnotherScreen(t *testing.T) {
+	for _, c := range []struct {
+		id   Identity
+		want bool
+	}{
+		{Identity{BirthDateRaw: "2/5/1970", ExamDateRaw: "11/6/2026"}, false},
+		{Identity{BirthDateRaw: "2/5/197", ExamDateRaw: "11/6/2026"}, true},
+		{Identity{BirthDateRaw: "2/5/1970", ExamDateRaw: "11/6/202"}, true},
+		{Identity{BirthDateRaw: "2/5/1970"}, false},
+		{Identity{BirthDateIssue: "conflicting"}, false},
+	} {
+		if got := needsAnotherScreen(c.id); got != c.want {
+			t.Errorf("%+v: got %v want %v", c.id, got, c.want)
+		}
+	}
+}

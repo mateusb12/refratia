@@ -33,6 +33,9 @@ Exit 1 on: a regression (field in `backend/benchmark/last_pass.json` that no lon
 ## Not done
 Overlay/crop rendering (needs `extraction_diagnostics` page+bbox from the OCR agent, not emitted yet). `not_in_app` fields (e.g. 4 mm coma, `iol_calculation.measurement_date`) are listed but not scored until the app gets a path.
 
+## Expected rejections (`groundtruth/_eligibility.json`)
+A corpus folder the app must reject (e.g. no optical biometry, required since c63d800) is listed with `expected_http` and `reason_contains`. The harness checks that exact rejection (`eligibility/expected_rejection`); the folder is then not field-scored, not compared with `last_pass.json` (its entries are kept), and is listed under "Ineligible patients". If the app stops rejecting it, the check fails the run and the folder is scored normally. Its ground truth file is unchanged. The handler-level guard is `TestAnalyzeRejectsIntakeWithoutOpticalBiometry`.
+
 ## Out-of-protocol documents
 Fields on exam types with `in_protocol: false` in `_field_spec.json` (e.g. `anterior_segment_photo`, `corneal_topography_other`) are still extracted, persisted and scored, but are always optional (role `optional_out_of_protocol`): they never count as required failures or block a run. Product decision, 2026-11-13.
 

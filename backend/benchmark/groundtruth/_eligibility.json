@@ -1,0 +1,7 @@
+{
+ "daniela-nogueira": {
+  "expected_http": 422,
+  "reason_contains": "biometria óptica (EyeSuite) obrigatória",
+  "why": "folder has no optical biometry (EyeSuite / IOL calculation); required since c63d800 (intentional protocol rule). Ground truth daniela-nogueira.json unchanged."
+ }
+}

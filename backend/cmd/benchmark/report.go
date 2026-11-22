@@ -129,11 +129,13 @@ func conclude(run *Run, e *env, baselinePath string, update bool, compareArg, ou
 	run.Seconds = time.Since(t0).Seconds()
 	passed := map[string]bool{}
 	ran := map[string]bool{}
+	scoredRan := map[string]bool{} // ran and field-scored (expected rejections are not compared with last_pass.json)
 	run.Failures, run.Why = nil, nil
 	run.Failures = nil
 	infra := append([]string{}, run.RunInfra...)
 	for _, p := range run.Patients {
 		ran[p.Slug] = true
+		scoredRan[p.Slug] = p.Ineligible == ""
 		if p.Incomplete != "" {
 			run.Why = append(run.Why, p.Slug+": "+p.Incomplete)
 		}
@@ -182,7 +184,7 @@ func conclude(run *Run, e *env, baselinePath string, update bool, compareArg, ou
 	}
 	loadJSON(baselinePath, &base)
 	for _, id := range base.Passed {
-		if ran[strings.SplitN(id, "|", 2)[0]] && !passed[id] {
+		if scoredRan[strings.SplitN(id, "|", 2)[0]] && !passed[id] {
 			run.Regressions = append(run.Regressions, id+" (last_pass.json)")
 		}
 	}
@@ -218,7 +220,7 @@ func conclude(run *Run, e *env, baselinePath string, update bool, compareArg, ou
 	if update && run.Complete {
 		set := map[string]bool{}
 		for _, id := range base.Passed {
-			if !ran[strings.SplitN(id, "|", 2)[0]] {
+			if !scoredRan[strings.SplitN(id, "|", 2)[0]] {
 				set[id] = true
 			}
 		}
@@ -356,6 +358,10 @@ func summaryTable(run *Run) string {
 	fmt.Fprintf(&b, "%-18s %-20s %-10s %-8s %-14s\n", "patient", "extraction", "unexpected", "not_in_app", "persist+ident")
 	for _, p := range run.Patients {
 		acc, un, na, ps := perPatient(p)
+		if p.Ineligible != "" {
+			fmt.Fprintf(&b, "%-18s %-20s %-10s %-8s %-14s\n", p.Slug, "expected rejection", "-", "-", ps)
+			continue
+		}
 		fmt.Fprintf(&b, "%-18s %-20s %-10d %-8d %-14s\n", p.Slug, acc, un, na, ps)
 	}
 	return b.String()
@@ -388,6 +394,10 @@ func render(run *Run) string {
 			if f.Outcome == "contract_mismatch" {
 				cm++
 			}
+		}
+		if p.Ineligible != "" {
+			w("| %s | expected rejection (see below) | - | - | - | %s | HTTP %d |\n", p.Slug, ps, p.AnalyzeStatus)
+			continue
 		}
 		w("| %s | %s | %d | %d | %d | %s | %.0fs (HTTP %d) |\n", p.Slug, acc, un, na, cm, ps, p.AnalyzeSecs, p.AnalyzeStatus)
 		for _, f := range p.Fields {
@@ -515,6 +525,18 @@ func render(run *Run) string {
 			}
 		}
 		w("\n(still_wrong and still_missing field lists are in report.json under compare.fields.)\n")
+	}
+	var inel []*PatientRun
+	for _, p := range run.Patients {
+		if p.Ineligible != "" {
+			inel = append(inel, p)
+		}
+	}
+	if len(inel) > 0 {
+		w("\n## Ineligible patients (expected protocol rejections)\n\nNot field-scored and not compared with last_pass.json; their ground truth is unchanged. The run fails if the app stops rejecting them as expected.\n\n| patient | blocking reason |\n|---|---|\n")
+		for _, p := range inel {
+			w("| %s | %s |\n", p.Slug, p.Ineligible)
+		}
 	}
 	w("\n## Regressions\n\n")
 	if len(run.Regressions) == 0 {

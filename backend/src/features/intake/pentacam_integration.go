@@ -67,9 +67,13 @@ func tryExtractPentacamLocal(
 			"MDY", // the Pentacam prints MM/DD/YYYY
 		)
 		if identity.BirthDateIssue != "" {
-			// Out-of-range birth date (not before the exam, age outside
-			// 18..110): never persisted, always flagged. Identity fields carry
-			// no raw text.
+			// "conflicting": out-of-range birth date (not before the exam, age
+			// outside 18..110); "missing": no page printed a complete date.
+			// Never persisted, always flagged. Identity fields carry no raw text.
+			message := "data de nascimento implausível em relação à data do exame"
+			if identity.BirthDateIssue == "missing" {
+				message = "data de nascimento não lida (nenhuma tela com a data completa)"
+			}
 			diagnostics, _ := analysis["extraction_diagnostics"].([]any)
 			analysis["extraction_diagnostics"] = append(diagnostics, map[string]any{
 				"file_sha256": file.Metadata.SHA256,
@@ -78,7 +82,7 @@ func tryExtractPentacamLocal(
 				"field":       "birth_date",
 				"status":      identity.BirthDateIssue,
 				"stage":       "validation",
-				"error":       "data de nascimento implausível em relação à data do exame",
+				"error":       message,
 			})
 		}
 	}

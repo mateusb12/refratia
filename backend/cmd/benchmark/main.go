@@ -69,6 +69,15 @@ type PatientRun struct {
 	Changes       []string   `json:"reingest_changes"`
 	Unverified    []string   `json:"unverified"`
 	Incomplete    string     `json:"incomplete,omitempty"` // set when the patient could not be fully evaluated (infra)
+	Ineligible    string     `json:"ineligible,omitempty"` // expected protocol rejection (_eligibility.json): not field-scored, not a regression
+}
+
+// Eligibility: a corpus folder the app must reject (e.g. a required document is missing). The ground truth stays as
+// it is; the folder is checked for the exact rejection instead of being scored field by field.
+type Eligibility struct {
+	ExpectHTTP     int    `json:"expected_http"`
+	ReasonContains string `json:"reason_contains"`
+	Why            string `json:"why"`
 }
 
 type Run struct {
@@ -91,6 +100,7 @@ type Run struct {
 }
 
 type env struct {
+	elig              map[string]Eligibility
 	vars              []string
 	m                 map[string]string
 	api               string
@@ -159,6 +169,7 @@ func realMain() (code int) {
 	e := &env{data: *dataDir, gtDir: *gtDir, reForce: *reForce, httpc: &http.Client{}, analyzeTO: *analyzeTO, stepTO: *stepTO}
 	e.spec = &Spec{}
 	must(loadJSON(filepath.Join(e.gtDir, "_field_spec.json"), e.spec))
+	loadJSON(filepath.Join(e.gtDir, "_eligibility.json"), &e.elig) // optional
 	slugs := []string{"creso-aversa", "daniela-nogueira", "francisco", "maria-gorete", "rolmey"}
 	if *patients != "" {
 		slugs = strings.Split(*patients, ",")
@@ -853,6 +864,20 @@ func (e *env) runPatient(ctx context.Context, slug string, pr *PatientRun) {
 	if status == 0 { // no HTTP answer: timeout, connection refused, backend died
 		infra("analyze_no_response", fmt.Sprint(err))
 		return
+	}
+	if el, ok := e.elig[slug]; ok {
+		reason := sval(payload, "error")
+		if reason == "" && err != nil {
+			reason = err.Error()
+		}
+		rejected := status == el.ExpectHTTP && strings.Contains(reason, el.ReasonContains)
+		add("eligibility", "expected_rejection", rejected, fmt.Sprintf("want HTTP %d containing %q, got HTTP %d: %s", el.ExpectHTTP, el.ReasonContains, status, reason))
+		if rejected {
+			pr.Ineligible = fmt.Sprintf("HTTP %d: %s (%s)", status, reason, el.Why)
+			fmt.Printf("   expected rejection: HTTP %d\n", status)
+			return
+		}
+		// not rejected as expected: the failed check fails the run; score whatever came back
 	}
 	if err != nil || status != 200 {
 		os.WriteFile(filepath.Join(e.out, "raw", slug+".analyze.error.txt"), []byte(fmt.Sprint("HTTP ", status, ": ", err)), 0o644)

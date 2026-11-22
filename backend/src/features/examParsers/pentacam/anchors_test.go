@@ -1,9 +1,8 @@
 package pentacam
 
 import (
-	"testing"
-
 	"refratia/backend/src/shared/ocr"
+	"testing"
 )
 
 func w(text string, left, top, width, height int) ocr.Word {
@@ -33,6 +32,35 @@ func TestPickLabel(t *testing.T) {
 	ki, ok := pickLabel(spans, anchorField{Label: lbl(`k[i1l]`), ColumnOf: "isv"}, map[string]labelSpan{"isv": isv})
 	if !ok || ki.left != 700 {
 		t.Fatalf("index-box KI expected, got %+v", ki)
+	}
+}
+
+// Columns that print the same label (Z31 for 5 mm and 6 mm) are told apart by
+// their order from the left, whichever of them the OCR put a pixel higher.
+func TestPickLabelRankIsOrderFromTheLeft(t *testing.T) {
+	spans := labelSpans([]ocr.Word{
+		w("Coma):", 1620, 2316, 90, 34), w("Coma):", 2202, 2314, 90, 34), // right column one pixel higher
+	}, 12)
+	for rank, wantLeft := range map[int]int{1: 1620, 2: 2202} {
+		got, ok := pickLabel(spans, anchorField{Label: lbl(`coma`), Rank: rank}, nil)
+		if !ok || got.left != wantLeft {
+			t.Fatalf("rank %d: want left %d, got %+v %v", rank, wantLeft, got, ok)
+		}
+	}
+	if _, ok := pickLabel(spans, anchorField{Label: lbl(`coma`), Rank: 3}, nil); ok {
+		t.Fatal("rank beyond the row must not match")
+	}
+}
+
+// The page OCR reports a cell twice (with and without its border glyph): the
+// second number of the row is the axis, not the duplicate of the magnitude.
+func TestDropDuplicateCellsKeepsTheNextNumberOfTheRow(t *testing.T) {
+	words := []ocr.Word{
+		w("[0.248", 1546, 2353, 94, 62), w("0.248", 1564, 2370, 78, 28), w("(281°)", 1704, 2353, 106, 62),
+	}
+	got := dropDuplicateCells(words, []int{0, 1, 2})
+	if len(got) != 2 || got[0] != 0 || got[1] != 2 {
+		t.Fatalf("want the cell once, then the axis: %v", got)
 	}
 }
 

@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 	"unicode"
 
 	"refratia/backend/src/shared/document"
@@ -25,7 +26,7 @@ type Identity struct {
 	BirthDateRaw string
 	ExamDateRaw  string
 	DateOrder    string
-	// BirthDateIssue is "" or "conflicting" when the birth date read from the
+	// BirthDateIssue is "", "missing" (no complete date read) or "conflicting" when the birth date read from the
 	// label failed the plausibility checks (not before the exam, age 18..110).
 	// BirthDateRaw is then empty: a missing value, never a guessed one.
 	BirthDateIssue string
@@ -50,6 +51,7 @@ func ExtractIdentity(executionContext context.Context, data []byte) (Identity, e
 	if inspectError != nil {
 		return Identity{}, inspectError
 	}
+	var unreadable *Identity // first reading whose dates were malformed
 	for page := 1; page <= pageCount && page <= 3; page++ {
 		rendered, renderError := pdfutil.RenderPageAtDPI(executionContext, data, page, 300)
 		if renderError != nil {
@@ -74,7 +76,20 @@ func ExtractIdentity(executionContext context.Context, data []byte) (Identity, e
 		// Re-read the name boxes from pixels: the box border is read as a
 		// letter ("J") by the page-level pass.
 		identity = refineFromPixels(executionContext, pageImage, panel, words, identity)
-		return identity, nil
+		// The panel is printed on every screen but the OCR can drop a digit on
+		// one of them: a malformed date is "not read", so the next screen gets
+		// its chance before the name-only reading is accepted.
+		if needsAnotherScreen(identity) {
+			if unreadable == nil {
+				identity = dropMalformedDates(identity)
+				unreadable = &identity
+			}
+			continue
+		}
+		return dropMalformedDates(identity), nil
+	}
+	if unreadable != nil {
+		return *unreadable, nil
 	}
 	return Identity{}, errors.New("Pentacam: nome/nascimento não localizados")
 }
@@ -244,6 +259,46 @@ func parsePentacamIdentityWords(words []ocr.Word) (Identity, error) {
 		}
 	}
 	return identity, nil
+}
+
+// needsAnotherScreen: a malformed birth date, or a malformed exam date (without
+// which the birth date cannot be checked for plausibility), is "not read", so the
+// next screen gets its chance.
+func needsAnotherScreen(id Identity) bool {
+	if id.BirthDateIssue != "" {
+		return false
+	}
+	return wellFormedDate(id.BirthDateRaw) == "" || (id.ExamDateRaw != "" && wellFormedDate(id.ExamDateRaw) == "")
+}
+
+// dropMalformedDates turns a date that is not a valid MM/DD/YYYY into a
+// missing value (never a conflicting or guessed one). A missing birth date is
+// reported as issue "missing" so the unreadable read stays observable. The
+// plausibility check runs again on the padded dates: the device prints M/D/YYYY,
+// which the earlier check (zero-padded layout) could not parse.
+func dropMalformedDates(id Identity) Identity {
+	id.ExamDateRaw = wellFormedDate(id.ExamDateRaw)
+	if id.BirthDateIssue != "" {
+		return id
+	}
+	id.BirthDateRaw = wellFormedDate(id.BirthDateRaw)
+	switch {
+	case id.BirthDateRaw == "":
+		id.BirthDateIssue = "missing"
+	case id.ExamDateRaw != "" && !examdate.PlausibleBirth(examdate.FromSlashOrder(id.BirthDateRaw, DateOrder), examdate.FromSlashOrder(id.ExamDateRaw, DateOrder)):
+		id.BirthDateRaw, id.BirthDateIssue = "", "conflicting"
+	}
+	return id
+}
+
+// wellFormedDate returns the zero-padded MM/DD/YYYY of a valid date (the device
+// prints M/D/YYYY) and "" for anything else, e.g. a year with a lost digit.
+func wellFormedDate(raw string) string {
+	parsed, err := time.Parse("1/2/2006", raw)
+	if err != nil {
+		return ""
+	}
+	return parsed.Format("01/02/2006")
 }
 
 func ternary[T any](cond bool, a, b T) T {

@@ -34,8 +34,12 @@ import (
 // legacy labels), and v2 records the classification inputs. v3: the result
 // holds only the file's own identity reading, never the batch's patient. v4:
 // whole-exam writers (IOL, specular) keep the exam as written and replace it
-// on a hit.
-const fileCheckpointVersion = "v4"
+// on a hit. v5: Pentacam identity dates are read in full or not at all, and the
+// Z31 axis no longer reads the duplicate of the magnitude cell. v6: Pentacam
+// eyes carry the Belin ABCD staging line. v7: staging grades keep their "+". v8: Pentacam
+// birth dates are checked for plausibility after padding, and a malformed exam
+// date sends the identity reader to the next screen.
+const fileCheckpointVersion = "v8"
 
 type fileCheckpointProcessingRun struct {
 	StorageClient fileStorage.Repository

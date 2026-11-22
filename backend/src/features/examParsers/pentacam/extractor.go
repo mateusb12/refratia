@@ -498,6 +498,9 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 
 	return map[string]any{
 		"quality": values["qi"],
+		"abcd_keratoconus_staging": map[string]any{
+			"staging": values["abcd_staging"],
+		},
 		"anterior_cornea": map[string]any{
 			"k1_d":          values["k1_d"],
 			"k2_d":          values["k2_d"],

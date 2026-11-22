@@ -34,7 +34,7 @@ type anchorField struct {
 	ColumnOf string
 	// Bottom picks the bottom-most match instead of the topmost.
 	Bottom bool
-	// Rank picks the n-th match from the left on the topmost row (the Z31 label
+	// Rank (1-based) picks the n-th match from the left on the topmost row (the Z31 label
 	// repeats for the 5 mm and 6 mm columns).
 	Rank int
 	// ValueBelow: the value is printed on the line under its label.
@@ -76,10 +76,10 @@ var anchorFields = []anchorField{
 
 	// Anéis Corneanos screen: Z31 (Coma) for the 5 mm and 6 mm zones, the value
 	// printed on the line under each label.
-	{Key: "z31_5mm_um", Spec: "coma_z31_5mm_um", Screens: []Screen{ScreenRings}, Label: lbl(`(?:z31 )?coma\w?`), ValueBelow: true},
-	{Key: "z31_5mm_axis_deg", Spec: "coma_z31_5mm_axis_deg", Screens: []Screen{ScreenRings}, Label: lbl(`(?:z31 )?coma\w?`), ValueBelow: true, Second: true},
-	{Key: "z31_6mm_axis_deg", Spec: "coma_z31_5mm_axis_deg", Screens: []Screen{ScreenRings}, Label: lbl(`(?:z31 )?coma\w?`), ValueBelow: true, Rank: 1, Second: true},
-	{Key: "z31_6mm_um", Spec: "coma_z31_6mm_um", Screens: []Screen{ScreenRings}, Label: lbl(`(?:z31 )?coma\w?`), ValueBelow: true, Rank: 1},
+	{Key: "z31_5mm_um", Spec: "coma_z31_5mm_um", Screens: []Screen{ScreenRings}, Label: lbl(`(?:z31 )?coma\w?`), ValueBelow: true, Rank: 1},
+	{Key: "z31_5mm_axis_deg", Spec: "coma_z31_5mm_axis_deg", Screens: []Screen{ScreenRings}, Label: lbl(`(?:z31 )?coma\w?`), ValueBelow: true, Rank: 1, Second: true},
+	{Key: "z31_6mm_axis_deg", Spec: "coma_z31_5mm_axis_deg", Screens: []Screen{ScreenRings}, Label: lbl(`(?:z31 )?coma\w?`), ValueBelow: true, Rank: 2, Second: true},
+	{Key: "z31_6mm_um", Spec: "coma_z31_6mm_um", Screens: []Screen{ScreenRings}, Label: lbl(`(?:z31 )?coma\w?`), ValueBelow: true, Rank: 2},
 
 	// Cataract Pre-OP screen.
 	{Key: "pns", Spec: "pns", Screens: []Screen{ScreenCataract}, Label: lbl(`pns`), Bottom: true, Wide: true},
@@ -410,6 +410,9 @@ func readAnchored(
 	if qi, hint, ok := readQuality(ctx, pageOf, pageImages, cache); ok {
 		out["qi"] = anchoredValue{Hint: hint, Text: qi}
 	}
+	if staging, hint, ok := readStaging(ctx, pageOf, pageImages, cache); ok {
+		out["abcd_staging"] = anchoredValue{Hint: hint, Text: staging}
+	}
 	return out, conflicts
 }
 
@@ -454,6 +457,99 @@ func readQuality(
 		}
 	}
 	return "", FieldHint{}, false
+}
+
+var (
+	stagingHeader = lbl(`(?:belin )?abcd(?: keratoconus)?(?: staging)?`)
+	// The staging line the device prints under the chart: the stages of A, B and
+	// C, then D, which is bare when its stage is not shown.
+	stagingRow   = regexp.MustCompile(`^A\S{0,2}\s*B\S{0,2}\s*C\S{0,2}\s*D\S{0,2}$`)
+	stagingParse = regexp.MustCompile(`^A([0-4O]\+?)\s*B([0-4O]\+?)\s*C([0-4O]\+?)\s*D([0-4O]\+?)?$`)
+)
+
+// parseStaging accepts only "A<g> B<g> C<g> D[<g>]" with a grade g of 0-4 and an
+// optional "+" (beyond the scale; the device prints no space after it), and
+// returns it as space-separated tokens. An O is read as 0 only inside that pattern; anything
+// else is not a staging line.
+func parseStaging(text string) (string, bool) {
+	m := stagingParse.FindStringSubmatch(strings.Join(strings.Fields(strings.ToUpper(text)), " "))
+	if m == nil {
+		return "", false
+	}
+	for i := range m {
+		m[i] = strings.ReplaceAll(m[i], "O", "0")
+	}
+	return "A" + m[1] + " B" + m[2] + " C" + m[3] + " D" + m[4], true
+}
+
+// readStaging reads the "A0 B0 C0 D" line printed at the foot of the Belin ABCD
+// panel of the topometric screen. The panel is found by its header; the line is
+// the lowest row of words under the header, in the header's column, that has
+// the A B C D shape. It is read from pixels (the page OCR reads 0 as O) with
+// the digit whitelist and voted.
+func readStaging(
+	ctx context.Context,
+	pageOf map[Screen]int,
+	pageImages map[int]image.Image,
+	cache map[Screen]*screenWords,
+) (string, FieldHint, bool) {
+	page := pageOf[ScreenTopometric]
+	img, sw := pageImages[page], cache[ScreenTopometric]
+	if img == nil || sw == nil {
+		return "", FieldHint{}, false
+	}
+	header, found := pickLabel(sw.spans, anchorField{Label: stagingHeader}, nil)
+	if !found {
+		return "", FieldHint{}, false
+	}
+	h := header.height
+	var below []ocr.Word
+	for _, w := range sw.words {
+		if w.Top > header.bottom && w.Top < header.bottom+40*h && w.Left >= header.left-6*h && w.Left <= header.left+36*h {
+			below = append(below, w)
+		}
+	}
+	var rect image.Rectangle
+	for _, row := range ocr.GroupRows(below, max(h/2, 10)) {
+		parts := []string{}
+		for _, w := range row.Words {
+			parts = append(parts, strings.ToUpper(w.Text))
+		}
+		if !stagingRow.MatchString(strings.Join(parts, " ")) {
+			continue
+		}
+		r := image.Rectangle{Min: image.Pt(1<<30, 1<<30)}
+		for _, w := range row.Words {
+			r = r.Union(image.Rect(w.Left, w.Top, w.Left+w.Width, w.Top+w.Height))
+			r.Min.X, r.Min.Y = min(r.Min.X, w.Left), min(r.Min.Y, w.Top)
+		}
+		if rect.Empty() || r.Min.Y > rect.Min.Y { // the lowest matching row
+			rect = r
+		}
+	}
+	if rect.Empty() {
+		return "", FieldHint{}, false
+	}
+	rect = image.Rect(rect.Min.X-h/2, rect.Min.Y-h/3, rect.Max.X+h/2, rect.Max.Y+h/3).Intersect(img.Bounds())
+	var reads []string
+	normalize := func(t string) string {
+		staging, _ := parseStaging(t)
+		reads = append(reads, staging)
+		return staging
+	}
+	text := readTextBox(ctx, img, rect, "ABCD0123456789+ ", normalize, "")
+	if _, ok := parseStaging(text); !ok {
+		return "", FieldHint{}, false
+	}
+	// A reading that differs from the winner only by a "+" (4 vs 4+) is an
+	// ambiguous grade: no value rather than a possibly downgraded one.
+	for _, r := range reads {
+		if r != "" && r != text && strings.ReplaceAll(r, "+", "") == strings.ReplaceAll(text, "+", "") {
+			return "", FieldHint{}, false
+		}
+	}
+	return text, FieldHint{Spec: "abcd_staging", Status: "valid", Stage: "recognition", Screen: string(ScreenTopometric), Page: page,
+		Strategy: "label_anchor", BBox: to300dpi(rect, img.Bounds())}, true
 }
 
 // crossCheckAstigmatism applies the keratometry identities (keratoDrop) to the
@@ -533,10 +629,10 @@ func pickLabel(spans []labelSpan, field anchorField, located map[string]labelSpa
 			}
 		}
 		sort.Slice(row, func(i, j int) bool { return row[i].left < row[j].left })
-		if field.Rank >= len(row) {
+		if field.Rank > len(row) {
 			return labelSpan{}, false
 		}
-		return row[field.Rank], true
+		return row[field.Rank-1], true
 	}
 	return *best, true
 }
@@ -575,6 +671,7 @@ func readValueBox(
 		candidates = append(candidates, i)
 	}
 	sort.Slice(candidates, func(a, b int) bool { return words[candidates[a]].Left < words[candidates[b]].Left })
+	candidates = dropDuplicateCells(words, candidates)
 	pick := 0
 	if label.second {
 		pick = 1
@@ -712,6 +809,30 @@ func readValueBox(
 		return 0, bestVotes, len(votes), rect, false
 	}
 	return bestValue, bestVotes, len(votes), rect, true
+}
+
+// dropDuplicateCells keeps the first of the candidate words (left to right) that
+// sit on top of each other. The page OCR can report one cell twice (the same
+// digits once with the cell border glued on, once without): the second one is
+// that cell again, not the next number of the row.
+func dropDuplicateCells(words []ocr.Word, candidates []int) []int {
+	var distinct []int
+	for _, c := range candidates {
+		w := words[c]
+		dup := false
+		for _, kept := range distinct {
+			k := words[kept]
+			overlap := min(w.Left+w.Width, k.Left+k.Width) - max(w.Left, k.Left)
+			if overlap*2 > min(w.Width, k.Width) {
+				dup = true
+				break
+			}
+		}
+		if !dup {
+			distinct = append(distinct, c)
+		}
+	}
+	return distinct
 }
 
 func leadingNonDigits(text string) int {
