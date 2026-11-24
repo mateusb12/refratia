@@ -41,8 +41,9 @@ import (
 // date sends the identity reader to the next screen. v9: Pentacam ISV cells with
 // the border glued to the leading digit are read from the cell interior, KI is
 // found on colour-filled cells, and EyeSuite K axes survive a stray tick
-// before "@".
-const fileCheckpointVersion = "v9"
+// before "@". v10: Pentacam values the Tesseract vote cannot read are filled from
+// the embedded pixel glyphs (and contradicted ones blocked), with per-field strategy provenance.
+const fileCheckpointVersion = "v10"
 
 type fileCheckpointProcessingRun struct {
 	StorageClient fileStorage.Repository

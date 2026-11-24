@@ -181,6 +181,20 @@ func readAnchored(
 	pageOf map[Screen]int,
 	pageImages map[int]image.Image,
 ) (map[string]anchoredValue, []FieldHint) {
+	out, conflicts, _ := readAnchoredNative(ctx, pageOf, pageImages, nil)
+	return out, conflicts
+}
+
+// readAnchoredNative is readAnchored plus, when nat is not nil (image-only
+// PDF), the native-glyph pass: templates harvested from Tesseract-accepted
+// cells fill cells Tesseract could not read and veto accepted values that the
+// pixel font contradicts. nat == nil behaves exactly like readAnchored.
+func readAnchoredNative(
+	ctx context.Context,
+	pageOf map[Screen]int,
+	pageImages map[int]image.Image,
+	nat *nativeCtx,
+) (map[string]anchoredValue, []FieldHint, map[string]vetoInfo) {
 	cache := map[Screen]*screenWords{}
 	load := func(screen Screen) *screenWords {
 		pageWords := &screenWords{}
@@ -249,7 +263,10 @@ func readAnchored(
 		reading anchoredValue
 		ok      bool
 		suspect bool
+		vetoed  bool            // suspect because the native glyphs contradict the OCR value
 		votes   map[float64]int // all readings, kept for the prior-based tie-break
+		rect    image.Rectangle // the 450-dpi value cell that was read
+		veto    vetoInfo        // the two disagreeing readings, when vetoed
 	}
 	runJobs := func(batch []job) []result {
 		res, _ := parallelwork.Map(ctx, batch, readerConcurrency, func(c context.Context, j job) (result, error) {
@@ -272,12 +289,12 @@ func readAnchored(
 			var allVotes map[float64]int
 			value, votes, candidates, rect, ok := readValueBox(c, img, cache[j.screen].words, span, j.rule, &allVotes)
 			if !ok {
-				return result{suspect: votes == suspectCell, votes: allVotes}, nil
+				return result{suspect: votes == suspectCell, votes: allVotes, rect: rect}, nil
 			}
 			return result{anchoredValue{Value: value, Hint: FieldHint{
 				Spec: j.field.Spec, Status: "valid", Stage: "recognition", Screen: string(j.screen), Page: page,
 				Strategy: "label_anchor", BBox: to300dpi(rect, img.Bounds()), Votes: votes, Candidates: candidates,
-			}}, true, false, allVotes}, nil
+			}}, true, false, false, allVotes, rect, vetoInfo{}}, nil
 		})
 		return res
 	}
@@ -294,7 +311,60 @@ func readAnchored(
 			primary = append(primary, j)
 		}
 	}
+	bank := &glyphBank{}
+	debug := os.Getenv("REFRATIA_OCR_DEBUG") == "1"
+	nativePass := func(batch []job, res []result) {
+		if nat == nil {
+			return
+		}
+		type segmented struct {
+			glyphs []glyph
+			mapped bool
+		}
+		idx := make([]int, len(batch))
+		for i := range idx {
+			idx[i] = i
+		}
+		segs, _ := parallelwork.Map(ctx, idx, readerConcurrency, func(_ context.Context, i int) (segmented, error) {
+			j, r := batch[i], res[i]
+			page := pageOf[j.screen]
+			if r.rect.Empty() {
+				return segmented{}, nil
+			}
+			native, nr, ok := nat.mapRect(page, pageImages[page], r.rect)
+			if !ok {
+				return segmented{}, nil
+			}
+			if j.field.Second {
+				return segmented{segmentSecond(native, nr), true}, nil
+			}
+			return segmented{segmentNumber(native, nr), true}, nil
+		})
+		cells := make([]nativeCell, len(batch))
+		for i, j := range batch {
+			cells[i] = nativeCell{id: j.field.Key + "|" + string(j.screen), rule: j.rule, ok: res[i].ok,
+				strategy: res[i].reading.Hint.Strategy, value: res[i].reading.Value, mapped: segs[i].mapped, glyphs: segs[i].glyphs}
+		}
+		for i, d := range decideNative(bank, cells) {
+			j, r := batch[i], res[i]
+			switch d.action {
+			case "veto": // the pixel font contradicts the OCR value: block the cell, never replace it
+				res[i] = result{suspect: true, vetoed: true, veto: vetoInfo{r.reading.Value, d.value}, rect: r.rect}
+			case "fill":
+				page := pageOf[j.screen]
+				// Votes stays 0: it counts OCR agreements, and a native read has none.
+				res[i] = result{anchoredValue{Value: d.value, Hint: FieldHint{
+					Spec: j.field.Spec, Status: "valid", Stage: "recognition", Screen: string(j.screen), Page: page,
+					Strategy: "native_glyph", BBox: to300dpi(r.rect, pageImages[page].Bounds()), Candidates: len(r.votes),
+				}}, true, false, false, r.votes, r.rect, vetoInfo{}}
+			}
+			if debug {
+				fmt.Fprintf(os.Stderr, "pentacam native %s screen=%s %s\n", j.field.Key, j.screen, d.outcome)
+			}
+		}
+	}
 	results := runJobs(primary)
+	nativePass(primary, results)
 	have := map[string]bool{}
 	for i, j := range primary {
 		if results[i].ok || results[i].suspect {
@@ -307,7 +377,9 @@ func readAnchored(
 			pending = append(pending, j)
 		}
 	}
-	results = append(results, runJobs(pending)...)
+	pendingResults := runJobs(pending)
+	nativePass(pending, pendingResults)
+	results = append(results, pendingResults...)
 	jobs = append(primary, pending...)
 
 	// Fields read on more than one screen independently (BAD-D on the Belin and
@@ -322,8 +394,12 @@ func readAnchored(
 			order = append(order, j.field.Key)
 		}
 		if results[i].suspect {
+			strategy := "label_anchor"
+			if results[i].vetoed {
+				strategy = "native_veto"
+			}
 			suspect[j.field.Key] = FieldHint{Spec: j.field.Spec, Status: "unreadable", Stage: "recognition",
-				Strategy: "label_anchor", Screen: string(j.screen), Page: pageOf[j.screen]}
+				Strategy: strategy, Screen: string(j.screen), Page: pageOf[j.screen]}
 		}
 		readings[j.field.Key] = readings[j.field.Key]
 		if results[i].ok {
@@ -362,6 +438,12 @@ func readAnchored(
 			acceptedDepth[key] = rs[0].Value
 		}
 	}
+	vetoedBy := map[string]vetoInfo{}
+	for i, j := range jobs {
+		if results[i].vetoed {
+			vetoedBy[j.field.Key] = results[i].veto
+		}
+	}
 	resolved := map[string]float64{}
 	for key, v := range keratoResolve(accepted, candidates) {
 		resolved[key] = v
@@ -376,9 +458,16 @@ func readAnchored(
 		if a, ok := acceptedDepth[key]; ok && a == v {
 			continue
 		}
+		strategy := "label_anchor+consistency"
+		if vetoes, vetoed := vetoedBy[key]; vetoed {
+			var ok bool
+			if strategy, ok = resolvedStrategy(v, vetoes); !ok {
+				continue // stays blocked (missing, "native_veto" hint)
+			}
+		}
 		j := jobs[firstJob[key]]
 		readings[key] = []anchoredValue{{Value: v, Hint: FieldHint{Spec: j.field.Spec, Status: "valid", Stage: "recognition",
-			Screen: string(j.screen), Page: pageOf[j.screen], Strategy: "label_anchor+consistency",
+			Screen: string(j.screen), Page: pageOf[j.screen], Strategy: strategy,
 			Votes: candidates[key][v], Candidates: len(candidates[key])}}}
 		accepted[key] = v
 	}
@@ -417,7 +506,7 @@ func readAnchored(
 	if staging, hint, ok := readStaging(ctx, pageOf, pageImages, cache); ok {
 		out["abcd_staging"] = anchoredValue{Hint: hint, Text: staging}
 	}
-	return out, conflicts
+	return out, conflicts, vetoedBy
 }
 
 // The "QI:" label itself is routinely garbled; the quality cell is the box to the
@@ -572,6 +661,20 @@ func crossCheckAstigmatism(values map[string]any) []FieldHint {
 		hints = append(hints, FieldHint{Spec: valueKeySpec[key], Status: "conflicting", Stage: "recognition", Strategy: "cross_check", Candidates: 2})
 	}
 	return hints
+}
+
+// vetoInfo records, for a cell the native glyphs vetoed, the OCR value that
+// was rejected and the native reading that contradicted it.
+type vetoInfo struct{ ocr, native float64 }
+
+// resolvedStrategy decides whether a consistency-resolved value may fill a
+// vetoed key: only when it is neither the vetoed value nor a third value but
+// the native reading (two independent readers agree).
+func resolvedStrategy(resolved float64, v vetoInfo) (string, bool) {
+	if resolved == v.ocr || resolved != v.native {
+		return "", false
+	}
+	return "label_anchor+consistency+native", true
 }
 
 // suspectCell is returned as the vote count of a cell that was deliberately not

@@ -1,8 +1,6 @@
 package pentacam
 
 import (
-	"context"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -30,15 +28,7 @@ func checkRealIndices(t *testing.T, field string, want map[string]map[string]any
 		if !ok {
 			continue
 		}
-		data, err := os.ReadFile(f)
-		if err != nil {
-			t.Fatal(err)
-		}
-		exam, err := ExtractPDF(context.Background(), data)
-		if err != nil {
-			t.Errorf("%s %s: %v", folder, eye, err)
-			continue
-		}
+		exam := cachedExtractPDF(t, f)
 		section, _ := exam["topometric_indices_8mm"].(map[string]any)
 		got, present := section[field].(float64)
 		switch e := exp.(type) {

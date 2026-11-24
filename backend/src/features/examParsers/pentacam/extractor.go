@@ -4,6 +4,7 @@ import (
 	"context"
 	"image"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -175,7 +176,7 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 			pageImages[page] = decoded
 		}
 	}
-	anchored, conflicts := readAnchored(executionContext, screensToPages(screens), pageImages)
+	anchored, conflicts, vetoes := readAnchoredNative(executionContext, screensToPages(screens), pageImages, newNativeCtx(data, pageCount, pageImages))
 	executionContext = withDecodedPageImages(executionContext, pages, pageImages)
 
 	var extraHints []FieldHint
@@ -206,7 +207,27 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 		return true
 	}
 
-	read := func(page int, ocrRegion pentacamOCRRegion, documentFields []pentacamDocumentField) error {
+	// provenance: which fallback reader produced each value that no anchored
+	// reading or conflict covers (strategy for the C4 diagnostics only).
+	provenance := map[string]FieldHint{}
+	track := func(strategy string, page int, step func()) {
+		before := make(map[string]any, len(values))
+		for key, value := range values {
+			before[key] = value
+		}
+		step()
+		for key, value := range values {
+			if old, had := before[key]; value == nil || had && old == value {
+				continue
+			}
+			if spec, known := valueKeySpec[key]; known {
+				provenance[key] = FieldHint{Spec: spec, Status: "valid", Stage: "recognition", Strategy: strategy, Page: page}
+			}
+		}
+	}
+
+	var read func(page int, ocrRegion pentacamOCRRegion, documentFields []pentacamDocumentField) error
+	readRaw := func(page int, ocrRegion pentacamOCRRegion, documentFields []pentacamDocumentField) error {
 		if pages[page] == nil {
 			return nil
 		}
@@ -244,6 +265,11 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 			}
 		}
 		return nil
+	}
+
+	read = func(page int, ocrRegion pentacamOCRRegion, documentFields []pentacamDocumentField) (err error) {
+		track("region_text", page, func() { err = readRaw(page, ocrRegion, documentFields) })
+		return err
 	}
 
 	progress.Report(
@@ -296,21 +322,24 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 		{"cki", `\bcki\b`, true},
 	}
 
-	for _, field := range topometricDocumentFields {
-		if hasAll(field.Key) {
-			continue
-		}
-		for _, text := range topometricOCRTexts {
-			if value, ok := parsePentacamFieldTokenFor(field.Key, text, field.Label, field.Decimal); ok {
-				values[field.Key] = value
-				break
+	track("region_text", layout.topometric, func() {
+		for _, field := range topometricDocumentFields {
+			if hasAll(field.Key) {
+				continue
+			}
+			for _, text := range topometricOCRTexts {
+				if value, ok := parsePentacamFieldTokenFor(field.Key, text, field.Label, field.Decimal); ok {
+					values[field.Key] = value
+					break
+				}
 			}
 		}
-	}
+	})
 
 	if !hasAll("ihd") {
 		if value, ok := readPentacamIHDFromRenderedPage(executionContext, pages[layout.topometric]); ok {
 			values["ihd"] = value
+			provenance["ihd"] = FieldHint{Spec: valueKeySpec["ihd"], Status: "valid", Stage: "recognition", Strategy: "ihd_rendered"}
 		}
 	}
 
@@ -394,23 +423,26 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 		"Lendo células numéricas",
 	)
 
-	fillPentacamFocusedCells(executionContext, pages, values, layout, anchored)
+	track("cell_ocr", 0, func() { fillPentacamFocusedCells(executionContext, pages, values, layout, anchored) })
 
 	if _, hasThinnestPachymetry := values["thinnest_um"]; !hasThinnestPachymetry {
 		if value, ok := readPentacamThinnestPachymetryFromRenderedPage(executionContext, pages[layout.pachymetry]); ok {
 			values["thinnest_um"] = value
+			provenance["thinnest_um"] = FieldHint{Spec: valueKeySpec["thinnest_um"], Status: "valid", Stage: "recognition", Strategy: "thinnest_rendered"}
 		}
 	}
 
 	if _, hasThinnestPachymetry := values["thinnest_um"]; !hasThinnestPachymetry {
 		if value, ok := readPentacamThinnestPachymetryAdaptiveFromPage(executionContext, pages[layout.pachymetry]); ok {
 			values["thinnest_um"] = value
+			provenance["thinnest_um"] = FieldHint{Spec: valueKeySpec["thinnest_um"], Status: "valid", Stage: "recognition", Strategy: "thinnest_adaptive"}
 		}
 	}
 
 	if !hasAll("acd_internal_mm") {
 		if value, ok := readPentacamACDFromPage(executionContext, pages[layout.acd]); ok {
 			values["acd_internal_mm"] = value
+			provenance["acd_internal_mm"] = FieldHint{Spec: valueKeySpec["acd_internal_mm"], Status: "valid", Stage: "recognition", Strategy: "acd_rendered"}
 		}
 	}
 
@@ -441,6 +473,7 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 	if !hasAll("bad_d") {
 		if value, ok := readPentacamBADDDeterministicFromPage(executionContext, pages[layout.badd]); ok {
 			values["bad_d"] = value
+			provenance["bad_d"] = FieldHint{Spec: valueKeySpec["bad_d"], Status: "valid", Stage: "recognition", Strategy: "badd_deterministic"}
 		}
 	}
 
@@ -456,6 +489,7 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 	if current, hasK1Value := values["k1_d"]; !hasK1Value || current == nil {
 		if value, ok := readPentacamK1DeterministicFromPage(executionContext, pages[layout.anteriorCornea]); ok {
 			values["k1_d"] = value
+			provenance["k1_d"] = FieldHint{Spec: valueKeySpec["k1_d"], Status: "valid", Stage: "recognition", Strategy: "k1_deterministic"}
 		}
 	}
 
@@ -471,6 +505,7 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 	if current, hasK1Value := values["k1_d"]; !hasK1Value || current == nil {
 		if value, ok := readPentacamK1AdaptiveFromPage(executionContext, pages[layout.anteriorCornea]); ok {
 			values["k1_d"] = value
+			provenance["k1_d"] = FieldHint{Spec: valueKeySpec["k1_d"], Status: "valid", Stage: "recognition", Strategy: "k1_adaptive"}
 		}
 	}
 
@@ -484,6 +519,7 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 	if current, hasInternalChamberDepthValue := values["acd_internal_mm"]; !hasInternalChamberDepthValue || current == nil {
 		if value, ok := readPentacamACDAdaptiveFromPage(executionContext, pages[layout.acd]); ok {
 			values["acd_internal_mm"] = value
+			provenance["acd_internal_mm"] = FieldHint{Spec: valueKeySpec["acd_internal_mm"], Status: "valid", Stage: "recognition", Strategy: "acd_adaptive"}
 		}
 	}
 
@@ -493,6 +529,37 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 		"pentacam",
 		"Pentacam validado",
 	)
+
+	// A key the native glyphs vetoed stays empty whatever a fixed-box or
+	// deterministic reader found, unless that reader agrees with the native
+	// reading that caused the veto (and differs from the vetoed OCR value): two
+	// independent readers then agree. Keys resolved by the consistency pass are
+	// already in anchored.
+	for key, veto := range vetoes {
+		if _, ok := anchored[key]; ok {
+			continue
+		}
+		spec := valueKeySpec[key]
+		if value, ok := values[key].(float64); ok && value != veto.ocr && value == veto.native {
+			hint := provenance[key]
+			hint.Spec, hint.Status, hint.Stage = spec, "valid", "recognition"
+			if hint.Strategy == "" {
+				hint.Strategy = "fixed_box"
+			}
+			hint.Strategy += "+native"
+			provenance[key] = hint
+			kept := conflicts[:0]
+			for _, c := range conflicts {
+				if c.Spec != spec || c.Strategy != "native_veto" {
+					kept = append(kept, c)
+				}
+			}
+			conflicts = kept
+			continue
+		}
+		values[key] = nil
+		delete(provenance, key)
+	}
 
 	conflicts = append(conflicts, crossCheckAstigmatism(values)...)
 
@@ -547,7 +614,28 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 		"cataract_preop": map[string]any{
 			"total_corneal_z40_6mm_um": values["z40_6mm_um"],
 		},
-	}, append(buildHints(screens, anchored, conflicts), extraHints...), nil
+	}, append(append(provenanceHints(provenance, anchored, conflicts), buildHints(screens, anchored, conflicts)...), extraHints...), nil
+}
+
+// provenanceHints turns the fallback-reader strategies into hints, placed before
+// the anchored/conflict hints (the last hint of a spec wins when merged), and
+// skips every spec an anchored reading or a conflict already describes.
+func provenanceHints(provenance map[string]FieldHint, anchored map[string]anchoredValue, conflicts []FieldHint) []FieldHint {
+	covered := map[string]bool{}
+	for _, found := range anchored {
+		covered[found.Hint.Spec] = true
+	}
+	for _, conflict := range conflicts {
+		covered[conflict.Spec] = true
+	}
+	var hints []FieldHint
+	for _, hint := range provenance {
+		if hint.Spec != "" && !covered[hint.Spec] {
+			hints = append(hints, hint)
+		}
+	}
+	sort.Slice(hints, func(a, b int) bool { return hints[a].Spec < hints[b].Spec })
+	return hints
 }
 
 func screensToPages(screens map[Screen]int) map[Screen]int { return screens }

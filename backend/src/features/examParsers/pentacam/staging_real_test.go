@@ -1,15 +1,9 @@
 package pentacam
 
 import (
-	"context"
-	"image"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"refratia/backend/src/shared/ocr"
-	pdfutil "refratia/backend/src/shared/pdf"
 )
 
 // Real documents live in the gitignored frontend/data folder; absent -> skip.
@@ -20,30 +14,15 @@ func TestReadStagingFromRealDocuments(t *testing.T) {
 		t.Skip("no real Pentacam documents available")
 	}
 	for _, f := range files {
-		data, err := os.ReadFile(f)
-		if err != nil {
-			t.Fatal(err)
-		}
-		ctx := context.Background()
-		pages, _, _ := pdfutil.Inspect(ctx, data)
-		screens, _ := DetectScreens(ctx, data, pages)
-		page := screens[ScreenTopometric]
-		rendered, err := pdfutil.RenderPageAtDPI(ctx, data, page, 450)
-		if err != nil {
-			t.Fatal(err)
-		}
-		img, err := ocr.DecodeImage(rendered)
-		if err != nil {
-			t.Fatal(err)
-		}
-		values, _ := readAnchored(ctx, map[Screen]int{ScreenTopometric: page}, map[int]image.Image{page: img})
+		staging, _ := cachedExtractPDF(t, f)["abcd_keratoconus_staging"].(map[string]any)
+		got, _ := staging["staging"].(string)
 		// Printed lines read visually: priscila-neres carries "+" grades (the
 		// device prints no space after a "+"); every other folder prints all zeros.
 		want := "A0 B0 C0 D"
 		if filepath.Base(filepath.Dir(f)) == "priscila-neres" {
 			want = map[bool]string{true: "A3 B4+ C4+ D", false: "A3 B4+ C3 D"}[strings.Contains(filepath.Base(f), " OD ")]
 		}
-		if got := values["abcd_staging"].Text; got != want {
+		if got != want {
 			t.Errorf("%s/%s: staging line %q, want %q", filepath.Base(filepath.Dir(f)), filepath.Base(f), got, want)
 		}
 	}

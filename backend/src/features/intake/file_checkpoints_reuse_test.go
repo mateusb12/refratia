@@ -127,6 +127,7 @@ func TestCheckpointReuse(t *testing.T) {
 		{"previous processor version v6", file, rewriteCheckpoint(func(c *processedFileCheckpoint) { c.ProcessorVersion = "v6" }), "version"},
 		{"previous processor version v7", file, rewriteCheckpoint(func(c *processedFileCheckpoint) { c.ProcessorVersion = "v7" }), "version"},
 		{"previous processor version v8", file, rewriteCheckpoint(func(c *processedFileCheckpoint) { c.ProcessorVersion = "v8" }), "version"},
+		{"previous processor version v9", file, rewriteCheckpoint(func(c *processedFileCheckpoint) { c.ProcessorVersion = "v9" }), "version"},
 		{"incomplete result", file, rewriteCheckpoint(func(c *processedFileCheckpoint) {
 			exam := c.Analysis["exams"].(map[string]any)["fundus_retinography"].(map[string]any)
 			delete(exam["eyes"].(map[string]any)["OD"].(map[string]any), "exam_datetime")
@@ -155,7 +156,7 @@ func TestCheckpointReuse(t *testing.T) {
 // other keys, so the current reader never sees them and re-extracts.
 func TestOlderCheckpointsAreNotReused(t *testing.T) {
 	key := processedFileCheckpointObjectKey(strings.Repeat("ab", 32))
-	for _, old := range []string{"/v6/", "/v7/", "/v8/"} {
+	for _, old := range []string{"/v6/", "/v7/", "/v8/", "/v9/"} {
 		if strings.Contains(key, old) {
 			t.Fatalf("current checkpoint key %q still reads %s objects", key, old)
 		}
