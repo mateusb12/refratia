@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -715,6 +716,17 @@ func (handler Handler) removeSavedExam(
 	analysisKey :=
 		casePrefix + "paciente_compilado.json"
 
+	// A manifest that exists but cannot be read would be left pointing at the
+	// deleted object: fail before touching anything.
+	if manifestReadError != nil && !fileStorage.IsNotFound(manifestReadError) {
+		httpresponse.WriteError(
+			responseWriter,
+			http.StatusBadGateway,
+			"não foi possível ler o manifesto do caso",
+		)
+		return
+	}
+
 	manifestChanged := false
 	deletedExam := ""
 	deletedEye := ""
@@ -935,7 +947,7 @@ func (handler Handler) removeSavedExam(
 	if deleteObjectError != nil {
 		if manifestChanged &&
 			len(originalManifest) > 0 {
-			_, _ = client.PutObject(
+			if _, restoreError := client.PutObject(
 				request.Context(),
 				&s3.PutObjectInput{
 					Bucket: aws.String(bucket),
@@ -949,7 +961,15 @@ func (handler Handler) removeSavedExam(
 						"application/json",
 					),
 				},
-			)
+			); restoreError != nil {
+				log.Printf("exam delete: manifest rollback failed for %s: %v", payload.CaseID, restoreError)
+				httpresponse.WriteError(
+					responseWriter,
+					http.StatusInternalServerError,
+					"não foi possível excluir o arquivo e restaurar o manifesto",
+				)
+				return
+			}
 		}
 
 		httpresponse.WriteError(

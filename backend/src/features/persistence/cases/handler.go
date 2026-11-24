@@ -16,6 +16,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"gorm.io/gorm"
 
 	"refratia/backend/src/shared/database"
@@ -38,14 +39,24 @@ func (handler Handler) ServeCases(responseWriter http.ResponseWriter, request *h
 		httpresponse.WriteError(responseWriter, http.StatusInternalServerError, "storage indisponível")
 		return
 	}
-	listed, listError := client.ListObjectsV2(request.Context(), &s3.ListObjectsV2Input{
-		Bucket:    aws.String(os.Getenv("BUCKET_NAME")),
-		Prefix:    aws.String(fileStorage.CasesPrefix),
-		Delimiter: aws.String("/"),
-	})
-	if listError != nil {
-		httpresponse.WriteError(responseWriter, http.StatusBadGateway, "não foi possível listar os casos")
-		return
+	var commonPrefixes []types.CommonPrefix
+	var continuation *string
+	for {
+		listed, listError := client.ListObjectsV2(request.Context(), &s3.ListObjectsV2Input{
+			Bucket:            aws.String(os.Getenv("BUCKET_NAME")),
+			Prefix:            aws.String(fileStorage.CasesPrefix),
+			Delimiter:         aws.String("/"),
+			ContinuationToken: continuation,
+		})
+		if listError != nil {
+			httpresponse.WriteError(responseWriter, http.StatusBadGateway, "não foi possível listar os casos")
+			return
+		}
+		commonPrefixes = append(commonPrefixes, listed.CommonPrefixes...)
+		if !aws.ToBool(listed.IsTruncated) || listed.NextContinuationToken == nil {
+			break
+		}
+		continuation = listed.NextContinuationToken
 	}
 
 	type storedCase struct {
@@ -53,8 +64,8 @@ func (handler Handler) ServeCases(responseWriter http.ResponseWriter, request *h
 		PatientName string `json:"patientName"`
 		AnalysisKey string `json:"analysisKey"`
 	}
-	cases := make([]storedCase, 0, len(listed.CommonPrefixes))
-	for _, prefix := range listed.CommonPrefixes {
+	cases := make([]storedCase, 0, len(commonPrefixes))
+	for _, prefix := range commonPrefixes {
 		casePrefix := aws.ToString(prefix.Prefix)
 		caseID := strings.TrimSuffix(strings.TrimPrefix(casePrefix, fileStorage.CasesPrefix), "/")
 		analysisKey := casePrefix + "paciente_compilado.json"

@@ -34,6 +34,9 @@ type Config struct {
 	Name          string
 	SSLMode       string
 	AdminDatabase string
+	// ExplicitName is POSTGRES_DB exactly as set (empty when unset), so a
+	// conflicting DATABASE_URL can be told apart from the default name.
+	ExplicitName string
 }
 
 // ConfigFromEnv loads the same environment contract used by wallet-analysis.
@@ -48,7 +51,32 @@ func ConfigFromEnv() Config {
 		Name:          envOrDefault("POSTGRES_DB", defaultDatabase),
 		SSLMode:       envOrDefault("POSTGRES_SSLMODE", "disable"),
 		AdminDatabase: envOrDefault("POSTGRES_ADMIN_DB", defaultAdminDatabase),
+		ExplicitName:  os.Getenv("POSTGRES_DB"),
 	}
+}
+
+// resolved makes DATABASE_URL and POSTGRES_DB agree on one database name.
+// Production once ran with DATABASE_URL=.../postgres and POSTGRES_DB=refratia:
+// EnsureDatabase prepared "refratia" while every read and write went to
+// "postgres", so SQL rows were split across two databases without any error.
+// A conflict is refused instead of silently picking one side.
+func (config Config) resolved() (Config, error) {
+	if config.URL == "" {
+		return config, nil
+	}
+	parsed, err := url.Parse(config.URL)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return config, fmt.Errorf("invalid DATABASE_URL")
+	}
+	urlName := strings.TrimPrefix(parsed.Path, "/")
+	if urlName == "" {
+		return config, fmt.Errorf("DATABASE_URL must name a database")
+	}
+	if config.ExplicitName != "" && config.ExplicitName != urlName {
+		return config, fmt.Errorf("DATABASE_URL selects database %q but POSTGRES_DB is %q; refusing to start until both name the same database", urlName, config.ExplicitName)
+	}
+	config.Name = urlName
+	return config, nil
 }
 
 // DB is the small persistence seam used by the backend. Its Query and Exec
@@ -60,7 +88,10 @@ type DB struct {
 
 // Open ensures the configured database exists, then opens and pings a pool.
 func Open(ctx context.Context) (*DB, error) {
-	config := ConfigFromEnv()
+	config, err := ConfigFromEnv().resolved()
+	if err != nil {
+		return nil, err
+	}
 	if err := EnsureDatabase(ctx, config); err != nil {
 		return nil, err
 	}

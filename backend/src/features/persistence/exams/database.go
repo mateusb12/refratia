@@ -134,24 +134,33 @@ func (handler Handler) ServeConfirm(responseWriter http.ResponseWriter, request 
 		return
 	}
 
-	// revert removes the just-uploaded object when it cannot be committed.
+	// revert removes the just-uploaded object when it cannot be committed,
+	// but never one the case manifest references (referenced is set once the
+	// manifest has been read).
+	referenced := false
 	revert := func(status int, message string) {
+		if referenced {
+			httpresponse.WriteError(responseWriter, status, message+"; arquivo mantido")
+			return
+		}
 		fileStorage.CleanupObjects(request.Context(), client, []string{payload.Path})
-		httpresponse.WriteError(responseWriter, status, message)
+		httpresponse.WriteError(responseWriter, status, message+"; arquivo revertido")
 	}
 
 	metadata, manifestErr := examMetadataFromManifest(request, client, bucket, payload.CaseID, payload.Path)
 	if manifestErr != nil {
 		if fileStorage.IsNotFound(manifestErr) {
-			revert(http.StatusNotFound, "caso não encontrado; arquivo revertido")
+			revert(http.StatusNotFound, "caso não encontrado")
 		} else {
-			revert(http.StatusBadGateway, "não foi possível ler o caso; arquivo revertido")
+			// Cannot prove the object is unreferenced: delete nothing.
+			httpresponse.WriteError(responseWriter, http.StatusBadGateway, "não foi possível ler o caso; arquivo mantido")
 		}
 		return
 	}
+	referenced = metadata.referenced
 	// Identidade validada antes de qualquer escrita em SQL.
 	if _, _, _, identityErr := patientfeature.IdentityFromAnalysis(metadata.analysis); identityErr != nil {
-		revert(http.StatusUnprocessableEntity, "paciente do caso sem nome ou data de nascimento confiáveis; arquivo revertido")
+		revert(http.StatusUnprocessableEntity, "paciente do caso sem nome ou data de nascimento confiáveis")
 		return
 	}
 
@@ -200,9 +209,9 @@ func (handler Handler) ServeConfirm(responseWriter http.ResponseWriter, request 
 	})
 	if transactionError != nil {
 		if errors.Is(transactionError, patientfeature.ErrIdentity) {
-			revert(http.StatusUnprocessableEntity, "paciente do caso sem nome ou data de nascimento confiáveis; arquivo revertido")
+			revert(http.StatusUnprocessableEntity, "paciente do caso sem nome ou data de nascimento confiáveis")
 		} else {
-			revert(http.StatusInternalServerError, "não foi possível salvar os metadados; arquivo revertido")
+			revert(http.StatusInternalServerError, "não foi possível salvar os metadados")
 		}
 		return
 	}
