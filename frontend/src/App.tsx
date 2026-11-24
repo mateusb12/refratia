@@ -37,7 +37,8 @@ import BenchmarkOcrPage from './components/benchmark/BenchmarkOcrPage'
 import SavedExamsPage from './components/storage/SavedExamsPage'
 import ProtocolPage from './components/protocol/ProtocolPage'
 import { normalizeSavedAnalysis, type IntakeAnalysis } from './contracts/patient-analysis'
-import { calculateAge, formatBirthDate, formatDateLongPtBR } from './utils/date'
+import { formatBirthDate, formatDateLongPtBR } from './utils/date'
+import { birthDateInversion, clinicalFlowForAnalysis, flowLabel, keratoconusForAnalysis } from './utils/clinicalFlow'
 
 type Theme = 'light' | 'dark'
 type CaseKind = 'demo' | 'real'
@@ -113,20 +114,12 @@ function examLabelFromSource(source: string) {
 
 function reportHeaderSummary(data: ReportData) {
   const raw = data as any
-  const patient = raw.patient ?? {}
   const verification = Array.isArray(raw.verificacao_identidade) ? raw.verificacao_identidade : []
   const timestamps = verification
     .map((entry: any) => ({ source: String(entry?.source ?? ''), date: formatDateLongPtBR(entry?.timestamp_lido) }))
     .filter((entry: { source: string; date: string }) => entry.date !== 'não informado')
-  const referenceDate = verification.find((entry: any) => entry?.timestamp_lido)?.timestamp_lido ?? raw.generated_on
-  const age = calculateAge(patient.birth_date, referenceDate)
-  const flow = age === null
-    ? 'não informado'
-    : age >= 55
-      ? `Fluxo C — 55 anos ou mais (${age} anos)`
-      : age >= 40
-        ? `Fluxo B — 40 a 54 anos (${age} anos)`
-        : `Fluxo A — menos de 40 anos (${age} anos)`
+  const { age, flow: clinicalFlow } = clinicalFlowForAnalysis(raw)
+  const flow = flowLabel(clinicalFlow, age)
   const refraction = raw.exams?.refractometry?.eyes ?? {}
   const formatEyeRefraction = (eye: string) => {
     const value = refraction[eye]
@@ -137,6 +130,10 @@ function reportHeaderSummary(data: ReportData) {
   const identity = identityGaps.includes('patient_identity')
     ? 'Revisar identidade'
     : verification.length > 0 ? `Confirmada por ${verification.length} documento(s)` : 'Sem evidência documental'
+  const inversion = birthDateInversion(raw)
+  const identityLine = inversion && identity !== 'Revisar identidade'
+    ? `${identity}. ${inversionText(inversion)}`
+    : identity
   const uniqueDates = [...new Set(timestamps.map((entry: { source: string; date: string }) => `${examLabelFromSource(entry.source)}: ${entry.date}`))]
 
   return {
@@ -146,8 +143,14 @@ function reportHeaderSummary(data: ReportData) {
       ? uniqueDates.join('\n')
       : `Análise: ${formatDateLongPtBR(raw.generated_on)}`,
     refraction: `${formatEyeRefraction('OD')} · ${formatEyeRefraction('OS')}`,
-    identity,
+    identity: identityLine,
   }
+}
+
+function inversionText(inversion: NonNullable<ReturnType<typeof birthDateInversion>>) {
+  const base = 'Datas de nascimento divergem entre documentos por inversão dia/mês, compatível com diferença de formato entre equipamentos — tratadas como mesmo paciente. Conferir se necessário.'
+  if (!inversion.changesFlow) return base
+  return `${base} Leitura do Pentacam: ${formatBirthDate(inversion.pentacamReading)} → ${flowLabel(inversion.flow, inversion.age)}. Leitura invertida: ${formatBirthDate(inversion.otherReading)} → ${flowLabel(inversion.otherFlow, inversion.otherAge)}. Fluxo aplicado pela leitura do Pentacam (item 45g), sem bloqueio.`
 }
 
 function ReportHeaderSummary({ data }: { data: ReportData }) {
@@ -911,6 +914,16 @@ function RealCaseSummary({ data }: { data: ReportData }) {
     }
   })
 
+  const { age, flow } = clinicalFlowForAnalysis(data)
+  const flowNotice = flow === 'out_of_scope'
+    ? 'Fora do escopo do protocolo (menor de 18 anos). Nenhum fluxo se aplica.'
+    : flow === 'A' || flow === 'B'
+      ? `A cascata de decisão do Fluxo ${flow} não é automatizada nesta tela. Avalie manualmente conforme o protocolo; nenhuma recomendação é emitida aqui.`
+      : 'Idade não determinada: revise a identidade e a data do exame Pentacam. Nenhum fluxo foi escolhido.'
+  const ageText = age === null ? 'Paciente com idade não informada' : `Paciente com ${age} anos`
+  const keratoconus = keratoconusForAnalysis(data)
+  const tkcStatus = keratoconus.status
+
   const hasEndothelialAlert = eyes.some(
     ({ endothelialDensity }) => endothelialDensity < endothelialCutoff,
   )
@@ -934,14 +947,16 @@ function RealCaseSummary({ data }: { data: ReportData }) {
       <div aria-label="Fluxograma da decisão do protocolo" className="mt-6">
         <div className="mx-auto max-w-[760px] rounded-xl border border-primary bg-primary-soft p-4">
           <span className="text-xs font-bold tracking-[0.12em] text-primary">INÍCIO</span>
-          <strong className="mt-1 block text-base">Idade: 59 anos → o protocolo escolhe o Fluxo C</strong>
-          <span className="mt-1 block text-xs text-text-secondary">Regra: acima de 55 anos, LASIK e PRK não entram na cascata.</span>
+          <strong className="mt-1 block text-base">
+            {age === null ? 'Idade: não informada' : `Idade: ${age} anos`} → {flow === 'out_of_scope' ? 'fora do escopo do protocolo' : flow ? `o protocolo escolhe o Fluxo ${flow}` : 'nenhum fluxo escolhido'}
+          </strong>
+          {flow === 'C' && <span className="mt-1 block text-xs text-text-secondary">Regra: a partir de 55 anos, LASIK e PRK não entram na cascata.</span>}
         </div>
 
         <FlowConnector variant="to-active" />
 
         <div className="grid grid-cols-3 gap-3 max-[820px]:grid-cols-1">
-          <article className="min-h-[190px] rounded-xl border border-border bg-surface-muted p-4 text-text-muted" title="Aplicável apenas a pacientes com menos de 40 anos.">
+          <article className="min-h-[190px] rounded-xl border border-border bg-surface-muted p-4 text-text-muted" title="Aplicável a pacientes de 18 a 39 anos.">
             <span className="text-xs font-bold tracking-[0.12em]">FLUXO A</span>
             <h3 className="mb-0 mt-1 text-base font-bold">Córnea ou lente fácica</h3>
 
@@ -951,22 +966,25 @@ function RealCaseSummary({ data }: { data: ReportData }) {
                   Regra do fluxo
                 </span>
                 <strong className="mt-1 block text-sm text-text-secondary">
-                  Idade &lt; 40 anos
+                  Idade entre 18 e 39 anos
                 </strong>
               </div>
 
-              <div className="rounded-lg bg-warning-soft/40 px-3 py-2">
-                <span className="block text-[10px] font-bold uppercase tracking-[0.10em] text-warning">
-                  Não escolhido
-                </span>
-                <strong className="mt-1 block text-sm text-text-primary">
-                  Paciente com 59 anos
-                </strong>
-              </div>
+              {flow === 'A' ? (
+                <div className="rounded-lg bg-success-soft px-3 py-2">
+                  <span className="block text-[10px] font-bold uppercase tracking-[0.10em] text-success">ROTA ATIVA · FLUXO A</span>
+                  <strong className="mt-1 block text-sm text-text-primary">{ageText}</strong>
+                </div>
+              ) : (
+                <div className="rounded-lg bg-warning-soft/40 px-3 py-2">
+                  <span className="block text-[10px] font-bold uppercase tracking-[0.10em] text-warning">Não escolhido</span>
+                  <strong className="mt-1 block text-sm text-text-primary">{ageText}</strong>
+                </div>
+              )}
             </div>
           </article>
 
-          <article className="min-h-[190px] rounded-xl border border-border bg-surface-muted p-4 text-text-muted" title="Aplicável a pacientes entre 40 e 55 anos.">
+          <article className="min-h-[190px] rounded-xl border border-border bg-surface-muted p-4 text-text-muted" title="Aplicável a pacientes de 40 a 54 anos.">
             <span className="text-xs font-bold tracking-[0.12em]">FLUXO B</span>
             <h3 className="mb-0 mt-1 text-base font-bold">Presbiopia</h3>
 
@@ -976,33 +994,46 @@ function RealCaseSummary({ data }: { data: ReportData }) {
                   Regra do fluxo
                 </span>
                 <strong className="mt-1 block text-sm text-text-secondary">
-                  Idade entre 40 e 55 anos
+                  Idade entre 40 e 54 anos
                 </strong>
               </div>
 
-              <div className="rounded-lg bg-warning-soft/40 px-3 py-2">
-                <span className="block text-[10px] font-bold uppercase tracking-[0.10em] text-warning">
-                  Não escolhido
-                </span>
-                <strong className="mt-1 block text-sm text-text-primary">
-                  Paciente com 59 anos
-                </strong>
-              </div>
+              {flow === 'B' ? (
+                <div className="rounded-lg bg-success-soft px-3 py-2">
+                  <span className="block text-[10px] font-bold uppercase tracking-[0.10em] text-success">ROTA ATIVA · FLUXO B</span>
+                  <strong className="mt-1 block text-sm text-text-primary">{ageText}</strong>
+                </div>
+              ) : (
+                <div className="rounded-lg bg-warning-soft/40 px-3 py-2">
+                  <span className="block text-[10px] font-bold uppercase tracking-[0.10em] text-warning">Não escolhido</span>
+                  <strong className="mt-1 block text-sm text-text-primary">{ageText}</strong>
+                </div>
+              )}
             </div>
           </article>
 
-          <article className="min-h-[134px] rounded-xl border border-success/40 bg-success-soft p-4 shadow-sm">
+          <article className={clsx('min-h-[134px] rounded-xl border p-4', flow === 'C' ? 'border-success/40 bg-success-soft shadow-sm' : 'border-border bg-surface-muted text-text-muted')}>
             <div className="flex items-start justify-between gap-3">
               <div>
-                <span className="text-xs font-bold tracking-[0.12em] text-success">ROTA ATIVA · FLUXO C</span>
+                <span className={clsx('text-xs font-bold tracking-[0.12em]', flow === 'C' && 'text-success')}>{flow === 'C' ? 'ROTA ATIVA · FLUXO C' : 'FLUXO C'}</span>
                 <h3 className="mb-0 mt-1 text-base font-bold">LIO multifocal ou EDOF</h3>
               </div>
-              <StatusBadge tone="success"><Check size={12} /> Selecionado</StatusBadge>
+              {flow === 'C' && <StatusBadge tone="success"><Check size={12} /> Selecionado</StatusBadge>}
             </div>
-            <p className="mb-0 mt-2 text-xs leading-relaxed text-text-secondary">A idade define a categoria da indicação. A escolha entre multifocal e EDOF fica com o cirurgião.</p>
+            {flow === 'C'
+              ? <p className="mb-0 mt-2 text-xs leading-relaxed text-text-secondary">A idade define a categoria da indicação. A escolha entre multifocal e EDOF fica com o cirurgião.</p>
+              : <p className="mb-0 mt-2 text-xs font-bold text-warning">Não escolhido · {ageText}</p>}
           </article>
         </div>
 
+        {flow !== 'C' && (
+          <div className="mx-auto mt-6 max-w-[760px] rounded-xl border border-warning/50 bg-warning-soft p-5" role="status">
+            <span className="text-xs font-bold tracking-[0.12em] text-warning">SEM RECOMENDAÇÃO AUTOMÁTICA</span>
+            <p className="mb-0 mt-2 text-sm leading-relaxed text-text-primary">{flowNotice}</p>
+          </div>
+        )}
+        {flow === 'C' && (
+<>
         <FlowConnector variant="to-center" className="max-[820px]:hidden" />
         <FlowConnector variant="straight" className="hidden max-[820px]:block" />
 
@@ -1012,12 +1043,17 @@ function RealCaseSummary({ data }: { data: ReportData }) {
               <span className="text-xs font-bold tracking-[0.12em] text-primary">DECISÃO AVALIADA</span>
               <h3 className="mb-0 mt-1 text-[1.05rem] font-bold">Há ceratocone confirmado?</h3>
             </div>
-            <StatusBadge tone="success"><Check size={12} /> Não</StatusBadge>
+            {tkcStatus === 'classified'
+              ? <StatusBadge tone="warning">Sim</StatusBadge>
+              : tkcStatus === 'not_classified'
+                ? <StatusBadge tone="success"><Check size={12} /> Não</StatusBadge>
+                : <StatusBadge tone="warning">Indeterminado — TKC não lido</StatusBadge>}
           </div>
 
           <div className="mt-4 grid grid-cols-2 gap-4 max-[640px]:grid-cols-1">
             {eyes.map(({ eye, badD, artMax, tkc }) => {
-              const suspicious = eye === 'OS'
+              const eyeStatus = keratoconus.eyes[eye]
+              const suspicious = eyeStatus === 'classified'
               return (
                 <div className="rounded-xl border border-border bg-surface-muted p-4" key={eye}>
                   <div className="flex items-start justify-between gap-3">
@@ -1028,7 +1064,7 @@ function RealCaseSummary({ data }: { data: ReportData }) {
                         suspicious ? 'bg-warning-soft/60 text-warning' : 'bg-surface text-text-secondary',
                       )}
                     >
-                      {suspicious ? 'Índices suspeitos' : 'Sem confirmação'}
+                      {suspicious ? 'TKC classificado' : eyeStatus === 'not_classified' ? 'Sem TKC classificado' : 'TKC não lido'}
                     </span>
                   </div>
 
@@ -1045,7 +1081,7 @@ function RealCaseSummary({ data }: { data: ReportData }) {
 
                     <div className="grid grid-cols-[88px_1fr] items-center gap-3">
                       <span className="text-text-muted">TKC</span>
-                      <strong className="text-text-primary">{tkc ?? 'em branco'}</strong>
+                      <strong className="text-text-primary">{keratoconus.eyes[eye] === 'classified' ? tkc : keratoconus.eyes[eye] === 'not_classified' ? 'não classificado como ceratocone' : 'não avaliado — exame pendente'}</strong>
                     </div>
                   </div>
 
@@ -1055,7 +1091,7 @@ function RealCaseSummary({ data }: { data: ReportData }) {
                       suspicious ? 'bg-warning-soft/40 text-warning' : 'bg-surface text-text-secondary',
                     )}
                   >
-                    {suspicious ? 'Índices suspeitos; acompanhar' : 'Sem confirmação de ceratocone'}
+                    {suspicious ? 'Ceratocone classificado (TKC)' : eyeStatus === 'not_classified' ? 'Não classificado como ceratocone' : 'Indeterminado — TKC não lido'}
                   </div>
                 </div>
               )
@@ -1063,23 +1099,27 @@ function RealCaseSummary({ data }: { data: ReportData }) {
           </div>
 
           <p className="mb-0 mt-4 text-sm leading-relaxed text-text-secondary">
-            Sem TKC positivo, a regra global não exclui a indicação. O alerta do OE segue registrado, mas não muda a rota.
+            {tkcStatus === 'classified'
+              ? 'TKC classificado em pelo menos um olho: a regra 2.1 fecha a cascata para o paciente.'
+              : tkcStatus === 'not_classified'
+                ? 'Nenhum TKC classificado: a regra global não exclui a indicação.'
+                : 'TKC não lido ou ilegível: ceratocone indeterminado (não equivale a "Não"). O rastreio da regra 2.1 não foi concluído; confira a tela do Pentacam.'}
           </p>
 
           <div className="mt-4 grid grid-cols-2 gap-4 max-[640px]:grid-cols-1">
             <div
               className="min-h-[120px] rounded-xl border border-border bg-surface-muted p-4"
-              title="Com ceratocone confirmado, o Fluxo C mantém a indicação de LIO e registra a observação."
+              title="Regra 2.1: TKC classificado encerra a cascata."
             >
               <strong className="block text-sm text-text-secondary">Sim</strong>
               <p className="mb-0 mt-2 text-sm leading-relaxed text-text-secondary">
-                Registrar ceratocone; LIO permanece indicada no Fluxo C.
+                Cascata encerrada (regra 2.1); encaminhar a especialista em córnea.
               </p>
             </div>
 
-            <div className="min-h-[120px] rounded-xl border border-success/40 bg-success-soft p-4">
-              <span className="flex items-center gap-1 text-sm font-bold text-success">
-                <Check size={14} /> Não · rota escolhida
+            <div className={clsx('min-h-[120px] rounded-xl border p-4', tkcStatus === 'not_classified' ? 'border-success/40 bg-success-soft' : 'border-border bg-surface-muted')}>
+              <span className={clsx('flex items-center gap-1 text-sm font-bold', tkcStatus === 'not_classified' ? 'text-success' : 'text-text-secondary')}>
+                {tkcStatus === 'not_classified' ? <><Check size={14} /> Não · rota escolhida</> : tkcStatus === 'unknown' ? 'Indeterminado — TKC não lido' : 'Não'}
               </span>
               <p className="mb-0 mt-2 text-base font-semibold text-text-primary">
                 Seguir para a escolha da lente
@@ -1088,6 +1128,8 @@ function RealCaseSummary({ data }: { data: ReportData }) {
           </div>
         </article>
 
+        {tkcStatus === 'not_classified' && (
+<>
         <FlowConnector
           variant="from-right"
           className="mx-auto max-w-[760px] max-[580px]:hidden"
@@ -1514,8 +1556,25 @@ function RealCaseSummary({ data }: { data: ReportData }) {
           </div>
           <p className="mb-0 mt-3 text-xs text-text-muted">O OCT de retina não foi enviado, mas é informativo neste fluxo e não altera a indicação.</p>
         </details>
+</>
+        )}
+        {tkcStatus === 'unknown' && (
+          <div className="mx-auto mt-6 max-w-[760px] rounded-xl border border-warning/50 bg-warning-soft p-5" role="status">
+            <span className="text-xs font-bold tracking-[0.12em] text-warning">PENDENTE</span>
+            <p className="mb-0 mt-2 text-sm leading-relaxed text-text-primary">TKC não lido em pelo menos um olho: o rastreio de ceratocone (regra 2.1) não pôde ser concluído. Conduta pendente até conferir a tela do Pentacam; nenhuma LIO é indicada automaticamente.</p>
+          </div>
+        )}
+        {tkcStatus === 'classified' && (
+          <div className="mx-auto mt-6 max-w-[760px] rounded-xl border border-warning/50 bg-warning-soft p-5" role="status">
+            <span className="text-xs font-bold tracking-[0.12em] text-warning">REGRA 2.1</span>
+            <p className="mb-0 mt-2 text-sm leading-relaxed text-text-primary">Regra 2.1: TKC classificado — cascata encerrada; encaminhamento a especialista em córnea (avaliação para anel intraestromal). Nenhuma LIO é indicada automaticamente.</p>
+          </div>
+        )}
+</>
+        )}
       </div>
 
+      {flow === 'C' && tkcStatus === 'not_classified' && (
       <div className="mt-6 rounded-xl border border-primary bg-sidebar px-5 py-5 text-sidebar-text">
         <span className="text-xs font-bold tracking-[0.12em] text-[#79d4b7]">
           VEREDITO DO PROTOCOLO
@@ -1541,6 +1600,7 @@ function RealCaseSummary({ data }: { data: ReportData }) {
           Resultado preliminar do protocolo — decisão final do médico cirurgião.
         </p>
       </div>
+      )}
     </section>
   )
 }
