@@ -22,6 +22,7 @@ import (
 var specJSON []byte
 
 type fieldSpec struct {
+	Unit            string      `json:"unit"`
 	Kind            string      `json:"kind"`
 	DecimalsPrinted *int        `json:"decimals_printed"`
 	PlausibleRange  *[2]float64 `json:"plausible_range"`
@@ -240,6 +241,33 @@ func ValidateEyes(fileSHA256, examKey string, exam map[string]any, eyeNames []st
 			out = append(out, d)
 		}
 	}
+	return out
+}
+
+// Field is one storable spec field of an exam: its spec name, kind, unit,
+// printed decimals and its canonical app path below eyes/<EYE>.
+type Field struct {
+	Name     string
+	Kind     string
+	Unit     string
+	Decimals int
+	Path     []string
+}
+
+// Fields lists, sorted by name, the spec fields of examKey that the app can
+// store (fields without an app path are skipped).
+func Fields(examKey string) []Field {
+	out := []Field{}
+	for name, spec := range specs.Fields[examKey] {
+		for _, p := range spec.AppPaths {
+			if len(p) < 5 || p[2] != "eyes" || p[3] != "<EYE>" {
+				continue
+			}
+			out = append(out, Field{Name: name, Kind: spec.Kind, Unit: spec.Unit, Decimals: decimals(spec), Path: p[4:]})
+			break
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out
 }
 

@@ -34,6 +34,7 @@ func Routes(sqlDatabase *gorm.DB) http.Handler {
 	router.HandleFunc("/api/exams/confirm", examHandler.ServeConfirm)
 	router.HandleFunc("/api/file-checkpoints/check", intake.CheckFileCheckpoints)
 	router.HandleFunc("/api/intakes/analyze", runs.Audit("analyze", intakeHandler.AnalyzeIntake))
+	router.HandleFunc("/api/intakes/engines", intake.ExtractionEnginesHandler)
 	router.HandleFunc("/api/intakes/inspect", runs.Audit("inspect", intake.InspectIntakeHandler))
 	router.HandleFunc("/api/benchmark/extract-fields", benchmark.ExtractFieldsHandler)
 	router.HandleFunc("/api/intakes/confirm", runs.Audit("confirm", intakeHandler.ConfirmIntake))

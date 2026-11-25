@@ -21,6 +21,15 @@ interface SavedCase {
   analysisKey?: string
 }
 
+export type ExtractionEngine = 'ocr' | 'claude'
+
+export interface ClaudeEngineStatus {
+  available: boolean
+  mode?: 'live' | 'fixture'
+  model?: string
+  reason?: string
+}
+
 interface UseIntakeWorkflowOptions {
   apiUrl: string
   onCaseConfirmed: (newCase: SavedCase) => void
@@ -58,6 +67,25 @@ export function useIntakeWorkflow({
   const intakeCheckpointRequestId = useRef(0)
   const [intakeElapsed, setIntakeElapsed] = useState(0)
   const [intakeMessage, setIntakeMessage] = useState('')
+  const [extractionEngine, setExtractionEngine] = useState<ExtractionEngine>('ocr')
+  const [claudeStatus, setClaudeStatus] = useState<ClaudeEngineStatus | null>(null)
+  // Identity typed by the operator: the anonymized documents do not carry it and it is never sent to Claude.
+  const [claudeIdentity, setClaudeIdentity] = useState({ fullName: '', birthDate: '' })
+  const claudeIdentityComplete = claudeIdentity.fullName.trim() !== '' && /^\d{4}-\d{2}-\d{2}$/.test(claudeIdentity.birthDate)
+
+  useEffect(() => {
+    if (!apiUrl) return
+    fetch(`${apiUrl}/api/intakes/engines`)
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`)
+        const body = await response.json() as { claude?: ClaudeEngineStatus }
+        setClaudeStatus(body.claude ?? { available: false, reason: 'resposta sem o motor claude' })
+      })
+      .catch((error: unknown) => setClaudeStatus({
+        available: false,
+        reason: `não foi possível consultar /api/intakes/engines (${error instanceof Error ? error.message : String(error)})`,
+      }))
+  }, [apiUrl])
 
   const intakeClassificationComplete = intakeFiles.length > 0 && Object.values(intakeClassifications)
     .filter((item) => item.examType && item.eye).length === intakeFiles.length
@@ -241,6 +269,15 @@ export function useIntakeWorkflow({
       return
     }
 
+    if (extractionEngine === 'claude' && !claudeStatus?.available) {
+      setIntakeMessage(`Claude Vision indisponível: ${claudeStatus?.reason ?? 'configuração não verificada'}`)
+      return
+    }
+    if (extractionEngine === 'claude' && !claudeIdentityComplete) {
+      setIntakeMessage('Claude Vision: informe nome e data de nascimento do paciente (os documentos anonimizados não os contêm).')
+      return
+    }
+
     setIntakeProgress(1)
     setIntakeProgressStage('upload')
     setIntakeProgressMessage('Enviando documentos')
@@ -249,6 +286,11 @@ export function useIntakeWorkflow({
 
     const body = new FormData()
     intakeFiles.forEach((file) => body.append('files', file))
+    body.append('engine', extractionEngine)
+    if (extractionEngine === 'claude') {
+      body.append('patientName', claudeIdentity.fullName.trim())
+      body.append('patientBirthDate', claudeIdentity.birthDate)
+    }
     body.append('classifications', JSON.stringify(Object.values(intakeClassifications).filter((item) => item.examType && item.eye)))
     body.append('processFiles', JSON.stringify(
       intakeFiles
@@ -378,6 +420,12 @@ export function useIntakeWorkflow({
   }
 
   return {
+    claudeIdentity,
+    claudeIdentityComplete,
+    claudeStatus,
+    extractionEngine,
+    setClaudeIdentity,
+    setExtractionEngine,
     intakeAbortController,
     intakeBusy,
     identityReview,

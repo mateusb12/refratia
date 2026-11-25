@@ -214,6 +214,31 @@ func (handler Handler) AnalyzeIntake(responseWriter http.ResponseWriter, request
 		return
 	}
 
+	// Extraction engine: OCR (default) or the optional Claude Vision demo, which
+	// needs the patient identity from the operator (the documents are anonymized).
+	engine := request.FormValue("engine")
+	var localIdentity LocalIdentity
+	switch engine {
+	case "", "ocr":
+		engine = "ocr"
+	case "claude":
+		if status := claudeVisionStatus(); !status.Available {
+			httpresponse.WriteError(responseWriter, http.StatusServiceUnavailable, "Claude Vision indisponível: "+status.Reason)
+			return
+		}
+		localIdentity = LocalIdentity{
+			FullName:  strings.TrimSpace(request.FormValue("patientName")),
+			BirthDate: strings.TrimSpace(request.FormValue("patientBirthDate")),
+		}
+		if _, err := time.Parse("2006-01-02", localIdentity.BirthDate); err != nil || localIdentity.FullName == "" {
+			httpresponse.WriteError(responseWriter, http.StatusUnprocessableEntity, "Claude Vision: informe nome e data de nascimento (AAAA-MM-DD) do paciente; os documentos anonimizados não os contêm")
+			return
+		}
+	default:
+		httpresponse.WriteError(responseWriter, http.StatusBadRequest, "motor de extração desconhecido")
+		return
+	}
+
 	if !hasCompleteOpticalBiometry(files) {
 		httpresponse.WriteError(
 			responseWriter,
@@ -298,10 +323,16 @@ func (handler Handler) AnalyzeIntake(responseWriter http.ResponseWriter, request
 	)
 
 	phases.Next("extract")
-	analysis, extractionErr := extractPatient(
-		progress.WithRange(requestContext, 8, 88),
-		files,
-	)
+	var analysis map[string]any
+	var extractionErr error
+	if engine == "claude" {
+		analysis, extractionErr = extractPatientClaude(progress.WithRange(requestContext, 8, 88), files, localIdentity)
+	} else {
+		analysis, extractionErr = extractPatient(
+			progress.WithRange(requestContext, 8, 88),
+			files,
+		)
+	}
 
 	if extractionErr != nil {
 		fail(

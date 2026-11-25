@@ -159,7 +159,17 @@ export default function NewAnalysisPage({
     setIntakeMessage,
     setIntakeProcessFiles,
     setIntakePreview,
+    claudeIdentity,
+    claudeIdentityComplete,
+    claudeStatus,
+    extractionEngine,
+    setClaudeIdentity,
+    setExtractionEngine,
   } = intake
+  const claudeSelected = extractionEngine === 'claude'
+  const engineLabel = claudeSelected
+    ? `Claude Vision — Demo${claudeStatus?.mode === 'fixture' ? ' (resposta gravada, sem chamada à API)' : claudeStatus?.model ? ` (${claudeStatus.model})` : ''}`
+    : 'OCR existente (Tesseract)'
 
   return (
             <div className={visible ? undefined : 'hidden'}>
@@ -263,7 +273,8 @@ export default function NewAnalysisPage({
                               : intakeBusy ||
                                 intakeCheckpointBusy ||
                                 !intakeClassificationComplete ||
-                                !opticalBiometryComplete
+                                !opticalBiometryComplete ||
+                                (claudeSelected && (!claudeStatus?.available || !claudeIdentityComplete))
                           }
                           onClick={() => {
                             if (workflowStep < 3) {
@@ -317,7 +328,68 @@ export default function NewAnalysisPage({
                       </p>
                     )}
 
-                    {intakeClassificationComplete && (
+                    <fieldset className="mt-4 rounded-xl border border-border bg-surface-muted/40 p-4" disabled={intakeBusy}>
+                      <legend className="px-1 text-xs font-bold uppercase tracking-[0.12em] text-text-secondary">Motor de extração</legend>
+                      <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Motor de extração">
+                        {([
+                          ['ocr', 'Existing OCR', true],
+                          ['claude', 'Claude Vision — Demo', Boolean(claudeStatus?.available)],
+                        ] as const).map(([value, label, enabled]) => (
+                          <button
+                            aria-checked={extractionEngine === value}
+                            className={clsx(
+                              'rounded-xl border px-4 py-2 text-sm font-bold',
+                              extractionEngine === value ? 'border-primary bg-primary text-white' : 'border-border bg-surface text-text-primary hover:border-primary',
+                              !enabled && 'cursor-not-allowed opacity-50',
+                            )}
+                            disabled={!enabled}
+                            key={value}
+                            onClick={() => setExtractionEngine(value)}
+                            role="radio"
+                            type="button"
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                      {!claudeStatus?.available && (
+                        <p className="mb-0 mt-2 text-xs text-warning" role="status">
+                          Claude Vision indisponível: {claudeStatus?.reason ?? 'verificando configuração do backend…'}
+                        </p>
+                      )}
+                      {claudeSelected && (
+                        <div className="mt-3 grid gap-3">
+                          <p className="m-0 text-xs text-text-secondary">
+                            Somente PDFs gerados e liberados por <code>frontend/scripts/anonymize_exams.py</code> são aceitos; documentos originais são recusados pelo backend.
+                            {claudeStatus?.mode === 'fixture' && ' Modo fixture: a resposta gravada do Claude é reproduzida sem chamar a API.'}
+                          </p>
+                          <p className="m-0 text-xs text-text-secondary">
+                            Identificação do paciente (contexto local autorizado; não é enviada ao Claude):
+                          </p>
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            <label className="grid gap-1 text-xs font-semibold">
+                              Nome completo
+                              <input
+                                className="rounded-lg border border-border bg-surface px-3 py-2 text-sm"
+                                onChange={(event) => setClaudeIdentity((current) => ({ ...current, fullName: event.target.value }))}
+                                value={claudeIdentity.fullName}
+                              />
+                            </label>
+                            <label className="grid gap-1 text-xs font-semibold">
+                              Data de nascimento
+                              <input
+                                className="rounded-lg border border-border bg-surface px-3 py-2 text-sm"
+                                onChange={(event) => setClaudeIdentity((current) => ({ ...current, birthDate: event.target.value }))}
+                                type="date"
+                                value={claudeIdentity.birthDate}
+                              />
+                            </label>
+                          </div>
+                        </div>
+                      )}
+                    </fieldset>
+
+                    {intakeClassificationComplete && !claudeSelected && (
                       <IntakeCheckpointPreflight
                         checking={intakeCheckpointBusy}
                         disabled={intakeBusy}
@@ -337,6 +409,9 @@ export default function NewAnalysisPage({
                     )}
                     </>}
 
+                    {workflowStep >= 4 && intakeBusy && (
+                      <p className="mb-0 mt-4 text-xs font-bold text-text-secondary" data-testid="extraction-engine">Motor: {engineLabel}</p>
+                    )}
                     {workflowStep >= 4 && intakeBusy && (
                       <IntakeProcessingProgress
                         elapsedSeconds={intakeElapsed}

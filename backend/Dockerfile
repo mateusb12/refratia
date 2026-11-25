@@ -8,7 +8,7 @@ RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
        gcc libc6-dev pkg-config libtesseract-dev libleptonica-dev ca-certificates \
     && rm -rf /var/lib/apt/lists/*
-COPY --from=golang:1.23 /usr/local/go /usr/local/go
+COPY --from=golang:1.25 /usr/local/go /usr/local/go
 ENV PATH=/usr/local/go/bin:$PATH
 WORKDIR /src
 COPY go.mod ./

@@ -7,7 +7,7 @@ RUN npm ci
 
 COPY frontend ./frontend
 
-ARG VITE_API_URL=https://backend-dry-island-4275.fly.dev
+ARG VITE_API_URL=https://api.refratia.matbessa.com.br
 ENV VITE_API_URL=$VITE_API_URL
 
 ARG VITE_SHOW_DEMO_CASES=true
@@ -31,5 +31,8 @@ RUN printf 'server {\n\
 }\n' > /etc/nginx/conf.d/default.conf
 
 EXPOSE 80
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD wget -q -O /dev/null http://127.0.0.1/ || exit 1
 
 CMD ["nginx", "-g", "daemon off;"]
