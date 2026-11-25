@@ -10,7 +10,17 @@ export const LASER = {
   ler: 250, pta: 40, kMin: 34, kMax: 48, // LER ≥ 250 µm, PTA ≤ 40 %, 34 ≤ K_final ≤ 48 D
   flapUm: 90, dkLasik: 0.839, dkPrk: 0.775, munnerlynK: 1.275, oz: 6.5, ozReduced: 6.0, vertexM: 0.012,
   phakicSE: 12, hyperopiaReferralSE: 6, acdMin: 3.0, nightSE: 8, nightK: 35, residualCyl: 0.75, presbyAddD: 2,
+  // informative observations (Fluxo A): item 48 margin bands, items 72/74 mitomycin depth, item 73 trigger, item 47 discordance
+  ptaMarginFrom: 35, lerMarginTo: 300, mitomycinUm: 75, platformSE: 6, discordanceD: 0.75,
 } as const
+
+/** Item 73 (f): manufacturer-declared myopic ranges per platform and procedure (§9.16/9.18); null = not a declared use. */
+const PLATFORM_LABELS: { device: string; technique: string; within: ((sph: number, se: number) => boolean) | null }[] = [
+  { device: 'WaveLight EX500', technique: 'LASIK', within: (sph) => Math.abs(sph) <= 12 }, // até −12,0 D de esfera
+  { device: 'ZEISS MEL 90', technique: 'LASIK', within: (sph, se) => Math.abs(sph) < 10 && Math.abs(se) < 10 }, // abaixo de −10,0 D
+  { device: 'WaveLight EX500', technique: 'ablação de superfície', within: (_sph, se) => Math.abs(se) <= 6 }, // até −6,0 D de SE
+  { device: 'ZEISS MEL 90', technique: 'ablação de superfície', within: null },
+]
 
 export type Eye = 'OD' | 'OS'
 export type Tone = 'green' | 'yellow' | 'red' | 'gray'
@@ -56,10 +66,12 @@ export interface EyeDecision {
   observations: { type: string; text: string }[]
   /** Flow A/B: each checkpoint evaluated for this eye — rule, measurement used and outcome */
   steps: Step[]
+  /** §0.C qualidade do exame: decisive Pentacam data of this eye carry confidence "suspeita — revisar" (null: consistent) */
+  review: string | null
   certainty: 'definitiva' | 'condicional' | 'pendente' | null
 }
 
-export interface Step { rule: string; text: string; outcome: 'ok' | 'fail' | 'pending' | 'info' }
+export interface Step { rule: string; text: string; outcome: 'ok' | 'warn' | 'fail' | 'pending' | 'info' } // warn: item 69 yellow marker
 
 export type DecisionState =
   | 'no_flow' // age unknown
@@ -224,28 +236,29 @@ function flowCEye(analysis: any, eye: Eye, reference: string | null): EyeDecisio
   const astigmatism = astigmatismCriterion(analysis, eye, reference)
   const endothelium = endotheliumCriterion(analysis, eye, reference)
   const missing: string[] = []
-  const observations: { type: string; text: string }[] = []
+  const ectasia = ectasiaObservation(pentacamEye(analysis, eye)) // rule 2.1: suspicion without TKC is registered in every flow
+  const observations: { type: string; text: string }[] = ectasia ? [ectasia] : []
   if (astigmatism.status === 'ausente') missing.push('astigmatismo da biometria óptica — escolha tórica/não tórica pendente')
   // §0.C: decisive data from an exam outside the window stops the eye's cascade at that checkpoint
   if (astigmatism.status === 'pendente') {
     missing.push(`biometria fora da janela de ${EXAM_WINDOW_MONTHS} meses`)
     observations.push({ type: 'exame_pendente', text: `Necessidade de repetir ou realizar o exame (biometria óptica) antes de seguir o fluxo (${astigmatism.text}).` })
-    return { conduta: CONDUTA.pending, tone: 'yellow', astigmatism, endothelium: PENDING_CRITERION, toric: null, missing, observations, steps: [], certainty: null }
+    return { conduta: CONDUTA.pending, tone: 'yellow', astigmatism, endothelium: PENDING_CRITERION, toric: null, missing, observations, steps: [], certainty: null, review: null }
   }
   const toric = astigmatism.value === null ? null : astigmatism.value >= TORIC_MIN_ASTIGMATISM_D
   if (endothelium.status === 'pendente') {
     missing.push('contagem endotelial')
     observations.push({ type: 'exame_pendente', text: `Necessidade de repetir ou realizar o exame (microscopia especular) antes de seguir o fluxo (${endothelium.text.replace('não avaliado — ', '')}).` })
-    return { conduta: CONDUTA.pending, tone: 'yellow', astigmatism, endothelium, toric, missing, observations, steps: [], certainty: null }
+    return { conduta: CONDUTA.pending, tone: 'yellow', astigmatism, endothelium, toric, missing, observations, steps: [], certainty: null, review: null }
   }
   if (endothelium.status === 'condiciona_conduta') {
     observations.push({ type: 'endotelio_baixo', text: ENDOTELIO_BAIXO })
     const conduta = toric === null ? CONDUTA.conditionedGeneric : toric ? CONDUTA.conditionedToric : CONDUTA.conditioned
-    return { conduta, tone: 'yellow', astigmatism, endothelium, toric, missing, observations, steps: [], certainty: null }
+    return { conduta, tone: 'yellow', astigmatism, endothelium, toric, missing, observations, steps: [], certainty: null, review: null }
   }
   const conduta = toric === null ? CONDUTA.readyGeneric : toric ? CONDUTA.readyToric : CONDUTA.ready
   // §8.1: green = conduta pronta; the generic indication is the protocol's ready conduct when astigmatism is absent.
-  return { conduta, tone: 'green', astigmatism, endothelium, toric, missing, observations, steps: [], certainty: null }
+  return { conduta, tone: 'green', astigmatism, endothelium, toric, missing, observations, steps: [], certainty: null, review: null }
 }
 
 
@@ -302,21 +315,37 @@ const tissueText = (name: string, t: ReturnType<typeof tissue>, k: number) =>
 const EXAME_PENDENTE = (what: string) => ({ type: 'exame_pendente', text: `Necessidade de repetir ou realizar o exame (${what}) antes de seguir o fluxo.` })
 
 function abEye(conduta: string, steps: Step[], missing: string[] = [], observations: Obs[] = []): EyeDecision {
-  return { conduta, tone: NON_SURGICAL.has(conduta) ? 'yellow' : 'green', astigmatism: PENDING_CRITERION, endothelium: PENDING_CRITERION, toric: null, missing, observations, steps, certainty: null }
+  return { conduta, tone: NON_SURGICAL.has(conduta) ? 'yellow' : 'green', astigmatism: PENDING_CRITERION, endothelium: PENDING_CRITERION, toric: null, missing, observations, steps, certainty: null, review: null }
 }
 function pendingEye(steps: Step[], rule: string, what: string, missingItem: string, observations: Obs[] = []) {
   steps.push({ rule, text: `${what} → cascata deste olho para aqui`, outcome: 'pending' })
   return abEye(CONDUTA.pending, steps, [missingItem], [...observations, EXAME_PENDENTE(what)])
 }
 
-/** risco_ectasia_nao_confirmado (Etapa 3; §2: BAD-D ≥ 1,6 suspeito, ARTmax ≤ 405 µm zona cinzenta). Never changes the conduct. */
-function ectasiaObservation(p: any): Obs | null {
+/**
+ * risco_ectasia_nao_confirmado (Etapa 3; rule 2.1 p.12). Altered: BAD-D ≥ 1,6 or ARTmax ≤ 405 µm (§2), or Belin ABCD grade ≥ 1
+ * (rule 2.1: "grau ABCD ≥1"). Never changes the conduct. `contralateral`: item 43 eye without diagnosis ("…neste olho", item 45 l).
+ */
+function ectasiaObservation(p: any, contralateral = false): Obs | null {
   const bad = firstNum(p, [['belin_ambrosio', 'd'], ['ectasia_reforcada_belin_ambrosio', 'd']])
   const art = firstNum(p, [['belin_ambrosio', 'art_max'], ['ectasia_reforcada_belin_ambrosio', 'art_max']])
-  const altered = [bad !== null && bad >= 1.6 ? `BAD-D ${fmt(bad)}` : null, art !== null && art <= 405 ? `ARTmax ${art} µm` : null].filter(Boolean)
+  const staging = String(p?.abcd_keratoconus_staging?.staging ?? '').trim()
+  const abcdAltered = [...staging.matchAll(/[ABCD]\s*([0-4])/g)].some((m) => Number(m[1]) >= 1)
+  // ponytail: ISV/IVA/IHA/KI/CKI/IHD have no numeric cut in §2 (item 36) — "altered" is the Pentacam's own flag, which is not
+  // captured; they are never judged here. Add them when Camada 1 stores the device flag (guide p.8, item 36).
+  const altered = [bad !== null && bad >= 1.6 ? `BAD-D ${fmt(bad)}` : null, art !== null && art <= 405 ? `ARTmax ${art} µm` : null,
+    abcdAltered ? `estadiamento Belin ABCD ${staging}` : null].filter(Boolean)
   if (altered.length === 0) return null
-  return { type: 'risco_ectasia_nao_confirmado', text: `Índices de superfície da córnea (${altered.join(' / ')}) acima da faixa de referência. Achado inespecífico, que pode decorrer de astigmatismo mais elevado, do posicionamento do olho durante o exame, de alterações do filme lacrimal, como olho seco ou piscada incompleta, do uso recente de lente de contato ou de alteração inicial da curvatura corneana. Não há diagnóstico de ceratocone neste exame. Recomenda-se acompanhamento tomográfico; a interpretação cabe ao médico cirurgião. A topografia anormal é o fator de risco isolado mais importante para ectasia após cirurgia refrativa a laser, segundo a Refractive Surgery Preferred Practice Pattern da Academia Americana de Oftalmologia.` }
+  return { type: 'risco_ectasia_nao_confirmado', text: `Índices de superfície da córnea (${altered.join(' / ')}) acima da faixa de referência. Achado inespecífico, que pode decorrer de astigmatismo mais elevado, do posicionamento do olho durante o exame, de alterações do filme lacrimal, como olho seco ou piscada incompleta, do uso recente de lente de contato ou de alteração inicial da curvatura corneana. Não há diagnóstico de ceratocone ${contralateral ? 'neste olho' : 'neste exame'}. Recomenda-se acompanhamento tomográfico; a interpretação cabe ao médico cirurgião. A topografia anormal é o fator de risco isolado mais importante para ectasia após cirurgia refrativa a laser, segundo a Refractive Surgery Preferred Practice Pattern da Academia Americana de Oftalmologia.` }
 }
+
+/** §0.C qualidade_exame: Pentacam QI other than "OK". Never changes the cascade; decisive Pentacam data become "suspeita — revisar". */
+function qualityOf(p: any): string | null {
+  const raw = String(p?.quality ?? p?.general?.quality ?? '').trim()
+  if (raw === '' || /^não informado$/i.test(raw) || raw.toUpperCase().replace(/[^A-Z]/g, '') === 'OK') return null
+  return raw
+}
+const qualityObservation = (eye: Eye, qi: string): Obs => ({ type: 'qualidade_exame', text: `A qualidade do exame Pentacam, olho ${eye}, pode estar comprometida (QI “${qi}”). Os valores desse exame foram usados na cascata como lidos; a conferência ou repetição do exame fica a critério do médico.` })
 
 /** Residual astigmatism PRK after a phakic lens (§3, items 49/50/58): same cuts as Etapas 4/5. */
 function residualSupported(pachy: number, km: number, cyl: number) {
@@ -360,6 +389,43 @@ function phakicStep(analysis: any, eye: Eye, reference: string | null, refr: { c
 const QVN = (se: number, k: number, acd: number | null, endo: Criterion, verdict: string) =>
   `Correção miópica elevada (SE ${signed(se)} D) e/ou ceratometria final estimada baixa (${fmt(k)} D). Ablações corneanas induzem aberração esférica, e a magnitude induzida cresce com a correção: em série de olhos medidos por traçado de raios, a aberração esférica aumentou em média quase quatro vezes numa pupila de 6,5 mm, e a correlação com a dioptria programada no laser foi de 0,88. Isso pode reduzir a qualidade visual em baixa luminosidade (halos, ofuscamento, menor sensibilidade ao contraste), sobretudo com pupila escotópica ampla. Critérios anatômicos para lente fácica: ACD ${acd === null ? 'não informado' : fmt(acd) + ' mm'} e contagem endotelial ${endo.value === null ? 'não informada' : endo.value.toLocaleString('pt-BR') + ' céls/mm²'} — ${verdict}. A escolha entre a cirurgia a laser e a lente fácica fica a critério do cirurgião.`
 
+/** discordancia_astigmatismo (Fluxo A, item 47 b): |refractive cylinder| vs anterior corneal astigmatism (Pentacam) > 0,75 D. */
+function discordanceObservation(p: any, cyl: number): Obs | null {
+  const corneal = num(p?.anterior_cornea?.astigmatism_d)
+  if (corneal === null) return null
+  const diff = Math.round(Math.abs(Math.abs(cyl) - Math.abs(corneal)) * 100) / 100
+  if (diff <= LASER.discordanceD) return null
+  return { type: 'discordancia_astigmatismo', text: `Diferença entre o astigmatismo refracional (${fmt(Math.abs(cyl))} D) e o astigmatismo corneano anterior (${fmt(Math.abs(corneal))} D) de ${fmt(diff)} D. Considerar tratamento topo-guiado, a critério do cirurgião.` }
+}
+
+type Via = { name: string; t: ReturnType<typeof tissue>; k: number }
+const limitName = (k: number) => (k - LASER.kMin < LASER.kMax - k ? 'piso de 34 D' : 'teto de 48 D')
+
+/** Informative observations of an eye whose conduct keeps laser surgery (Etapas 4/5): items 48, 69, 72/74 and 73. */
+function laserObservations(sph: number, se: number, vias: Via[], kWidth: number, narrow: (k: number) => boolean): Obs[] {
+  const obs: Obs[] = []
+  // item 48: only on the standard 6,5 mm zone (the reduced-zone rescue already applied the suggestion); PTA text before LER
+  const margin = vias.filter(({ t }) => t.oz === LASER.oz).flatMap(({ name, t }) => [
+    t.pta >= LASER.ptaMarginFrom ? `${name}: Percentual de Tecido Alterado (PTA) = ${fmt(t.pta, 1)} %. O corte de segurança da literatura é 40%, e o mesmo estudo observa que o risco de ectasia já sobe rapidamente a partir de 35%. Reduzir a zona óptica de 6,5 mm para 6,0 mm diminui o tecido ablacionado e afasta o olho dessa faixa de risco, a critério do cirurgião — a indicação permanece válida sem essa redução.` : null,
+    t.ler <= LASER.lerMarginTo ? `${name}: Leito Estromal Residual (LER) = ${fmt(t.ler, 0)} µm. O mínimo da literatura é 250 µm, e a própria fonte reconhece que nenhum valor absoluto garante ausência de ectasia. Reduzir a zona óptica de 6,5 mm para 6,0 mm preserva mais leito residual, a critério do cirurgião — a indicação permanece válida sem essa redução.` : null,
+  ]).filter((s) => s !== null)
+  if (margin.length) obs.push({ type: 'margem_seguranca_pta_ler', text: margin.join(' ') })
+  // item 69: yellow marker — estimate outside 34–48 D while the other technique is inside, or inside by less than 0,064 × |SE|
+  const tight = vias.filter(({ k }) => narrow(k)).map(({ name, k }) => inK(k)
+    ? `${name} ${fmt(k)} D, dentro da faixa a ${fmt(Math.min(k - LASER.kMin, LASER.kMax - k))} D do ${limitName(k)}`
+    : `${name} ${fmt(k)} D, ${k < LASER.kMin ? `abaixo do piso de 34 D por ${fmt(LASER.kMin - k)}` : `acima do teto de 48 D por ${fmt(k - LASER.kMax)}`} D`)
+  if (tight.length) obs.push({ type: 'k_final_margem_estreita', text: `K_final estimado com margem estreita — ${tight.join('; ')}. A diferença entre as estimativas do LASIK e da PRK neste olho é de 0,064 × |SE| = ${fmt(kWidth)} D; uma margem menor que essa diferença fica abaixo da precisão com que a estimativa distingue uma técnica da outra. Basta uma das duas estimativas dentro de 34 a 48 D para o olho ser operável por laser, e a técnica sinalizada permanece na conduta, a critério do cirurgião.` })
+  // items 72/74: surface ablation only, triggered by the estimated depth (never by diopters)
+  const prk = vias.find(({ name }) => name === OPTION.prk)
+  if (prk && prk.t.abl >= LASER.mitomycinUm) obs.push({ type: 'mitomicina_prk', text: `Ablação de superfície com profundidade estimada de ${fmt(prk.t.abl, 0)} µm. A literatura de prevenção de haze adota profundidades de ablação acima de 50 a 75 µm como pontos de corte usuais para a aplicação profilática de mitomicina C, sem que exista limiar firme — não há profundidade acima da qual o risco de haze seja eliminado. Este serviço adota o valor superior dessa faixa, 75 µm, por decisão do médico responsável. O regime descrito na literatura como preferido é mitomicina 0,02 % aplicada sobre o estroma ablado central por 12 s a 1 min, seguida de irrigação com solução salina balanceada. A aplicação, a concentração e o tempo são decisão do cirurgião.` })
+  // item 73 (redação do item 75): myopic SE above 6,00 D in an eye whose conduct includes laser
+  if (se < -LASER.platformSE) {
+    const list = PLATFORM_LABELS.map(({ device, technique, within }) => `${technique} no ${device}: ${within === null ? 'não consta entre os usos declarados' : within(sph, se) ? 'dentro da faixa declarada' : 'fora da faixa declarada'}`).join('; ')
+    obs.push({ type: 'teto_plataforma', text: `Equivalente esférico miópico de ${signed(se)} D, esfera de ${signed(sph)} D. As plataformas de excimer laser declaram faixas de correção DIFERENTES entre si e diferentes por procedimento, e as duas plataformas deste serviço estão sempre disponíveis. Para esta magnitude: ${list}. Faixas declaradas pelos fabricantes: o WaveLight EX500 contempla LASIK para miopia de até −12,0 D de ESFERA, com até −6,0 D de astigmatismo, e ablação de superfície para até −6,0 D de EQUIVALENTE ESFÉRICO, com até −3,0 D de astigmatismo; o ZEISS MEL 90 contempla LASIK para esfera e equivalente esférico manifesto abaixo de −10,0 D em módulo, com até −4,0 D de astigmatismo, e não traz a ablação de superfície entre os usos que declara. Ficar fora da faixa declarada não é veredito de segurança: é o escopo que aquele fabricante submeteu para o seu equipamento (seção 9.18). A escolha do equipamento e a conferência da sua faixa são do cirurgião.` })
+  }
+  return obs
+}
+
 function flowAEye(analysis: any, eye: Eye, reference: string | null): EyeDecision {
   const steps: Step[] = []
   const p = pentacamEye(analysis, eye)
@@ -378,6 +444,8 @@ function flowAEye(analysis: any, eye: Eye, reference: string | null): EyeDecisio
     return phakicStep(analysis, eye, reference, refr, steps, observations)
   }
   steps.push({ rule: 'Etapa 1 · faixa dióptrica', text: `${seText} → < 12 D: LASIK e PRK avaliados`, outcome: 'info' })
+  const discordance = discordanceObservation(p, cyl)
+  if (discordance) observations.push(discordance)
   const km = kmOf(p), pachy = thinnestOf(p)
   if (km === null || pachy === null) {
     const what = [km === null ? 'Km' : null, pachy === null ? 'paquimetria do ponto mais fino' : null].filter(Boolean).join(' e ')
@@ -389,9 +457,13 @@ function flowAEye(analysis: any, eye: Eye, reference: string | null): EyeDecisio
   const eyeK = inK(kL) || inK(kP) // item 69: K_final qualifies the eye, not the technique
   const lasikAlive = lasik.lerOk && lasik.ptaOk && eyeK
   const prkAlive = prk.lerOk && prk.ptaOk && eyeK
-  steps.push({ rule: 'Etapa 4 · LASIK (flap 90 µm, ΔK 0,839)', text: `Km ${fmt(km)} D, paquimetria ${pachy} µm, ablação sobre ${fmt(diopters)} D (plano corneano) · ${tissueText('LASIK', lasik, kL)}${!inK(kL) && eyeK ? ' — K_final fora, mas a PRK está dentro: técnica mantida (item 69)' : ''} → ${lasikAlive ? 'indicado' : 'contraindicado'}`, outcome: lasikAlive ? 'ok' : 'fail' })
-  steps.push({ rule: 'Etapa 5 · PRK (flap 0, ΔK 0,775)', text: `${tissueText('PRK', prk, kP)}${!inK(kP) && eyeK ? ' — K_final fora, mas o LASIK está dentro: técnica mantida (item 69)' : ''} → ${prkAlive ? 'indicado' : 'contraindicado'}`, outcome: prkAlive ? 'ok' : 'fail' })
+  const kWidth = (LASER.dkLasik - LASER.dkPrk) * Math.abs(se) // item 69: 0,064 × |SE clínico|, derived from the two factors
+  const narrow = (k: number) => !inK(k) || Math.min(k - LASER.kMin, LASER.kMax - k) < kWidth
+  steps.push({ rule: 'Etapa 4 · LASIK (flap 90 µm, ΔK 0,839)', text: `Km ${fmt(km)} D, paquimetria ${pachy} µm, ablação sobre ${fmt(diopters)} D (plano corneano) · ${tissueText('LASIK', lasik, kL)}${!inK(kL) && eyeK ? ' — K_final fora, mas a PRK está dentro: técnica mantida (item 69)' : ''} → ${lasikAlive ? 'indicado' : 'contraindicado'}`, outcome: lasikAlive ? (narrow(kL) ? 'warn' : 'ok') : 'fail' })
+  steps.push({ rule: 'Etapa 5 · PRK (flap 0, ΔK 0,775)', text: `${tissueText('PRK', prk, kP)}${!inK(kP) && eyeK ? ' — K_final fora, mas o LASIK está dentro: técnica mantida (item 69)' : ''} → ${prkAlive ? 'indicado' : 'contraindicado'}`, outcome: prkAlive ? (narrow(kP) ? 'warn' : 'ok') : 'fail' })
   if (!lasikAlive && !prkAlive) return phakicStep(analysis, eye, reference, refr, steps, observations)
+  const vias = [lasikAlive ? { name: OPTION.lasik, t: lasik, k: kL } : null, prkAlive ? { name: OPTION.prk, t: prk, k: kP } : null].filter((v) => v !== null)
+  observations.push(...laserObservations(sph, se, vias, kWidth, narrow))
   const laser = [lasikAlive ? OPTION.lasik : null, prkAlive ? OPTION.prk : null].filter(Boolean) as string[]
   // Etapa 5A — night-vision alert (Flow A only, item 46)
   const lowestK = Math.min(...(lasikAlive ? [kL] : []), ...(prkAlive ? [kP] : []))
@@ -446,7 +518,7 @@ function flowBEye(analysis: any, eye: Eye, reference: string | null): EyeDecisio
 }
 
 function blankEye(conduta: string | null, tone: Tone, observations: { type: string; text: string }[] = []): EyeDecision {
-  return { conduta, tone, astigmatism: PENDING_CRITERION, endothelium: PENDING_CRITERION, toric: null, missing: [], observations, steps: [], certainty: null }
+  return { conduta, tone, astigmatism: PENDING_CRITERION, endothelium: PENDING_CRITERION, toric: null, missing: [], observations, steps: [], certainty: null, review: null }
 }
 
 /**
@@ -459,8 +531,15 @@ export function evaluateProtocol(analysis: unknown): ProtocolDecision {
   const tkc = keratoconusForAnalysis(a)
   const both = (make: () => EyeDecision) => ({ OD: make(), OS: make() })
   const result = (state: DecisionState, eyes: Record<Eye, EyeDecision>): ProtocolDecision => {
-    for (const e of Object.values(eyes)) {
+    for (const eye of ['OD', 'OS'] as const) {
+      const e = eyes[eye]
       e.certainty = e.conduta === null ? null : e.conduta === CONDUTA.pending ? 'pendente' : e.conduta.includes('a considerar após') ? 'condicional' : 'definitiva'
+      // §0.C qualidade do exame, any flow: the cascade runs on the values as read; the decisive Pentacam data are flagged
+      const qi = state === 'out_of_scope' ? null : qualityOf(pentacamEye(a, eye))
+      if (qi) {
+        e.observations = [...e.observations, qualityObservation(eye, qi)]
+        e.review = `Dados decisivos do Pentacam deste olho com confiança “suspeita — revisar” (QI “${qi}”).`
+      }
     }
     return { age, flow, state, tkc, eyes, showOrientationSentence: state === 'evaluated' && Object.values(eyes).some((e) => e.conduta !== null && !NON_SURGICAL.has(e.conduta)) }
   }
@@ -474,7 +553,12 @@ export function evaluateProtocol(analysis: unknown): ProtocolDecision {
     if (affected.length === 1) {
       obs.push({ type: 'ceratocone_unilateral_genetica', text: `Diagnóstico de ceratocone confirmado em apenas um dos olhos (${affected[0]}, ${tkcText(affected[0])}). Ainda assim, o paciente deve ser avaliado pelo médico especialista em córnea, pois o ceratocone tem componente genético e o olho contralateral pode desenvolver a doença. Uma cirurgia que viesse a ser indicada no olho aparentemente normal poderia induzir ectasia. A avaliação especializada considera o paciente como um todo, não apenas o olho já diagnosticado.` })
     }
-    return result('keratoconus', both(() => blankEye(CONDUTA.keratoconus, 'red', obs)))
+    // item 43: the eye without diagnosis still records its altered indices ("…neste olho"); the conduct stays the referral
+    const make = (eye: Eye) => {
+      const own = affected.length === 1 && eye !== affected[0] ? ectasiaObservation(pentacamEye(a, eye), true) : null
+      return blankEye(CONDUTA.keratoconus, 'red', own ? [...obs, own] : obs)
+    }
+    return result('keratoconus', { OD: make('OD'), OS: make('OS') })
   }
   // Rule 2.1 is sovereign in any flow, so it fires even when the age (and so the flow) is unknown.
   if (flow === null) return result('no_flow', both(() => blankEye(null, 'yellow')))

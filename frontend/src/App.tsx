@@ -1043,7 +1043,7 @@ function RealCaseSummary({ data }: { data: ReportData }) {
                 : 'Regra 2.1 não dispara. Fluxo B (seção 6): córnea apta pelos critérios de LER, PTA e K_final (com +2,00 D do alvo de perto) → faixa refracional de Presbyond e Custom-Q/PresbyLASIK; córnea não apta → ambulatório do cirurgião. Cada olho abaixo mostra o dado usado em cada etapa.'}
             </p>
             <p className="mb-0 mt-2 text-xs leading-relaxed text-text-secondary">
-              Esta tela ainda não emite as observações informativas dos Fluxos A e B (margem de PTA/LER, mitomicina, teto de plataforma, vias de laser duplas, registro de coma, PNS, Z40, evidência do anel). Elas não alteram a conduta.
+              Esta tela ainda não emite as observações informativas de vias de laser duplas, registro de coma, PNS, Z40 e evidência do anel. Elas não alteram a conduta.
             </p>
           </div>
         )}
@@ -1642,11 +1642,14 @@ function RealCaseSummary({ data }: { data: ReportData }) {
                   {evaluated.certainty === 'pendente' ? 'Conduta pendente' : evaluated.certainty === 'condicional' ? 'Conduta condicional' : 'Conduta definitiva pelo protocolo'}
                 </span>
               )}
+              {evaluated.review && (
+                <span className="mt-1 block text-xs font-bold text-warning" data-testid={`revisar-${eye}`}>{evaluated.review}</span>
+              )}
               {evaluated.steps.length > 0 && (
                 <ol className="mb-0 mt-2 grid list-none gap-1 p-0 text-xs leading-relaxed text-text-secondary" data-testid={`trilha-${eye}`}>
                   {evaluated.steps.map((step, index) => (
                     <li key={index}>
-                      <strong className={clsx(step.outcome === 'fail' && 'text-danger', step.outcome === 'pending' && 'text-warning', (step.outcome === 'ok' || step.outcome === 'info') && 'text-text-primary')}>{step.rule}</strong> · {step.text}
+                      <strong className={clsx(step.outcome === 'fail' && 'text-danger', (step.outcome === 'pending' || step.outcome === 'warn') && 'text-warning', (step.outcome === 'ok' || step.outcome === 'info') && 'text-text-primary')}>{step.rule}</strong> · {step.text}
                     </li>
                   ))}
                 </ol>
@@ -1664,11 +1667,14 @@ function RealCaseSummary({ data }: { data: ReportData }) {
 
         {eyes.some(({ evaluated }) => evaluated.observations.length > 0) && (
           <ul className="mb-0 mt-3 grid list-none gap-2 p-0 text-xs leading-relaxed text-text-secondary" data-testid="observacoes">
-            {(decision.state === 'keratoconus' ? eyes.slice(0, 1) : eyes).flatMap(({ eye, evaluated }) => evaluated.observations.map((observation) => (
-              <li className="rounded-lg border border-border bg-surface-muted p-3" key={`${eye}-${observation.type}`}>
-                <strong className="text-text-primary">{decision.state === 'keratoconus' ? 'AO' : eyeLabel(eye)}</strong> · {observation.text}
-              </li>
-            )))}
+            {eyes.flatMap(({ eye, evaluated }) => evaluated.observations.map((observation) => ({ eye, observation })))
+              // the same text in both eyes is shown once, as AO (e.g. the rule 2.1 referral)
+              .filter(({ observation }, index, all) => all.findIndex((other) => other.observation.text === observation.text) === index)
+              .map(({ eye, observation }) => (
+                <li className="rounded-lg border border-border bg-surface-muted p-3" key={`${eye}-${observation.type}`}>
+                  <strong className="text-text-primary">{eyes.every(({ evaluated }) => evaluated.observations.some((o) => o.text === observation.text)) ? 'AO' : eyeLabel(eye)}</strong> · {observation.text}
+                </li>
+              ))}
           </ul>
         )}
 
