@@ -90,8 +90,8 @@ func claudeApprovedDir() string {
 }
 
 // approvedAnonymizedFiles maps the SHA-256 of every anonymizer output whose
-// review status is OK or APPROVED (never NEEDS_REVIEW) to its path. Only these
-// exact bytes may be sent to Claude.
+// review status is APPROVED (a human checked the preview; the automatic OK is not
+// enough) to its path. Only these exact bytes may be sent to Claude.
 // ponytail: re-hashes on every call (a handful of PDFs); cache by mtime if the corpus grows.
 func approvedAnonymizedFiles() (map[string]string, error) {
 	dir := claudeApprovedDir()
@@ -114,7 +114,7 @@ func approvedAnonymizedFiles() (map[string]string, error) {
 		}
 		patient := filepath.Base(filepath.Dir(report))
 		for _, entry := range entries {
-			if entry.Status != "OK" && entry.Status != "APPROVED" {
+			if entry.Status != "APPROVED" {
 				continue
 			}
 			path := filepath.Join(dir, patient, "anonymized", filepath.Base(entry.Output))

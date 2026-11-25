@@ -82,19 +82,20 @@ func TestClaudeVisionRejectsUnapprovedDocuments(t *testing.T) {
 	os.MkdirAll(filepath.Join(dir, "p", "anonymized"), 0o755)
 	os.WriteFile(filepath.Join(dir, "p", "anonymized", "A_OD.pdf"), []byte("anonymized"), 0o644)
 	os.WriteFile(filepath.Join(dir, "p", "anonymized", "B_OD.pdf"), []byte("needs review"), 0o644)
-	os.WriteFile(filepath.Join(dir, "_anon-review", "p", "report.json"), []byte(`[{"output":"x/A_OD.pdf","status":"OK"},{"output":"x/B_OD.pdf","status":"NEEDS_REVIEW"}]`), 0o644)
+	os.WriteFile(filepath.Join(dir, "p", "anonymized", "C_OD.pdf"), []byte("auto ok, not reviewed"), 0o644)
+	os.WriteFile(filepath.Join(dir, "_anon-review", "p", "report.json"), []byte(`[{"output":"x/A_OD.pdf","status":"APPROVED"},{"output":"x/B_OD.pdf","status":"NEEDS_REVIEW"},{"output":"x/C_OD.pdf","status":"OK"}]`), 0o644)
 	fixture := filepath.Join(dir, "fixture.json")
 	os.WriteFile(fixture, []byte(`{"files":{}}`), 0o644)
 	t.Setenv("CLAUDE_VISION_APPROVED_DIR", dir)
 	t.Setenv("CLAUDE_VISION_FIXTURE", fixture)
 
-	for _, data := range []string{"needs review", "original identifiable"} {
+	for _, data := range []string{"needs review", "auto ok, not reviewed", "original identifiable"} {
 		file := UploadedFile{Data: []byte(data), Metadata: FileMetadata{Filename: "x.pdf", SHA256: sha256Hex([]byte(data)), ExamType: "pentacam_corneal_tomography", Eye: "OD"}}
 		if _, err := extractPatientClaude(t.Context(), []UploadedFile{file}, LocalIdentity{FullName: "A B", BirthDate: "1970-01-01"}); err == nil {
 			t.Errorf("%q accepted", data)
 		}
 	}
-	if approved, _ := approvedAnonymizedFiles(); len(approved) != 1 {
+	if approved, _ := approvedAnonymizedFiles(); len(approved) != 1 || approved[sha256Hex([]byte("anonymized"))] == "" {
 		t.Errorf("approved = %v", approved)
 	}
 }
