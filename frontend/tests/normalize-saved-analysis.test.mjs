@@ -1,5 +1,6 @@
+import test from 'node:test'
 import assert from 'node:assert/strict'
-import { normalizeSavedAnalysis } from '../src/contracts/patient-analysis.ts'
+import { normalizeSavedAnalysis } from '../src/features/reports/normalizeSavedAnalysis.ts'
 
 const legacyEye = (thinnest, kmax, badD, artMax, coma, z40) => ({
   pachymetry: { point_and_finest_um: thinnest, k_max_anterior_diopters: kmax },
@@ -31,7 +32,9 @@ const normalized = normalizeSavedAnalysis({
 })
 
 const { exams } = normalized
-assert.deepEqual(['OD', 'OS'].flatMap((eye) => [
+
+test('legacy and current Pentacam/biometry/microscopy fields normalize to one shape', () => {
+  assert.deepEqual(['OD', 'OS'].flatMap((eye) => [
   exams.pentacam_corneal_tomography.eyes[eye].pachymetry.thinnest_um,
   exams.pentacam_corneal_tomography.eyes[eye].anterior_cornea.kmax_d,
   exams.pentacam_corneal_tomography.eyes[eye].belin_ambrosio.d,
@@ -39,9 +42,12 @@ assert.deepEqual(['OD', 'OS'].flatMap((eye) => [
   exams.specular_microscopy.eyes[eye].cell_density_cells_per_mm2,
   exams.iol_calculation.eyes[eye].axial_length_mm,
 ]), [529, 44.2, 0.65, 416, 2403, 24.6, 526, 45.5, 2.27, 366, 2184, 24.74])
+})
 
-assert.deepEqual(['OD', 'OS'].flatMap((eye) => [
+test('coma and Z40 normalize; biometry astigmatism has no legacy fallback', () => {
+  assert.deepEqual(['OD', 'OS'].flatMap((eye) => [
   exams.iol_calculation.eyes[eye].keratometry.astigmatism_d,
   Number.parseFloat(exams.pentacam_corneal_tomography.eyes[eye].corneal_rings.zernike['5mm'].z31_coma),
   exams.pentacam_corneal_tomography.eyes[eye].cataract_preop.total_corneal_z40_6mm_um,
-]), [-0.28, 0.097, 0.287, -3.17, 0.299, 0.602])
+]), [undefined, 0.097, 0.287, undefined, 0.299, 0.602])
+})

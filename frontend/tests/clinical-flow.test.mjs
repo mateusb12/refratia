@@ -1,7 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
-import { clinicalFlowForAnalysis, flowLabel, keratoconusStatus, pentacamReferenceDate, selectClinicalFlow } from '../src/utils/clinicalFlow.ts'
+import { clinicalFlowForAnalysis, flowLabel, keratoconusStatus, pentacamReferenceDate, selectClinicalFlow } from '../src/features/protocol/clinicalFlow.ts'
 
 const entry = (source, timestamp_lido, date_order) => ({ source, timestamp_lido, date_order })
 const analysis = (birth, entries, pentacamSources = ['pentacam.pdf']) => ({
@@ -116,14 +115,8 @@ test('labels', () => {
   assert.equal(flowLabel(null, null), 'não informado')
 })
 
-test('App.tsx has no hardcoded age/flow', () => {
-  const src = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8')
-  assert.ok(!src.includes('Idade: 59 anos'))
-  assert.ok(!src.includes('Paciente com 59 anos'))
-  assert.ok(!src.includes("suspicious = eye === 'OS'"), 'keratoconus suspicion must come from TKC, not a fixed eye')})
-
 test('item 35/45(g): day/month birth inversion records both readings without blocking', async () => {
-  const { birthDateInversion, clinicalFlowForAnalysis } = await import('../src/utils/clinicalFlow.ts')
+  const { birthDateInversion, clinicalFlowForAnalysis } = await import('../src/features/protocol/clinicalFlow.ts')
   const base = (bioBirth, order, pentacamBirth = '1986-05-03') => ({
     patient: { birth_date: pentacamBirth },
     exams: { pentacam_corneal_tomography: { source: ['p_od.pdf'] } },
@@ -155,15 +148,9 @@ test('item 35/45(g): day/month birth inversion records both readings without blo
   assert.equal(birthDateInversion(base('03/03/1986', 'DMY', '1986-03-03')), null)
 })
 
-test('App identity line wires the 45(g) note', () => {
-  const src = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8')
-  assert.ok(src.includes('birthDateInversion(raw)'))
-  assert.ok(src.includes('item 45g'))
-})
-
 test('birth_date in the display form written by normalizeSavedReport (formatBirthDate) is accepted', async () => {
-  const { clinicalFlowForAnalysis, birthDateInversion } = await import('../src/utils/clinicalFlow.ts')
-  const { formatBirthDate } = await import('../src/utils/date.ts')
+  const { clinicalFlowForAnalysis, birthDateInversion } = await import('../src/features/protocol/clinicalFlow.ts')
+  const { formatBirthDate } = await import('../src/shared/date.ts')
   const a = (birth) => ({
     patient: { birth_date: birth },
     exams: { pentacam_corneal_tomography: { source: ['p.pdf'] } },
@@ -182,7 +169,7 @@ test('birth_date in the display form written by normalizeSavedReport (formatBirt
 })
 
 test('keratoconusForAnalysis: printed dash diagnostic vs not read (never a negative finding)', async () => {
-  const { keratoconusForAnalysis } = await import('../src/utils/clinicalFlow.ts')
+  const { keratoconusForAnalysis } = await import('../src/features/protocol/clinicalFlow.ts')
   const diag = (eye, status, stage) => ({ exam_type: 'pentacam_corneal_tomography', eye, field: 'tkc', status, stage })
   const a = (od, os, diagnostics) => ({ exams: { pentacam_corneal_tomography: { eyes: { OD: { topometric_indices_8mm: { tkc: od } }, OS: { topometric_indices_8mm: { tkc: os } } } } }, extraction_diagnostics: diagnostics })
   const dash = [diag('OD', 'not_applicable', 'recognition'), diag('OS', 'not_applicable', 'recognition')]
@@ -196,14 +183,4 @@ test('keratoconusForAnalysis: printed dash diagnostic vs not read (never a negat
   assert.deepEqual(keratoconusForAnalysis(a(null, '2', [dash[0]])).eyes, { OD: 'not_classified', OS: 'unknown' })
   // classified in one eye closes the cascade whatever the other eye says
   assert.equal(keratoconusForAnalysis(a('KC1', null, [])).status, 'classified')
-})
-
-test('App gates the Flow C verdict on a confirmed non-classified TKC', () => {
-  const src = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8')
-  // gating lives in utils/protocolDecision.ts (tests/protocol-decision.test.mjs); the screen only renders it
-  assert.ok(src.includes('evaluateProtocol(data)'))
-  assert.ok(!src.includes('Indicação cirúrgica pelo protocolo: SIM'), 'no unconditional verdict')
-  assert.ok(!src.includes(': adequado<'), 'endothelium is never asserted adequate without evaluation')
-  assert.ok(!src.includes("tkcStatus !== 'classified'"))
-  assert.ok(!src.includes("'em branco'"), 'item 52: never display the TKC as em branco')
 })

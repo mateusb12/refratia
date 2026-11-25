@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { evaluateProtocol, CONDUTA, outsideExamWindow } from '../src/utils/protocolDecision.ts'
-import { normalizeSavedAnalysis } from '../src/contracts/patient-analysis.ts'
+import { evaluateProtocol, CONDUTA, outsideExamWindow } from '../src/features/protocol/protocolDecision.ts'
+import { normalizeSavedAnalysis } from '../src/features/reports/normalizeSavedAnalysis.ts'
 
 // Synthetic Flow C patient. Expected values come from Protocolo_RefratIA_FINAL §7 (p.19-20), §2.1 (p.12), §0.C (p.5),
 // never from the app. Pentacam 2026-11-18, birth 1959-03-04 -> 67 years -> Flow C.

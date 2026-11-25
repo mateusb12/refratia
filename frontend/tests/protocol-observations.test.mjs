@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { evaluateProtocol } from '../src/utils/protocolDecision.ts'
+import { evaluateProtocol } from '../src/features/protocol/protocolDecision.ts'
 
 // Informative observations and review states (Protocolo_RefratIA_FINAL §0.C, rule 2.1, §5 Etapas 2-5, §8 p.21-22; guide §4.2
 // cases 4, 30, 42, 43, 68, 69, 74, 75-B). Expected values hand-derived from the protocol formulas, never from the implementation.

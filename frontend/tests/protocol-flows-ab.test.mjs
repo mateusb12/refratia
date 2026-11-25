@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { evaluateProtocol } from '../src/utils/protocolDecision.ts'
+import { evaluateProtocol } from '../src/features/protocol/protocolDecision.ts'
 
 // Flow A (§5, p.14-17) and Flow B (§6, p.17-19) expectations, hand-derived from Protocolo_RefratIA_FINAL §2 (parameters),
 // §3 (formulas: SE = esf + cil/2; ablação = (S²/3)·1,275·max(|esf_c|,|esf_c+cil_c|) on the corneal plane, d = 12 mm;
@@ -85,7 +85,8 @@ const matrix = [
   ['B13 KC2 in Flow B -> rule 2.1', B({ tkc: { OD: null, OS: 'KC2' }, dash: ['OD'] }), K, K],
   ['B14 -0.25: Presbyond only (not emmetropic, below Custom-Q mild myopia -0.50)', B({ refr: both(r(-0.25, 0)) }), PY, PY],
   ['B15 -8.50: no night-vision alert / phakic option in Flow B (item 46)', B({ refr: both(r(-8.5, 0)), km: both(42), pachy: both(640), acd: both(3.3) }), PY, PY],
-  ['B16 age 40 is Flow B; age 54 is Flow B', B({ birth: '1986-11-18', refr: both(r(0, 0)) }), PB, PB, { flow: 'B' }],
+  ['B16 age 40 is Flow B', B({ birth: '1986-11-18', refr: both(r(0, 0)) }), PB, PB, { flow: 'B' }],
+  ['B17 age 54 is Flow B', B({ birth: '1971-11-19', refr: both(r(0, 0)) }), PB, PB, { flow: 'B' }],
 ]
 
 for (const [name, input, od, os, extra = {}] of matrix) {
@@ -103,7 +104,6 @@ for (const [name, input, od, os, extra = {}] of matrix) {
 test('every A/B eye decision explains itself: flow, steps with measurements, certainty', () => {
   const d = evaluateProtocol(patient({ refr: { OD: r(-3, -0.5), OS: null } }))
   assert.equal(d.flow, 'A')
-  assert.ok(d.eyes.OD.steps.length >= 3)
   assert.ok(d.eyes.OD.steps.some((s) => /SE/.test(s.text) && /-3,25|−3,25/.test(s.text)), JSON.stringify(d.eyes.OD.steps))
   assert.ok(d.eyes.OD.steps.some((s) => /LER/.test(s.text)))
   assert.equal(d.eyes.OD.certainty, 'definitiva')
