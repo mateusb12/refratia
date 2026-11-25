@@ -75,6 +75,8 @@ func pentacamHintedDoc(name, sha, eye string, payload map[string]any, hints ...e
 func TestPentacamCheckpointTKCReuse(t *testing.T) {
 	printedDash := extractionfields.Hint{Spec: "tkc", Status: "not_applicable", Stage: "recognition", Strategy: "printed_dash"}
 	unreadable := extractionfields.Hint{Spec: "tkc", Status: "unreadable", Stage: "recognition"}
+	conflicting := extractionfields.Hint{Spec: "tkc", Status: "conflicting", Stage: "recognition", Strategy: "focused_tkc"}
+	classified := extractionfields.Hint{Spec: "tkc", Status: "valid", Stage: "recognition", Strategy: "focused_tkc+label_anchor"}
 	withoutISV := pentacamEye(0, nil)
 	delete(withoutISV["topometric_indices_8mm"].(map[string]any), "isv")
 	for _, test := range []struct {
@@ -84,6 +86,8 @@ func TestPentacamCheckpointTKCReuse(t *testing.T) {
 	}{
 		{"printed dash", pentacamHintedDoc("od.pdf", "f1", "OD", pentacamEye(0, nil), printedDash), "hit"},
 		{"unreadable TKC", pentacamHintedDoc("od.pdf", "f1", "OD", pentacamEye(0, nil), unreadable), "not_found"},
+		{"conflicting TKC", pentacamHintedDoc("od.pdf", "f1", "OD", pentacamEye(0, nil), conflicting), "not_found"},
+		{"classified TKC", pentacamHintedDoc("od.pdf", "f1", "OD", pentacamEye(0, "KC2-3"), classified), "hit"},
 		{"no TKC hint", pentacamHintedDoc("od.pdf", "f1", "OD", pentacamEye(0, nil)), "not_found"},
 		{"printed dash, ISV missing", pentacamHintedDoc("od.pdf", "f1", "OD", withoutISV, printedDash), "not_found"},
 	} {

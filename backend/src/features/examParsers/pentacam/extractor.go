@@ -178,6 +178,10 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 	}
 	anchored, conflicts, vetoes := readAnchoredNative(executionContext, screensToPages(screens), pageImages, newNativeCtx(data, pageCount, pageImages))
 	executionContext = withDecodedPageImages(executionContext, pages, pageImages)
+	// TKC is decided below with the focused reader, never by the generic flow
+	// (its dash is a hint, not a value).
+	anchoredTKC := anchored["tkc"]
+	delete(anchored, "tkc")
 
 	var extraHints []FieldHint
 	values := map[string]any{}
@@ -343,14 +347,20 @@ func extractPDF(executionContext context.Context, data []byte, parallelRender bo
 		}
 	}
 
-	if tkc, ok := pentacamFocusedTKC(topometricOCRTexts); ok {
-		if tkc == "—" {
-			// A printed dash means "no classification": no value, never the
-			// placeholder as a value.
-			extraHints = append(extraHints, FieldHint{Spec: "tkc", Status: "not_applicable", Stage: "recognition", Strategy: "printed_dash"})
-		} else {
-			values["tkc"] = tkc
-		}
+	// Two independent readers: the fixed region (three PSMs) and the voted
+	// label-anchored cell (combineTKC).
+	focused, focusedStatus := pentacamFocusedTKC(topometricOCRTexts)
+	tkc, status, strategy := combineTKC(focused, focusedStatus, anchoredTKC.Text)
+	switch {
+	case status == "valid" && tkc == "—":
+		// A printed dash means "no classification": no value, never the
+		// placeholder as a value.
+		extraHints = append(extraHints, FieldHint{Spec: "tkc", Status: "not_applicable", Stage: "recognition", Strategy: "printed_dash"})
+	case status == "valid":
+		values["tkc"] = tkc
+		provenance["tkc"] = FieldHint{Spec: "tkc", Status: "valid", Stage: "recognition", Strategy: strategy}
+	case status != "missing":
+		extraHints = append(extraHints, FieldHint{Spec: "tkc", Status: status, Stage: "recognition", Strategy: strategy})
 	}
 
 	progress.Report(
@@ -739,29 +749,30 @@ func parsePentacamFieldToken(text, label string, decimal bool) (string, bool) {
 	return match[1], true
 }
 
-func pentacamFocusedTKC(ocrTexts []string) (string, bool) {
+// pentacamFocusedTKC returns the agreed TKC reading across OCR texts and a
+// status: valid, missing (no label), unreadable (label, no strict reading) or
+// conflicting (texts disagree).
+func pentacamFocusedTKC(ocrTexts []string) (value string, status string) {
+	labelled := false
 	for _, raw := range ocrTexts {
-		text := normalizePentacamText(raw)
-
-		re := regexp.MustCompile(`(?is)\btkc\b(.{0,20})`)
-		match := re.FindStringSubmatch(text)
-		if len(match) != 2 {
+		v, ok := tkcFromText(raw)
+		if !ok {
 			continue
 		}
-
-		tail := strings.TrimSpace(match[1])
-
-		if strings.ContainsAny(tail, "-—–") {
-			return "—", true
+		labelled = true
+		if v == "" {
+			continue
 		}
-
-		// TKC is a categorical keratoconus classification, not a decimal
-		// measurement. Reject nearby numeric OCR such as "4.521".
-		token := regexp.MustCompile(`(?i)\b(?:kc|tkc)?\s*[1-4](?:[a-d])?\b`).FindString(tail)
-		if token != "" && !strings.Contains(token, ".") {
-			return strings.ToUpper(strings.Join(strings.Fields(token), " ")), true
+		if value != "" && value != v {
+			return "", "conflicting"
 		}
+		value = v
 	}
-
-	return "", false
+	switch {
+	case value != "":
+		return value, "valid"
+	case labelled:
+		return "", "unreadable"
+	}
+	return "", "missing"
 }

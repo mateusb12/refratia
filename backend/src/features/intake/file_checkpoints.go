@@ -43,7 +43,10 @@ import (
 // found on colour-filled cells, and EyeSuite K axes survive a stray tick
 // before "@". v10: Pentacam values the Tesseract vote cannot read are filled from
 // the embedded pixel glyphs (and contradicted ones blocked), with per-field strategy provenance.
-const fileCheckpointVersion = "v10"
+// v11: Pentacam TKC is read only from its own cell (a neighbouring KISA digit
+// was taken as "2"), as a strict class (KK/KC n, KC n-m, Poss.) or the dash,
+// from two readers that must not disagree.
+const fileCheckpointVersion = "v11"
 
 type fileCheckpointProcessingRun struct {
 	StorageClient fileStorage.Repository

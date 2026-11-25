@@ -88,9 +88,10 @@ test('empty Pentacam timestamp is skipped, garbage is not', () => {
 
 test('keratoconusStatus', () => {
   for (const v of ['—', '-']) assert.equal(keratoconusStatus([v]), 'not_classified')
-  for (const v of ['KC2', 'Poss.', 'KC 1-2']) assert.equal(keratoconusStatus([v]), 'classified')
+  for (const v of ['KC2', 'Poss.', 'KC 1-2', 'KC2-3']) assert.equal(keratoconusStatus([v]), 'classified')
   assert.equal(keratoconusStatus([null]), 'unknown')
   assert.equal(keratoconusStatus([]), 'unknown')
+  for (const v of ['2', 'KK 2', '2.600']) assert.equal(keratoconusStatus([v]), 'unknown') // non-canonical text is never a class nor a negative
   assert.equal(keratoconusStatus(['—', null]), 'unknown')
   assert.equal(keratoconusStatus(['—', 'KC1']), 'classified')
 })
@@ -199,7 +200,10 @@ test('keratoconusForAnalysis: printed dash diagnostic vs not read (never a negat
 
 test('App gates the Flow C verdict on a confirmed non-classified TKC', () => {
   const src = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8')
-  assert.ok(src.includes("flow === 'C' && tkcStatus === 'not_classified'"))
+  // gating lives in utils/protocolDecision.ts (tests/protocol-decision.test.mjs); the screen only renders it
+  assert.ok(src.includes('evaluateProtocol(data)'))
+  assert.ok(!src.includes('Indicação cirúrgica pelo protocolo: SIM'), 'no unconditional verdict')
+  assert.ok(!src.includes(': adequado<'), 'endothelium is never asserted adequate without evaluation')
   assert.ok(!src.includes("tkcStatus !== 'classified'"))
   assert.ok(!src.includes("'em branco'"), 'item 52: never display the TKC as em branco')
 })

@@ -506,6 +506,9 @@ func readAnchoredNative(
 	if staging, hint, ok := readStaging(ctx, pageOf, pageImages, cache); ok {
 		out["abcd_staging"] = anchoredValue{Hint: hint, Text: staging}
 	}
+	if tkc, hint, ok := readTKC(ctx, pageOf, pageImages, cache); ok {
+		out["tkc"] = anchoredValue{Hint: hint, Text: tkc}
+	}
 	return out, conflicts, vetoedBy
 }
 
@@ -644,6 +647,49 @@ func readStaging(
 	return text, FieldHint{Spec: "abcd_staging", Status: "valid", Stage: "recognition", Screen: string(ScreenTopometric), Page: page,
 		Strategy: "label_anchor", BBox: to300dpi(rect, img.Bounds())}, true
 }
+
+// readTKC reads the TKC cell of the topometric "Índices" panel: the box to the
+// right of the "TKC" label, voted across preprocessings (red cells carry white
+// text the fixed-region OCR misses) and accepted only through parseTKCCell.
+// The returned text is "—" for the printed dash; the extractor decides with the
+// focused reader (extractor.go), never this reading alone against a rival.
+func readTKC(
+	ctx context.Context,
+	pageOf map[Screen]int,
+	pageImages map[int]image.Image,
+	cache map[Screen]*screenWords,
+) (string, FieldHint, bool) {
+	page := pageOf[ScreenTopometric]
+	img, sw := pageImages[page], cache[ScreenTopometric]
+	if img == nil || sw == nil {
+		return "", FieldHint{}, false
+	}
+	span, found := pickLabel(sw.spans, anchorField{Label: tkcLabel}, nil)
+	if !found {
+		return "", FieldHint{}, false
+	}
+	h := span.height
+	// Same cell geometry as a colour-filled Índices cell (readValueBox).
+	rect := image.Rect(span.right+h/4, span.cy-h, span.right+h/4+13*h/2, span.cy+h).Intersect(img.Bounds())
+	seen := map[string]bool{}
+	cell := func(t string) string {
+		v, _ := parseTKCCell(t)
+		if v != "" {
+			seen[v] = true
+		}
+		return v
+	}
+	text := readTextBox(ctx, img, rect, "", cell, "")
+	// Two different strict readings of one cell ("KK 2" and "KK 2-3", or a
+	// dash and a class) are an ambiguous cell, whatever the vote says.
+	if text == "" || len(seen) > 1 {
+		return "", FieldHint{}, false
+	}
+	return text, FieldHint{Spec: "tkc", Status: "valid", Stage: "recognition", Screen: string(ScreenTopometric), Page: page,
+		Strategy: "label_anchor", BBox: to300dpi(rect, img.Bounds())}, true
+}
+
+var tkcLabel = lbl(`tkc`)
 
 // crossCheckAstigmatism applies the keratometry identities (keratoDrop) to the
 // final values, whichever strategy read them: values that break them are

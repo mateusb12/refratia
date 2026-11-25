@@ -38,7 +38,8 @@ import SavedExamsPage from './components/storage/SavedExamsPage'
 import ProtocolPage from './components/protocol/ProtocolPage'
 import { normalizeSavedAnalysis, type IntakeAnalysis } from './contracts/patient-analysis'
 import { formatBirthDate, formatDateLongPtBR } from './utils/date'
-import { birthDateInversion, clinicalFlowForAnalysis, flowLabel, keratoconusForAnalysis } from './utils/clinicalFlow'
+import { birthDateInversion, clinicalFlowForAnalysis, flowLabel } from './utils/clinicalFlow'
+import { CONDUTA, ENDOTHELIAL_MIN_CELLS_MM2, TORIC_MIN_ASTIGMATISM_D, evaluateProtocol, type Tone } from './utils/protocolDecision'
 
 type Theme = 'light' | 'dark'
 type CaseKind = 'demo' | 'real'
@@ -347,8 +348,8 @@ const extractedData: ExtractedDatum[] = [
   },
 ]
 
-const endothelialCutoff = 2000
-const toricCutoff = 0.75
+const endothelialCutoff = ENDOTHELIAL_MIN_CELLS_MM2
+const toricCutoff = TORIC_MIN_ASTIGMATISM_D
 
 function fileBaseName(value: unknown, fallback = 'Documento') {
   const path = typeof value === 'string' ? value : ''
@@ -432,7 +433,7 @@ function getReportExtractedData(data: ReportData): ExtractedDatum[] {
       kind: reportDataKind(microscopy.cell_density_cells_per_mm2),
       confidence: reportConfidence(microscopy.cell_density_cells_per_mm2),
       document: fileBaseName(data.exams.specular_microscopy.source[0], source),
-      screen: 'NIDEK',
+      screen: 'Microscopia especular',
       field: 'Cell Density (CD)',
     },
     {
@@ -442,8 +443,8 @@ function getReportExtractedData(data: ReportData): ExtractedDatum[] {
       source: `Biometria ${label}`,
       kind: reportDataKind(biometry.axial_length_mm),
       confidence: reportConfidence(biometry.axial_length_mm),
-      document: 'BIO SRK-T AO.pdf',
-      screen: 'EyeSuite IOL',
+      document: fileBaseName(data.exams.iol_calculation.source[0], `Biometria ${label}`),
+      screen: 'Biometria',
       field: 'Axial length',
     },
   ] satisfies ExtractedDatum[]
@@ -466,9 +467,9 @@ function getReportMetrics(data: ReportData, extractedData: ExtractedDatum[]): Me
   },
   {
     label: 'Consolidação',
-    value: 'Compatível',
-    detail: 'Datas normalizadas',
-    tone: 'success',
+    value: 'Revisar',
+    detail: 'Datas e identidade entre documentos não são conferidas automaticamente nesta tela',
+    tone: 'warning',
   },
   ]
 }
@@ -740,11 +741,11 @@ function DocumentsReview({
         </div>
       )}
 
-      <div className="mt-4">
+      {!items.some((document) => /oct|retina/i.test(document.name) && document.status !== 'Não enviado') && <div className="mt-4">
         <InformationNotice>
           OCT de retina não enviado. A ausência deste dado não altera a recomendação atual.
         </InformationNotice>
-      </div>
+      </div>}
     </section>
   )
 }
@@ -891,46 +892,55 @@ function FlowConnector({
   )
 }
 
+const toneCard: Record<Tone, string> = {
+  green: 'border-success/40 bg-success-soft',
+  yellow: 'border-warning/50 bg-warning-soft',
+  red: 'border-danger/50 bg-danger-soft',
+  gray: 'border-border bg-surface-muted',
+}
+
 function RealCaseSummary({ data }: { data: ReportData }) {
+  // All decisions come from the pure protocol evaluator (utils/protocolDecision.ts); this component only renders them.
+  const decision = evaluateProtocol(data)
   const eyes = (['OD', 'OS'] as const).map((eye) => {
     const pentacam = data.exams.pentacam_corneal_tomography.eyes[eye]
-    const biometry = data.exams.iol_calculation.eyes[eye]
-    const endothelium = data.exams.specular_microscopy.eyes[eye]
-    const astigmatism = Math.abs(biometry.keratometry.astigmatism_d)
     const coma = Number.parseFloat(pentacam.corneal_rings.zernike['5mm'].z31_coma)
+    const evaluated = decision.eyes[eye]
 
     return {
       eye,
-      astigmatism,
+      evaluated,
+      astigmatism: evaluated.astigmatism.value ?? Number.NaN,
+      astigmatismKnown: evaluated.astigmatism.status === 'aprovado',
+      endothelialDensity: evaluated.endothelium.value ?? Number.NaN,
+      endotheliumPending: evaluated.endothelium.status === 'pendente' || evaluated.endothelium.status === 'nao_avaliado',
       coma,
-      endothelialDensity: endothelium.cell_density_cells_per_mm2,
       badD: pentacam.belin_ambrosio.d,
       artMax: pentacam.belin_ambrosio.art_max,
       tkc: pentacam.topometric_indices_8mm.tkc,
       z40: pentacam.cataract_preop.total_corneal_z40_6mm_um,
-      recommendation: astigmatism >= 0.75
-        ? 'LIO multifocal tórica ou EDOF tórica'
-        : 'LIO multifocal ou EDOF não tórica',
     }
   })
 
-  const { age, flow } = clinicalFlowForAnalysis(data)
+  const { age, flow } = decision
   const flowNotice = flow === 'out_of_scope'
     ? 'Fora do escopo do protocolo (menor de 18 anos). Nenhum fluxo se aplica.'
-    : flow === 'A' || flow === 'B'
-      ? `A cascata de decisão do Fluxo ${flow} não é automatizada nesta tela. Avalie manualmente conforme o protocolo; nenhuma recomendação é emitida aqui.`
-      : 'Idade não determinada: revise a identidade e a data do exame Pentacam. Nenhum fluxo foi escolhido.'
+    : decision.state === 'keratoconus'
+      ? 'Regra 2.1: TKC classificado — cascata encerrada para o paciente inteiro, em qualquer fluxo; encaminhamento a especialista em córnea. Nenhuma cirurgia é indicada automaticamente.'
+      : decision.state === 'screening_incomplete' && (flow === 'A' || flow === 'B')
+        ? `TKC não lido em pelo menos um olho: o rastreio de ceratocone (regra 2.1) não foi concluído. A cascata do Fluxo ${flow} não é automatizada nesta tela; nenhuma recomendação é emitida aqui.`
+        : flow === 'A' || flow === 'B'
+          ? `A cascata de decisão do Fluxo ${flow} não é automatizada nesta tela. Avalie manualmente conforme o protocolo; nenhuma recomendação é emitida aqui.`
+          : 'Idade não determinada: revise a identidade e a data do exame Pentacam. Nenhum fluxo foi escolhido.'
   const ageText = age === null ? 'Paciente com idade não informada' : `Paciente com ${age} anos`
-  const keratoconus = keratoconusForAnalysis(data)
+  const keratoconus = decision.tkc
   const tkcStatus = keratoconus.status
 
-  const hasEndothelialAlert = eyes.some(
-    ({ endothelialDensity }) => endothelialDensity < endothelialCutoff,
-  )
-
-  const hasToricNeed = eyes.some(
-    ({ astigmatism }) => astigmatism >= toricCutoff,
-  )
+  const hasEndothelialAlert = eyes.some(({ evaluated }) => evaluated.endothelium.status === 'condiciona_conduta')
+  const hasEndothelialPending = eyes.some(({ endotheliumPending }) => endotheliumPending)
+  const hasToricNeed = eyes.some(({ evaluated }) => evaluated.toric === true)
+  const hasToricUnknown = eyes.some(({ evaluated }) => evaluated.toric === null)
+  const ocrSent = Boolean((data.exams as Record<string, { source?: unknown[] } | undefined>).oct_retina?.source?.length)
 
   return (
     <section className="mt-5 rounded-2xl border border-border bg-surface p-6 shadow-sm max-[580px]:p-4">
@@ -1028,7 +1038,7 @@ function RealCaseSummary({ data }: { data: ReportData }) {
 
         {flow !== 'C' && (
           <div className="mx-auto mt-6 max-w-[760px] rounded-xl border border-warning/50 bg-warning-soft p-5" role="status">
-            <span className="text-xs font-bold tracking-[0.12em] text-warning">SEM RECOMENDAÇÃO AUTOMÁTICA</span>
+            <span className="text-xs font-bold tracking-[0.12em] text-warning">{decision.state === 'keratoconus' ? 'REGRA 2.1' : 'SEM RECOMENDAÇÃO AUTOMÁTICA'}</span>
             <p className="mb-0 mt-2 text-sm leading-relaxed text-text-primary">{flowNotice}</p>
           </div>
         )}
@@ -1143,15 +1153,26 @@ function RealCaseSummary({ data }: { data: ReportData }) {
           <span className="text-xs font-bold tracking-[0.12em] text-primary">DECISÃO AVALIADA</span>
           <h3 className="mb-0 mt-1 text-base font-bold">Algum olho está abaixo do ponto de corte endotelial?</h3>
           <p className="mb-0 mt-1 text-xs text-text-muted">
-            Regra: densidade celular &lt; {endothelialCutoff.toLocaleString('pt-BR')} células/mm² → ponto de atenção.
+            Regra: densidade celular &lt; {endothelialCutoff.toLocaleString('pt-BR')} células/mm² → conduta do olho condicionada (“a considerar após avaliação endotelial”). Microscopia ausente, ilegível ou fora da janela de 4 meses → exame pendente.
           </p>
 
           <div className="mt-4 grid grid-cols-2 gap-3 max-[580px]:grid-cols-1">
-            {eyes.map(({ eye, endothelialDensity }) => {
-              const belowCutoff = endothelialDensity < endothelialCutoff
+            {eyes.map(({ eye, endothelialDensity, endotheliumPending, evaluated }) => {
+              if (endotheliumPending) {
+                return (
+                  <div className="rounded-xl border border-warning/50 bg-warning-soft/40 p-4" data-testid={`endothelium-${eye}`} key={eye}>
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="text-xs font-bold tracking-[0.12em] text-text-secondary">{eyeLabel(eye)}</span>
+                      <StatusBadge tone="warning">Exame pendente</StatusBadge>
+                    </div>
+                    <p className="mb-0 mt-3 text-sm font-semibold text-text-primary">{evaluated.endothelium.text}</p>
+                  </div>
+                )
+              }
+              const belowCutoff = evaluated.endothelium.status === 'condiciona_conduta'
               const scaleMax = Math.max(
                 endothelialCutoff * 1.5,
-                ...eyes.map(({ endothelialDensity: density }) => density),
+                ...eyes.map(({ endothelialDensity: density }) => density).filter(Number.isFinite),
               )
               const cutoffWidth = (endothelialCutoff / scaleMax) * 100
               const patientWidth = (endothelialDensity / scaleMax) * 100
@@ -1165,6 +1186,7 @@ function RealCaseSummary({ data }: { data: ReportData }) {
                       ? 'border-warning/40 bg-warning-soft/30'
                       : 'border-success/40 bg-success-soft/30',
                   )}
+                  data-testid={`endothelium-${eye}`}
                   key={eye}
                 >
                   <div className="flex items-start justify-between gap-3">
@@ -1284,25 +1306,25 @@ function RealCaseSummary({ data }: { data: ReportData }) {
               </strong>
 
               <span className="mt-1 block">
-                Registrar ponto de atenção endotelial.
+                Conduta condicionada nesse olho (“— a considerar após avaliação endotelial”).
               </span>
             </div>
 
             <div
               className={clsx(
                 'min-h-[112px] rounded-lg border p-3 text-xs',
-                !hasEndothelialAlert
+                !hasEndothelialAlert && !hasEndothelialPending
                   ? 'border-success/50 bg-success-soft'
                   : 'border-border bg-surface-muted text-text-muted',
               )}
             >
               <span className={clsx(
                 'flex items-center gap-1 font-bold',
-                !hasEndothelialAlert ? 'text-success' : 'text-text-secondary',
+                !hasEndothelialAlert && !hasEndothelialPending ? 'text-success' : 'text-text-secondary',
               )}>
-                {!hasEndothelialAlert && <Check size={13} />}
+                {!hasEndothelialAlert && !hasEndothelialPending && <Check size={13} />}
                 Não
-                {!hasEndothelialAlert && ' · rota escolhida'}
+                {!hasEndothelialAlert && !hasEndothelialPending && ' · rota escolhida'}
               </span>
 
               <strong className="mt-2 block">
@@ -1333,16 +1355,27 @@ function RealCaseSummary({ data }: { data: ReportData }) {
           <span className="text-xs font-bold tracking-[0.12em] text-primary">DECISÃO AVALIADA</span>
           <h3 className="mb-0 mt-1 text-base font-bold">O astigmatismo pede lente tórica?</h3>
           <p className="mb-0 mt-1 text-xs text-text-muted">
-            Regra: biometria óptica ≥ {formatNumber(toricCutoff)} D → versão tórica.
+            Regra: astigmatismo da biometria óptica ≥ {formatNumber(toricCutoff)} D → versão tórica. Sem biometria, o valor não é presumido (o Pentacam nunca substitui): a escolha tórica/não tórica fica pendente.
           </p>
 
           <div className="mt-4 grid grid-cols-2 gap-3 max-[580px]:grid-cols-1">
-            {eyes.map(({ eye, astigmatism }) => {
-              const isToric = astigmatism >= toricCutoff
+            {eyes.map(({ eye, astigmatism, astigmatismKnown, evaluated }) => {
+              if (!astigmatismKnown) {
+                return (
+                  <div className="rounded-xl border border-warning/50 bg-warning-soft/40 p-4" data-testid={`astigmatism-${eye}`} key={eye}>
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="text-xs font-bold tracking-[0.12em] text-text-secondary">{eyeLabel(eye)}</span>
+                      <StatusBadge tone="warning">{evaluated.astigmatism.status === 'pendente' ? 'Exame pendente' : 'Dado ausente'}</StatusBadge>
+                    </div>
+                    <p className="mb-0 mt-3 text-sm font-semibold text-text-primary">{evaluated.astigmatism.text}</p>
+                  </div>
+                )
+              }
+              const isToric = evaluated.toric === true
 
               const toricScaleMax = Math.max(
                 toricCutoff * 1.5,
-                ...eyes.map(({ astigmatism: value }) => value),
+                ...eyes.map(({ astigmatism: value }) => value).filter(Number.isFinite),
               )
 
               const toricCutoffWidth = (toricCutoff / toricScaleMax) * 100
@@ -1357,6 +1390,7 @@ function RealCaseSummary({ data }: { data: ReportData }) {
                       ? 'border-toric-border bg-toric-soft/40'
                       : 'border-border bg-surface-muted',
                   )}
+                  data-testid={`astigmatism-${eye}`}
                   key={eye}
                 >
                   <div className="flex items-start justify-between gap-3">
@@ -1502,7 +1536,7 @@ function RealCaseSummary({ data }: { data: ReportData }) {
             <div
               className={clsx(
                 'min-h-[112px] rounded-lg border p-3 text-xs',
-                !hasToricNeed
+                !hasToricNeed && !hasToricUnknown
                   ? 'border-success/50 bg-success-soft'
                   : 'border-border bg-surface-muted text-text-muted',
               )}
@@ -1510,16 +1544,16 @@ function RealCaseSummary({ data }: { data: ReportData }) {
               <span
                 className={clsx(
                   'flex items-center gap-1 font-bold',
-                  !hasToricNeed ? 'text-success' : 'text-text-secondary',
+                  !hasToricNeed && !hasToricUnknown ? 'text-success' : 'text-text-secondary',
                 )}
               >
-                {!hasToricNeed && <Check size={13} />}
+                {!hasToricNeed && !hasToricUnknown && <Check size={13} />}
                 Não
-                {!hasToricNeed && ' · rota escolhida'}
+                {!hasToricNeed && !hasToricUnknown && ' · rota escolhida'}
               </span>
 
               <strong className="mt-2 block">
-                Nenhum olho atingiu {formatNumber(toricCutoff)} D
+                Nenhum olho atingiu {formatNumber(toricCutoff)} D (com biometria disponível nos dois olhos)
               </strong>
 
               <span className="mt-1 block">
@@ -1545,16 +1579,15 @@ function RealCaseSummary({ data }: { data: ReportData }) {
         <details className="mx-auto max-w-[760px] rounded-xl border border-border bg-surface-muted p-4">
           <summary className="cursor-pointer list-none text-sm font-bold marker:hidden">Checagens que não alteraram a rota</summary>
           <div className="mt-3 grid grid-cols-2 gap-3 max-[580px]:grid-cols-1">
-            {eyes.map(({ eye, coma, endothelialDensity, z40 }) => (
+            {eyes.map(({ eye, coma, z40 }) => (
               <ul className="m-0 grid list-none gap-2 rounded-lg border border-border bg-surface p-3 text-xs text-text-secondary" key={eye}>
                 <li className="font-bold text-text-primary">{eye}</li>
-                <li>Coma {formatNumber(coma, { minimumFractionDigits: 3 })} µm: sem alerta</li>
-                <li>Endotélio {formatNumber(endothelialDensity)} células/mm²: adequado</li>
+                <li>Coma (Z31, zona de 5 mm) {formatNumber(coma, { minimumFractionDigits: 3 })} µm: registro informativo, sem limiar (o protocolo nomeia a zona de 4,0 mm — itens 77 e 78)</li>
                 <li>Z40 {formatNumber(z40, { minimumFractionDigits: 3 })} µm: informativo</li>
               </ul>
             ))}
           </div>
-          <p className="mb-0 mt-3 text-xs text-text-muted">O OCT de retina não foi enviado, mas é informativo neste fluxo e não altera a indicação.</p>
+          <p className="mb-0 mt-3 text-xs text-text-muted">{ocrSent ? 'OCT de retina enviado: achados não avaliados automaticamente nesta tela. Informativo — não altera a indicação.' : 'OCT de retina não disponível. A ausência deste dado não implica em qualquer mudança na conduta cirúrgica indicada.'}</p>
         </details>
 </>
         )}
@@ -1574,30 +1607,48 @@ function RealCaseSummary({ data }: { data: ReportData }) {
         )}
       </div>
 
-      {flow === 'C' && tkcStatus === 'not_classified' && (
-      <div className="mt-6 rounded-xl border border-primary bg-sidebar px-5 py-5 text-sidebar-text">
-        <span className="text-xs font-bold tracking-[0.12em] text-[#79d4b7]">
-          VEREDITO DO PROTOCOLO
+      {(decision.state === 'evaluated' || decision.state === 'keratoconus') && (
+      <div className="mt-6 rounded-xl border border-primary bg-surface px-5 py-5" data-testid="protocol-orientation">
+        <span className="text-xs font-bold tracking-[0.12em] text-primary">
+          ORIENTAÇÃO À DECISÃO
         </span>
-
-        <div className="mt-3 flex items-center gap-2">
-          <CircleCheck className="text-[#79d4b7]" size={20} />
-          <strong className="font-display text-xl leading-tight">
-            Indicação cirúrgica pelo protocolo: SIM
-          </strong>
-        </div>
+        {decision.showOrientationSentence && (
+          <p className="mb-0 mt-2 text-sm font-bold leading-relaxed text-text-primary">
+            Caso compatível, do ponto de vista corneano e biométrico, com a cirurgia indicada abaixo. Avaliar os demais aspectos clínicos e oftalmológicos, bem como a preferência do cirurgião, para dar seguimento.
+          </p>
+        )}
 
         <div className="mt-4 grid grid-cols-2 gap-3 max-[720px]:grid-cols-1">
-          {eyes.map(({ eye, recommendation }) => (
-            <div className="rounded-lg border border-white/10 bg-white/[0.07] p-3" key={`final-verdict-${eye}`}>
-              <span className="text-xs font-bold text-sidebar-muted">{eye}</span>
-              <strong className="mt-1 block text-sm">{recommendation}</strong>
+          {eyes.map(({ eye, evaluated }) => (
+            <div className={clsx('rounded-lg border p-3', toneCard[evaluated.tone])} data-testid={`conduta-${eye}`} key={`final-verdict-${eye}`}>
+              <span className="text-xs font-bold text-text-secondary">{eyeLabel(eye)}</span>
+              <strong className="mt-1 block text-sm text-text-primary">{evaluated.conduta}</strong>
+              {evaluated.conduta === CONDUTA.readyGeneric && (
+                <span className="mt-1 block text-xs text-text-secondary">Escolha entre versão tórica e não tórica depende do astigmatismo da biometria óptica (dado pendente).</span>
+              )}
             </div>
           ))}
         </div>
 
-        <p className="mb-0 mt-3 text-xs leading-relaxed text-sidebar-muted">
-          Resultado preliminar do protocolo — decisão final do médico cirurgião.
+        {decision.state === 'evaluated' && (
+          <p className="mb-0 mt-3 text-xs leading-relaxed text-text-secondary" data-testid="dados-ausentes">
+            <strong>Dados ausentes:</strong>{' '}
+            {eyes.flatMap(({ eye, evaluated }) => evaluated.missing.map((item) => `${eyeLabel(eye)}: ${item}`)).join(' · ') || 'Nenhum critério decisivo deste fluxo ficou pendente.'}
+          </p>
+        )}
+
+        {eyes.some(({ evaluated }) => evaluated.observations.length > 0) && (
+          <ul className="mb-0 mt-3 grid list-none gap-2 p-0 text-xs leading-relaxed text-text-secondary" data-testid="observacoes">
+            {(decision.state === 'keratoconus' ? eyes.slice(0, 1) : eyes).flatMap(({ eye, evaluated }) => evaluated.observations.map((observation) => (
+              <li className="rounded-lg border border-border bg-surface-muted p-3" key={`${eye}-${observation.type}`}>
+                <strong className="text-text-primary">{decision.state === 'keratoconus' ? 'AO' : eyeLabel(eye)}</strong> · {observation.text}
+              </li>
+            )))}
+          </ul>
+        )}
+
+        <p className="mb-0 mt-3 text-xs leading-relaxed text-text-muted">
+          Apoio à decisão em cirurgia refrativa — a indicação final é do médico cirurgião.
         </p>
       </div>
       )}

@@ -19,9 +19,9 @@ func TestParsePentacamFieldNumberRequiresPrintedDecimal(t *testing.T) {
 }
 
 func TestPentacamFocusedTKCDash(t *testing.T) {
-	got, ok := pentacamFocusedTKC([]string{"CKI 1.01   TKC: —"})
-	if !ok || got != "—" {
-		t.Fatalf("TKC inesperado: %#v %v", got, ok)
+	got, st := pentacamFocusedTKC([]string{"CKI 1.01   TKC: —"})
+	if st != "valid" || got != "—" {
+		t.Fatalf("TKC inesperado: %#v %v", got, st)
 	}
 }
 

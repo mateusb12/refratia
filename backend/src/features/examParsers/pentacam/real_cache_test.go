@@ -10,9 +10,10 @@ import (
 // Real-document tests share one ExtractPDF per PDF path per test binary run:
 // each extraction takes ~25 s, and several tests read the same documents.
 type extractEntry struct {
-	once sync.Once
-	exam map[string]any
-	err  error
+	once  sync.Once
+	exam  map[string]any
+	hints []FieldHint
+	err   error
 }
 
 var (
@@ -21,6 +22,12 @@ var (
 )
 
 func cachedExtractPDF(t *testing.T, path string) map[string]any {
+	t.Helper()
+	exam, _ := cachedExtractPDFWithHints(t, path)
+	return exam
+}
+
+func cachedExtractPDFWithHints(t *testing.T, path string) (map[string]any, []FieldHint) {
 	t.Helper()
 	extractCacheMu.Lock()
 	entry := extractCache[path]
@@ -35,10 +42,10 @@ func cachedExtractPDF(t *testing.T, path string) map[string]any {
 			entry.err = err
 			return
 		}
-		entry.exam, entry.err = ExtractPDF(context.Background(), data)
+		entry.exam, entry.hints, entry.err = ExtractPDFWithHints(context.Background(), data)
 	})
 	if entry.err != nil {
 		t.Fatalf("%s: %v", path, entry.err)
 	}
-	return entry.exam
+	return entry.exam, entry.hints
 }

@@ -188,23 +188,8 @@ func pentacamNumberAfter(
 }
 
 func pentacamTKC(text string) (string, bool) {
-	re := regexp.MustCompile(`(?i)\btkc\b\W*([^\s]+)`)
-	match := re.FindStringSubmatch(text)
-	if len(match) != 2 {
-		return "", false
-	}
-
-	token := strings.TrimSpace(match[1])
-
-	// Campo localizado e impresso como traço = sem classificação.
-	if strings.Contains(token, "-") ||
-		strings.Contains(token, "—") ||
-		strings.Contains(token, "–") {
-		return "—", true
-	}
-
-	// Não transformamos OCR ambíguo como "I", "E" etc. em classificação.
-	return "", false
+	v, _ := tkcFromText(text)
+	return v, v != ""
 }
 
 func pentacamContractComplete(eye map[string]any) error {
