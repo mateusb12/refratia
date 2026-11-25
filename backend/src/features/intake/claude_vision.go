@@ -218,6 +218,17 @@ var claudeFieldHints = map[string]string{
 	"refraction_type": "refraction type", "sphere_d": "sphere (S)", "cylinder_d": "cylinder (C)", "axis_deg": "axis (A)", "vertex_distance_mm": "VD", "pd_mm": "PD",
 }
 
+// The 4 mm coma components (items 77/78): six signed cells of the Pentacam
+// "Aberrometry Cornea" page; the magnitude is composed by the evaluator, never
+// read, and the 5/6 mm Anéis Corneanos values are never a substitute.
+func init() {
+	for _, column := range [][2]string{{"ant", "WFA Anterior"}, {"post", "WFA Posterior"}, {"cornea", "WFA Córnea (total cornea)"}} {
+		for _, degrees := range []string{"0", "90"} {
+			claudeFieldHints["coma"+degrees+"_4mm_wfa_"+column[0]+"_um"] = fmt.Sprintf("Aberrometry Cornea page whose maximum diameter (Diâmetro Máximo) is 4.00 mm: row Coma %s°, column %s, with its printed sign; omit when that page is absent or not at 4.00 mm, never use the 5/6 mm Anéis Corneanos coma", degrees, column[1])
+		}
+	}
+}
+
 func claudePrompt(examKey string) string {
 	var catalog strings.Builder
 	for _, field := range extractionfields.Fields(examKey) {

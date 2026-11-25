@@ -610,7 +610,17 @@
           3
         ],
         "protocol_role": "informative",
-        "app_paths": []
+        "app_paths": [
+          [
+            "exams",
+            "pentacam_corneal_tomography",
+            "eyes",
+            "<EYE>",
+            "aberrometry_cornea_4mm",
+            "wfa_anterior",
+            "coma0_um"
+          ]
+        ]
       },
       "coma90_4mm_wfa_ant_um": {
         "unit": "um",
@@ -621,7 +631,17 @@
           3
         ],
         "protocol_role": "informative",
-        "app_paths": []
+        "app_paths": [
+          [
+            "exams",
+            "pentacam_corneal_tomography",
+            "eyes",
+            "<EYE>",
+            "aberrometry_cornea_4mm",
+            "wfa_anterior",
+            "coma90_um"
+          ]
+        ]
       },
       "coma0_4mm_wfa_post_um": {
         "unit": "um",
@@ -632,7 +652,17 @@
           3
         ],
         "protocol_role": "informative",
-        "app_paths": []
+        "app_paths": [
+          [
+            "exams",
+            "pentacam_corneal_tomography",
+            "eyes",
+            "<EYE>",
+            "aberrometry_cornea_4mm",
+            "wfa_posterior",
+            "coma0_um"
+          ]
+        ]
       },
       "coma90_4mm_wfa_post_um": {
         "unit": "um",
@@ -643,7 +673,17 @@
           3
         ],
         "protocol_role": "informative",
-        "app_paths": []
+        "app_paths": [
+          [
+            "exams",
+            "pentacam_corneal_tomography",
+            "eyes",
+            "<EYE>",
+            "aberrometry_cornea_4mm",
+            "wfa_posterior",
+            "coma90_um"
+          ]
+        ]
       },
       "coma0_4mm_wfa_cornea_um": {
         "unit": "um",
@@ -654,7 +694,17 @@
           3
         ],
         "protocol_role": "informative",
-        "app_paths": []
+        "app_paths": [
+          [
+            "exams",
+            "pentacam_corneal_tomography",
+            "eyes",
+            "<EYE>",
+            "aberrometry_cornea_4mm",
+            "wfa_cornea",
+            "coma0_um"
+          ]
+        ]
       },
       "coma90_4mm_wfa_cornea_um": {
         "unit": "um",
@@ -665,7 +715,17 @@
           3
         ],
         "protocol_role": "informative",
-        "app_paths": []
+        "app_paths": [
+          [
+            "exams",
+            "pentacam_corneal_tomography",
+            "eyes",
+            "<EYE>",
+            "aberrometry_cornea_4mm",
+            "wfa_cornea",
+            "coma90_um"
+          ]
+        ]
       },
       "coma_4mm_wfa_cornea_magnitude_um": {
         "unit": "um",

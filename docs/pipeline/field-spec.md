@@ -27,7 +27,8 @@ There is also a machine-readable version: `backend/benchmark/groundtruth/_field_
   - It is an informative record with no cut, reported with the zone and column.
   - The zone is now 4.0 mm, from the Pentacam "Aberrometry Cornea" page (Diâmetro Máximo 4.00 mm). That page gives the Coma 0° and Coma 90° components in the WFA Anterior / WFA Posterior / WFA Córnea columns.
   - The magnitude has to be composed as √(c0² + c90²). Which column to use is still undecided; WFA Córnea is the protocol's suggestion.
-  - The Anéis Corneanos 5/6 mm Z31 is the legacy source. The app contract still reads 5 mm.
+  - The Anéis Corneanos 5/6 mm Z31 is the legacy source, still stored and shown, never used for the 4 mm record.
+  - Claude Vision reads the six 4 mm components into `aberrometry_cornea_4mm.{wfa_anterior,wfa_posterior,wfa_cornea}.{coma0_um,coma90_um}`; the evaluator composes the WFA Córnea magnitude. The OCR engine does not read this page.
 - **Informative only:** Z40 (6 mm, Cataract Pre-OP), PNS, retinography, OCT (Fluxo C only), scotopic pupil, and total ocular aberrometry (iTrace, not yet owned by the clinic).
 - **Equipment outside the section 1 table** (e.g. the TP-15 Apramed topographer) is used for identity and cross-checks only, never in formulas or cuts.
 
@@ -79,7 +80,7 @@ App paths are relative to `exams.pentacam_corneal_tomography.eyes.<EYE>`.
 | abcd_staging | – | – | e.g. "A0 B0 C0 D" | screening | Topométrico "Belin ABCD" summary line | the app stores numeric `abcd_keratoconus_staging.a/b/c/d`; it has no summary string |
 | coma_z31_5mm_um, coma_z31_5mm_axis_deg, coma_z31_6mm_um | µm, ° | 3, 0 | 0–5 | informative (legacy 5 mm) | Anéis Corneanos | `corneal_rings.zernike.5mm.z31_coma`, stored as the string "0.097 µm @ 151°", so parse it |
 | aberr_max_diameter_mm | mm | 2 | – | informative | Aberrometry Cornea header | — (not in the app) |
-| coma0/coma90 _4mm_wfa_{ant,post,cornea}_um | µm | 3 | −3–3 | informative (items 75–78) | Aberrometry Cornea rows N=8 / N=9 | — (not in the app) |
+| coma0/coma90 _4mm_wfa_{ant,post,cornea}_um | µm | 3 | −3–3 | informative (items 75–78) | Aberrometry Cornea rows N=8 / N=9 | `aberrometry_cornea_4mm.<column>.coma{0,90}_um` (Claude Vision only) |
 | coma_4mm_wfa_cornea_magnitude_um | µm | 3 | 0–3 | informative, **calculated** √(c0²+c90²) | – | — |
 
 ### 3.2 Biometry / IOL: `iol_calculation` (19 fields, AO document → OD + OS)

@@ -34,6 +34,11 @@ export const examContracts: Record<string, ExamContract> = {
       { key: 'cki', label: 'CKI', paths: [['topometric_indices_8mm', 'cki'], ['indices_zona_8mm', 'cki']] },
       { key: 'tkc', label: 'TKC', paths: [['topometric_indices_8mm', 'tkc'], ['indices_zona_8mm', 'tkc']] },
       { key: 'coma', label: 'Coma Z31 — zona 5 mm', paths: [['corneal_rings', 'zernike', '5mm', 'z31_coma'], ['anéis_corneanos', 'total_corneal_wfa_components_of_zernike', 'diam_zone_5_mm', 'z31_coma_um']] },
+      ...(['anterior', 'posterior', 'cornea'] as const).flatMap((column) => (['0', '90'] as const).map((degrees) => ({
+        key: `coma${degrees}_4mm_${column}`,
+        label: `Coma ${degrees}° — 4 mm, WFA ${{ anterior: 'Anterior', posterior: 'Posterior', cornea: 'Córnea' }[column]}`,
+        paths: [['aberrometry_cornea_4mm', `wfa_${column}`, `coma${degrees}_um`]],
+      }))),
       { key: 'acd', label: 'ACD — Cataract Pre-OP', paths: [['cataract_preop', 'acd_internal_external_mm'], ['cataract_preop', 'acd_mm'], ['cataract_pre_op', 'acd_mm'], ['anterior_segment', 'internal_anterior_chamber_depth_mm']] },
       { key: 'z40', label: 'Z40 — zona 6 mm', paths: [['cataract_preop', 'total_corneal_z40_6mm_um'], ['cataract_pre_op', 'total_corneal_z40_6mm_um']] },
     ],

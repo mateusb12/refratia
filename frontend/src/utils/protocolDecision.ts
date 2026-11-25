@@ -246,21 +246,71 @@ function flowCEye(analysis: any, eye: Eye, reference: string | null): EyeDecisio
     return { conduta: CONDUTA.pending, tone: 'yellow', astigmatism, endothelium: PENDING_CRITERION, toric: null, missing, observations, steps: [], certainty: null, review: null }
   }
   const toric = astigmatism.value === null ? null : astigmatism.value >= TORIC_MIN_ASTIGMATISM_D
+  const p = pentacamEye(analysis, eye)
+  // item 78: the coma record runs after rule 2.1 and the astigmatism checkpoint, before the endothelium
+  const coma = comaObservation(p)
+  if (coma) observations.push(coma)
+  else missing.push('coma corneano em 4,0 mm (coluna WFA Córnea) — dado ausente')
   if (endothelium.status === 'pendente') {
     missing.push('contagem endotelial')
     observations.push({ type: 'exame_pendente', text: `Necessidade de repetir ou realizar o exame (microscopia especular) antes de seguir o fluxo (${endothelium.text.replace('não avaliado — ', '')}).` })
     return { conduta: CONDUTA.pending, tone: 'yellow', astigmatism, endothelium, toric, missing, observations, steps: [], certainty: null, review: null }
   }
+  // §7: the checkpoints after the endothelium (Z40, PNS, retina mapping) run whenever the cascade reaches an LIO indication
+  const records = lensRecords(p, missing)
   if (endothelium.status === 'condiciona_conduta') {
-    observations.push({ type: 'endotelio_baixo', text: ENDOTELIO_BAIXO })
+    observations.push({ type: 'endotelio_baixo', text: ENDOTELIO_BAIXO }, ...records)
     const conduta = toric === null ? CONDUTA.conditionedGeneric : toric ? CONDUTA.conditionedToric : CONDUTA.conditioned
     return { conduta, tone: 'yellow', astigmatism, endothelium, toric, missing, observations, steps: [], certainty: null, review: null }
   }
+  observations.push(...records)
   const conduta = toric === null ? CONDUTA.readyGeneric : toric ? CONDUTA.readyToric : CONDUTA.ready
   // §8.1: green = conduta pronta; the generic indication is the protocol's ready conduct when astigmatism is absent.
   return { conduta, tone: 'green', astigmatism, endothelium, toric, missing, observations, steps: [], certainty: null, review: null }
 }
 
+// ---------------------------------------------------------------- Flow C informative records (§7; items 45, 77, 78)
+// None of these is a cut: they never change conduta_final, tone or certainty.
+
+/**
+ * Item 78: 4,0 mm corneal coma, magnitude √(Coma0°² + Coma90°²) of one Pentacam column.
+ * ponytail: the protocol names WFA Córnea (total cornea) as the corneal-coma concept but leaves the column open;
+ * all three columns are stored, so a future revision only changes this key. The 5 mm Anéis Corneanos value is never used.
+ */
+export function coma4mm(p: any) {
+  const column = p?.aberrometry_cornea_4mm?.wfa_cornea
+  const c0 = num(column?.coma0_um)
+  const c90 = num(column?.coma90_um)
+  return c0 === null || c90 === null ? null : { c0, c90, magnitude: Math.hypot(c0, c90), column: 'WFA Córnea' }
+}
+
+function comaObservation(p: any): Obs | null {
+  const coma = coma4mm(p)
+  return coma && { type: 'registro_coma', text: `Coma corneano (Z31) de ${fmt(coma.magnitude, 3)} µm, composto a partir dos componentes Coma 0° e Coma 90° da coluna ${coma.column} do Pentacam, em zona de 4,0 mm. Registro informativo: este protocolo NÃO aplica limiar de coma. A referência publicada mais próxima — valores abaixo de 0,2 µm nessa zona — foi estabelecida em 270 pacientes para UMA lente trifocal difrativa, e os próprios autores registram que o ponto de contraindicação carece de validação em outras plataformas de lente; por isso ela é citada e não aplicada aqui. A zona de 4,0 mm segue a recomendação publicada de analisar as aberrações de alta ordem em diâmetro padronizado de 4 mm, com a ressalva de que medidas em 6 mm superestimam a degradação funcional e podem levar a exclusão indevida. A interpretação deste valor é do cirurgião.` }
+}
+
+const Z40_RANGE = [0.017, 0.708] as const // §9.7, Al-Sayyari 2014: min–max in unoperated corneas, inclusive
+const MAPEAMENTO_RETINA: Obs = { type: 'mapeamento_retina', text: 'Sugere-se mapeamento de retina no pré-operatório, pelo risco de descolamento de retina após a cirurgia do cristalino, maior em olhos míopes e de comprimento axial longo.' }
+
+/** §7 after the endothelium: Z40 (sugestao_perfil_lio + aberracao_esferica_atipica), PNS (item 45) and the fixed retina-mapping suggestion. */
+function lensRecords(p: any, missing: string[]): Obs[] {
+  const out: Obs[] = []
+  const z40 = firstNum(p, [['cataract_preop', 'total_corneal_z40_6mm_um'], ['cataract_pre_op', 'total_corneal_z40_6mm_um']])
+  if (z40 === null) missing.push('aberração esférica corneana (Z40, 6 mm) — dado ausente')
+  else {
+    const z = `${z40 < 0 ? '−' : ''}${fmt(Math.abs(z40), 3)}`
+    out.push({ type: 'sugestao_perfil_lio', text: `Aberração esférica corneana total (Z40, 6mm) = ${z} µm. Caso o cirurgião julgue necessário modular a aberração esférica ocular pós-operatória (por exemplo, para otimizar profundidade de foco em EDOF ou multifocal), considerar os diferentes perfis de asfericidade disponíveis entre os modelos de LIO (negativa, neutra, ou positiva), a critério do cirurgião.` })
+    if (z40 < Z40_RANGE[0] || z40 > Z40_RANGE[1]) {
+      const negative = z40 < 0 ? ' Valores negativos são particularmente incomuns em córneas não operadas (nenhum estudo de referência levantado relatou mínimo negativo) — sinal de suspeita mais forte de ablação miópica prévia (LASIK/PRK) ou RK.' : ''
+      out.push({ type: 'aberracao_esferica_atipica', text: `Aberração esférica corneana (Z40 = ${z} µm) fora da faixa relatada em córneas não operadas na literatura de referência (+0,017 a +0,708 µm, população geral, 15-85 anos). Considerar investigar possível modificação corneana prévia não referida (cirurgia refrativa a laser, ceratotomia radial, trauma, ou outra alteração iatrogênica), antes de usar esse valor para escolha de perfil de LIO.${negative}` })
+    }
+  }
+  const pns = firstNum(p, [['anterior_segment', 'pns'], ['cataract_preop', 'pns'], ['cataract_pre_op', 'pns']])
+  if (pns === null) missing.push('PNS não informado')
+  else out.push({ type: 'pns_cristalino', text: `Densitometria do cristalino (PNS — Pentacam Nucleus Staging) = ${pns}. Considerar este dado, e os índices do iTrace quando estiver disponível (DLI e aberrometria interna), na avaliação do cristalino, a critério do cirurgião.` })
+  out.push(MAPEAMENTO_RETINA)
+  return out
+}
 
 // ---------------------------------------------------------------- Flows A and B (§5 p.14-17, §6 p.17-19)
 

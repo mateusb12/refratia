@@ -76,6 +76,52 @@ func TestMergeClaudeResultMapsValidatesAndKeepsDash(t *testing.T) {
 	}
 }
 
+func TestMergeClaudeResultStoresSigned4mmComaPerEye(t *testing.T) {
+	analysis := map[string]any{}
+	for _, f := range []struct {
+		eye  string
+		read []claudeMeasurement
+	}{
+		{"OD", []claudeMeasurement{
+			{Eye: "OD", Field: "coma0_4mm_wfa_cornea_um", Status: "read", Value: ptr(-0.038), Page: 5},
+			{Eye: "OD", Field: "coma90_4mm_wfa_cornea_um", Status: "read", Value: ptr(-0.013), Page: 5},
+			{Eye: "OD", Field: "coma0_4mm_wfa_ant_um", Status: "read", Value: ptr(-0.055), Page: 5},
+			{Eye: "OD", Field: "coma90_4mm_wfa_post_um", Status: "unreadable", Page: 5},
+			{Eye: "OS", Field: "coma0_4mm_wfa_cornea_um", Status: "read", Value: ptr(0.5), Page: 5},           // other eye: rejected
+			{Eye: "OD", Field: "coma_4mm_wfa_cornea_magnitude_um", Status: "read", Value: ptr(0.04), Page: 5}, // calculated, never read
+		}},
+		{"OS", []claudeMeasurement{
+			{Eye: "OS", Field: "coma0_4mm_wfa_cornea_um", Status: "read", Value: ptr(0.016), Page: 5},
+			{Eye: "OS", Field: "coma90_4mm_wfa_cornea_um", Status: "read", Value: ptr(-0.145), Page: 5},
+		}},
+	} {
+		file := UploadedFile{Metadata: FileMetadata{Filename: "PENTACAM_" + f.eye + ".pdf", SHA256: f.eye, Eye: f.eye}}
+		if _, err := mergeClaudeResult(analysis, file, "pentacam_corneal_tomography", claudeFileResult{ExamType: "pentacam_corneal_tomography", Measurements: f.read}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	eyes := analysis["exams"].(map[string]any)["pentacam_corneal_tomography"].(map[string]any)["eyes"].(map[string]any)
+	col := func(eye, column string) map[string]any {
+		c, _ := eyes[eye].(map[string]any)["aberrometry_cornea_4mm"].(map[string]any)[column].(map[string]any)
+		return c
+	}
+	if c := col("OD", "wfa_cornea"); c["coma0_um"] != -0.038 || c["coma90_um"] != -0.013 {
+		t.Errorf("OD WFA Córnea = %v", c)
+	}
+	if c := col("OD", "wfa_anterior"); c["coma0_um"] != -0.055 || len(c) != 1 {
+		t.Errorf("OD WFA Anterior = %v", c)
+	}
+	if c := col("OD", "wfa_posterior"); c != nil {
+		t.Errorf("unreadable posterior stored: %v", c)
+	}
+	if c := col("OS", "wfa_cornea"); c["coma0_um"] != 0.016 || c["coma90_um"] != -0.145 {
+		t.Errorf("OS WFA Córnea = %v (an OD file must not write OS)", c)
+	}
+	if _, ok := eyes["OD"].(map[string]any)["corneal_rings"]; ok {
+		t.Error("4 mm values leaked into the 5 mm corneal_rings path")
+	}
+}
+
 func TestClaudeVisionRejectsUnapprovedDocuments(t *testing.T) {
 	dir := t.TempDir()
 	os.MkdirAll(filepath.Join(dir, "_anon-review", "p"), 0o755)

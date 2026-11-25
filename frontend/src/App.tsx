@@ -39,7 +39,7 @@ import ProtocolPage from './components/protocol/ProtocolPage'
 import { normalizeSavedAnalysis, type IntakeAnalysis } from './contracts/patient-analysis'
 import { formatBirthDate, formatDateLongPtBR } from './utils/date'
 import { birthDateInversion, clinicalFlowForAnalysis, flowLabel } from './utils/clinicalFlow'
-import { CONDUTA, ENDOTHELIAL_MIN_CELLS_MM2, TORIC_MIN_ASTIGMATISM_D, evaluateProtocol, type Tone } from './utils/protocolDecision'
+import { CONDUTA, ENDOTHELIAL_MIN_CELLS_MM2, TORIC_MIN_ASTIGMATISM_D, coma4mm, evaluateProtocol, type Tone } from './utils/protocolDecision'
 
 type Theme = 'light' | 'dark'
 type CaseKind = 'demo' | 'real'
@@ -905,6 +905,7 @@ function RealCaseSummary({ data }: { data: ReportData }) {
   const eyes = (['OD', 'OS'] as const).map((eye) => {
     const pentacam = data.exams.pentacam_corneal_tomography.eyes[eye]
     const coma = Number.parseFloat(pentacam.corneal_rings.zernike['5mm'].z31_coma)
+    const coma4 = coma4mm(pentacam)
     const evaluated = decision.eyes[eye]
 
     return {
@@ -915,6 +916,7 @@ function RealCaseSummary({ data }: { data: ReportData }) {
       endothelialDensity: evaluated.endothelium.value ?? Number.NaN,
       endotheliumPending: evaluated.endothelium.status === 'pendente' || evaluated.endothelium.status === 'nao_avaliado',
       coma,
+      coma4,
       badD: pentacam.belin_ambrosio.d,
       artMax: pentacam.belin_ambrosio.art_max,
       tkc: pentacam.topometric_indices_8mm.tkc,
@@ -938,7 +940,9 @@ function RealCaseSummary({ data }: { data: ReportData }) {
   const hasEndothelialPending = eyes.some(({ endotheliumPending }) => endotheliumPending)
   const hasToricNeed = eyes.some(({ evaluated }) => evaluated.toric === true)
   const hasToricUnknown = eyes.some(({ evaluated }) => evaluated.toric === null)
-  const ocrSent = Boolean((data.exams as Record<string, { source?: unknown[] } | undefined>).oct_retina?.source?.length)
+  const sent = (key: string) => Boolean((data.exams as Record<string, { source?: unknown[] } | undefined>)[key]?.source?.length)
+  const ocrSent = sent('oct_retina')
+  const retinographySent = sent('fundus_retinography')
 
   return (
     <section className="mt-5 rounded-2xl border border-border bg-surface p-6 shadow-sm max-[580px]:p-4">
@@ -1590,15 +1594,18 @@ function RealCaseSummary({ data }: { data: ReportData }) {
         <details className="mx-auto max-w-[760px] rounded-xl border border-border bg-surface-muted p-4">
           <summary className="cursor-pointer list-none text-sm font-bold marker:hidden">Checagens que não alteraram a rota</summary>
           <div className="mt-3 grid grid-cols-2 gap-3 max-[580px]:grid-cols-1">
-            {eyes.map(({ eye, coma, z40 }) => (
+            {eyes.map(({ eye, coma, coma4, z40 }) => (
               <ul className="m-0 grid list-none gap-2 rounded-lg border border-border bg-surface p-3 text-xs text-text-secondary" key={eye}>
                 <li className="font-bold text-text-primary">{eye}</li>
-                <li>Coma (Z31, zona de 5 mm) {formatNumber(coma, { minimumFractionDigits: 3 })} µm: registro informativo, sem limiar (o protocolo nomeia a zona de 4,0 mm — itens 77 e 78)</li>
+                <li data-testid={`coma4-${eye}`}>{coma4
+                  ? <>Coma (Z31, zona de 4,0 mm, coluna {coma4.column}) {formatNumber(coma4.magnitude, { minimumFractionDigits: 3, maximumFractionDigits: 3 })} µm, magnitude de Coma 0° = {formatNumber(coma4.c0, { minimumFractionDigits: 3, signDisplay: 'exceptZero' })} µm e Coma 90° = {formatNumber(coma4.c90, { minimumFractionDigits: 3, signDisplay: 'exceptZero' })} µm: registro informativo, sem limiar (item 78)</>
+                  : 'Coma (Z31, zona de 4,0 mm, coluna WFA Córnea): dado ausente'}</li>
+                <li>Coma (Z31, zona de 5 mm) {formatNumber(coma, { minimumFractionDigits: 3 })} µm: leitura da tela Anéis Corneanos, não usada no registro de coma do protocolo</li>
                 <li>Z40 {formatNumber(z40, { minimumFractionDigits: 3 })} µm: informativo</li>
               </ul>
             ))}
           </div>
-          <p className="mb-0 mt-3 text-xs text-text-muted">{ocrSent ? 'OCT de retina enviado: achados não avaliados automaticamente nesta tela. Informativo — não altera a indicação.' : 'OCT de retina não disponível. A ausência deste dado não implica em qualquer mudança na conduta cirúrgica indicada.'}</p>
+          <p className="mb-0 mt-3 text-xs text-text-muted">{ocrSent ? 'OCT de retina enviado: achados não avaliados automaticamente nesta tela. Informativo — não altera a indicação.' : 'OCT de retina não disponível. A ausência deste dado não implica em qualquer mudança na conduta cirúrgica indicada.'} {retinographySent ? 'Retinografia enviada: achados não lidos automaticamente nesta tela.' : 'Retinografia não enviada: saúde macular não avaliada (não bloqueia a conduta).'}</p>
         </details>
 </>
         )}
