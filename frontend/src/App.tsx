@@ -928,10 +928,8 @@ function RealCaseSummary({ data }: { data: ReportData }) {
     : decision.state === 'keratoconus'
       ? 'Regra 2.1: TKC classificado — cascata encerrada para o paciente inteiro, em qualquer fluxo; encaminhamento a especialista em córnea. Nenhuma cirurgia é indicada automaticamente.'
       : decision.state === 'screening_incomplete' && (flow === 'A' || flow === 'B')
-        ? `TKC não lido em pelo menos um olho: o rastreio de ceratocone (regra 2.1) não foi concluído. A cascata do Fluxo ${flow} não é automatizada nesta tela; nenhuma recomendação é emitida aqui.`
-        : flow === 'A' || flow === 'B'
-          ? `A cascata de decisão do Fluxo ${flow} não é automatizada nesta tela. Avalie manualmente conforme o protocolo; nenhuma recomendação é emitida aqui.`
-          : 'Idade não determinada: revise a identidade e a data do exame Pentacam. Nenhum fluxo foi escolhido.'
+        ? `TKC não lido em pelo menos um olho: o rastreio de ceratocone (regra 2.1) não foi concluído, e o protocolo não presume rastreio normal. A cascata do Fluxo ${flow} para aqui; nenhuma cirurgia é indicada até conferir a tela do Pentacam.`
+        : 'Idade não determinada: revise a identidade e a data do exame Pentacam. Nenhum fluxo foi escolhido.'
   const ageText = age === null ? 'Paciente com idade não informada' : `Paciente com ${age} anos`
   const keratoconus = decision.tkc
   const tkcStatus = keratoconus.status
@@ -1036,7 +1034,20 @@ function RealCaseSummary({ data }: { data: ReportData }) {
           </article>
         </div>
 
-        {flow !== 'C' && (
+        {flow !== 'C' && decision.state === 'evaluated' && (
+          <div className="mx-auto mt-6 max-w-[760px] rounded-xl border border-primary-border bg-surface p-5" role="status">
+            <span className="text-xs font-bold tracking-[0.12em] text-primary">FLUXO {flow} · CASCATA AVALIADA POR OLHO</span>
+            <p className="mb-0 mt-2 text-sm leading-relaxed text-text-primary">
+              {flow === 'A'
+                ? 'Regra 2.1 não dispara. Etapas do Fluxo A (seção 5): faixa dióptrica → LASIK e PRK (LER, PTA, K_final) → alerta de qualidade visual noturna → lente fácica → anel estromal + PRK. Cada olho abaixo mostra o dado usado em cada etapa.'
+                : 'Regra 2.1 não dispara. Fluxo B (seção 6): córnea apta pelos critérios de LER, PTA e K_final (com +2,00 D do alvo de perto) → faixa refracional de Presbyond e Custom-Q/PresbyLASIK; córnea não apta → ambulatório do cirurgião. Cada olho abaixo mostra o dado usado em cada etapa.'}
+            </p>
+            <p className="mb-0 mt-2 text-xs leading-relaxed text-text-secondary">
+              Esta tela ainda não emite as observações informativas dos Fluxos A e B (margem de PTA/LER, mitomicina, teto de plataforma, vias de laser duplas, registro de coma, PNS, Z40, evidência do anel). Elas não alteram a conduta.
+            </p>
+          </div>
+        )}
+        {flow !== 'C' && decision.state !== 'evaluated' && (
           <div className="mx-auto mt-6 max-w-[760px] rounded-xl border border-warning/50 bg-warning-soft p-5" role="status">
             <span className="text-xs font-bold tracking-[0.12em] text-warning">{decision.state === 'keratoconus' ? 'REGRA 2.1' : 'SEM RECOMENDAÇÃO AUTOMÁTICA'}</span>
             <p className="mb-0 mt-2 text-sm leading-relaxed text-text-primary">{flowNotice}</p>
@@ -1625,6 +1636,20 @@ function RealCaseSummary({ data }: { data: ReportData }) {
               <strong className="mt-1 block text-sm text-text-primary">{evaluated.conduta}</strong>
               {evaluated.conduta === CONDUTA.readyGeneric && (
                 <span className="mt-1 block text-xs text-text-secondary">Escolha entre versão tórica e não tórica depende do astigmatismo da biometria óptica (dado pendente).</span>
+              )}
+              {evaluated.certainty && (
+                <span className="mt-1 block text-[11px] font-bold uppercase tracking-[0.08em] text-text-secondary">
+                  {evaluated.certainty === 'pendente' ? 'Conduta pendente' : evaluated.certainty === 'condicional' ? 'Conduta condicional' : 'Conduta definitiva pelo protocolo'}
+                </span>
+              )}
+              {evaluated.steps.length > 0 && (
+                <ol className="mb-0 mt-2 grid list-none gap-1 p-0 text-xs leading-relaxed text-text-secondary" data-testid={`trilha-${eye}`}>
+                  {evaluated.steps.map((step, index) => (
+                    <li key={index}>
+                      <strong className={clsx(step.outcome === 'fail' && 'text-danger', step.outcome === 'pending' && 'text-warning', (step.outcome === 'ok' || step.outcome === 'info') && 'text-text-primary')}>{step.rule}</strong> · {step.text}
+                    </li>
+                  ))}
+                </ol>
               )}
             </div>
           ))}

@@ -128,12 +128,13 @@ test('bare digit TKC ("2") is unknown, never classified nor negative', () => {
   assert.equal(d.state, 'screening_incomplete')
 })
 
-test('Flow A / B: no automatic conduct when TKC is not classified', () => {
+test('Flow A / B without refraction: cascade evaluated, every eye pending at Etapa 1 (never a surgery)', () => {
   for (const [birth, flow] of [['2000-08-16', 'A'], ['1975-03-04', 'B'], ['1982-06-21', 'B']]) {
     const d = evaluateProtocol(patient({ birth }))
     assert.equal(d.flow, flow)
-    assert.equal(d.state, 'manual')
-    assert.deepEqual([d.eyes.OD.conduta, d.eyes.OS.conduta], [null, null])
+    assert.equal(d.state, 'evaluated')
+    assert.deepEqual([d.eyes.OD.conduta, d.eyes.OS.conduta], [CONDUTA.pending, CONDUTA.pending])
+    assert.equal(d.showOrientationSentence, false)
   }
 })
 
