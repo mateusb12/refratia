@@ -29,7 +29,17 @@ import (
 	progress "refratia/backend/src/shared/progress"
 )
 
-const claudeVisionModel = "claude-opus-5-5"
+// defaultClaudeVisionModel: Sonnet 5.5 matched Opus 5.5 on every verified field
+// and verdict of the 2026-11-25 comparison at ~54% of the cost.
+// CLAUDE_VISION_MODEL overrides it (e.g. claude-opus-5-5).
+const defaultClaudeVisionModel = "claude-sonnet-5-5"
+
+func claudeVisionModel() string {
+	if model := strings.TrimSpace(os.Getenv("CLAUDE_VISION_MODEL")); model != "" {
+		return model
+	}
+	return defaultClaudeVisionModel
+}
 
 // claudeVisionExams are the exams Claude may extract (the protocol exams with
 // numeric spec fields). Others stay with the OCR engine.
@@ -61,12 +71,12 @@ func claudeVisionStatus() ClaudeVisionStatus {
 		if _, err := os.Stat(path); err != nil {
 			return ClaudeVisionStatus{Reason: "CLAUDE_VISION_FIXTURE aponta para um arquivo inexistente"}
 		}
-		return ClaudeVisionStatus{Available: true, Mode: "fixture", Model: claudeVisionModel}
+		return ClaudeVisionStatus{Available: true, Mode: "fixture", Model: claudeVisionModel()}
 	}
 	if os.Getenv("ANTHROPIC_API_KEY") == "" {
 		return ClaudeVisionStatus{Reason: "ANTHROPIC_API_KEY não configurada no backend"}
 	}
-	return ClaudeVisionStatus{Available: true, Mode: "live", Model: claudeVisionModel}
+	return ClaudeVisionStatus{Available: true, Mode: "live", Model: claudeVisionModel()}
 }
 
 // ExtractionEnginesHandler: GET /api/intakes/engines.
@@ -257,7 +267,7 @@ Rules:
 func requestClaudeFile(ctx context.Context, file UploadedFile, examKey string) (claudeFileResult, error) {
 	client := anthropic.NewClient() // ANTHROPIC_API_KEY
 	stream := client.Messages.NewStreaming(ctx, anthropic.MessageNewParams{
-		Model:     claudeVisionModel,
+		Model:     claudeVisionModel(),
 		MaxTokens: 32000,
 		OutputConfig: anthropic.OutputConfigParam{
 			Effort: anthropic.OutputConfigEffortHigh,
@@ -370,7 +380,7 @@ func extractPatientClaude(ctx context.Context, files []UploadedFile, identity Lo
 	analysis["extraction_notes"] = map[string]any{
 		"method":               "claude_vision",
 		"engine":               "claude_vision",
-		"model":                claudeVisionModel,
+		"model":                claudeVisionModel(),
 		"mode":                 status.Mode,
 		"scope":                "campos de _field_spec.json com caminho no app; PDFs anonimizados por anonymize_exams.py",
 		"identity_source":      "contexto local do operador (não enviado ao Claude)",
@@ -576,15 +586,22 @@ func setPath(root map[string]any, path []string, value any) {
 }
 
 var (
-	printedDatePattern = regexp.MustCompile(`(\d{1,2})[/.-]([A-Za-z]{3}|\d{1,2})[/.-](\d{4}|\d{2})\b`)
-	printedTimePattern = regexp.MustCompile(`\b(\d{1,2}):(\d{2})(?::(\d{2}))?`)
-	printedMonths      = map[string]int{"JAN": 1, "FEB": 2, "FEV": 2, "MAR": 3, "APR": 4, "ABR": 4, "MAY": 5, "MAI": 5, "JUN": 6, "JUL": 7, "AUG": 8, "AGO": 8, "SEP": 9, "SET": 9, "OCT": 10, "OUT": 10, "NOV": 11, "DEC": 12, "DEZ": 12}
+	// \b: a day/month never starts inside a longer number, so the tail of an ISO
+	// date ("2017-08-28" -> "17-08-28") is not read as day-month-year.
+	printedDatePattern    = regexp.MustCompile(`\b(\d{1,2})[/.-]([A-Za-z]{3}|\d{1,2})[/.-](\d{4}|\d{2})\b`)
+	printedISODatePattern = regexp.MustCompile(`\b(\d{4})-(\d{1,2})-(\d{1,2})\b`)
+	printedTimePattern    = regexp.MustCompile(`\b(\d{1,2}):(\d{2})(?::(\d{2}))?`)
+	printedMonths         = map[string]int{"JAN": 1, "FEB": 2, "FEV": 2, "MAR": 3, "APR": 4, "ABR": 4, "MAY": 5, "MAI": 5, "JUN": 6, "JUL": 7, "AUG": 8, "AGO": 8, "SEP": 9, "SET": 9, "OCT": 10, "OUT": 10, "NOV": 11, "DEC": 12, "DEZ": 12}
 )
 
 // parsePrintedTimestamp turns a printed device date (and optional time) into
 // "YYYY-MM-DD[ HH:MM[:SS]]" using the device's day/month order. A month name
 // is unambiguous; otherwise order decides (MDY Pentacam, DMY the others).
 func parsePrintedTimestamp(raw, order string) (string, bool) {
+	if iso := printedISODatePattern.FindStringSubmatch(raw); iso != nil { // year first: unambiguous, device order ignored
+		raw = strings.Replace(raw, iso[0], iso[3]+"/"+iso[2]+"/"+iso[1], 1)
+		order = "DMY"
+	}
 	match := printedDatePattern.FindStringSubmatch(raw)
 	if match == nil {
 		return "", false

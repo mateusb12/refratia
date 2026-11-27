@@ -25,6 +25,36 @@ func TestParsePrintedTimestampUsesDeviceOrder(t *testing.T) {
 	}
 }
 
+// Regression: a lensmeter slip printed "2017-08-28 14:36" was stored as
+// 2028-08-17 (its tail "17-08-28" read as day-month-year), a future date.
+func TestParsePrintedTimestampReadsISODatesYearFirst(t *testing.T) {
+	cases := []struct{ raw, order, want string }{
+		{"2017-08-28 14:36", "DMY", "2017-08-28 14:36"},
+		{"2017-08-28 14:36", "MDY", "2017-08-28 14:36"},
+		{"LENSMETER 2017-08-28", "DMY", "2017-08-28"},
+		{"2026-11-24", "MDY", "2026-11-24"},
+	}
+	for _, c := range cases {
+		if got, ok := parsePrintedTimestamp(c.raw, c.order); !ok || got != c.want {
+			t.Errorf("%q %s = %q %v, want %q", c.raw, c.order, got, ok, c.want)
+		}
+	}
+	if got, ok := parsePrintedTimestamp("2017-02-30", "DMY"); ok {
+		t.Errorf("impossible ISO date accepted as %q", got)
+	}
+}
+
+func TestClaudeVisionModelDefaultsToSonnetAndIsConfigurable(t *testing.T) {
+	t.Setenv("CLAUDE_VISION_MODEL", "")
+	if got := claudeVisionModel(); got != "claude-sonnet-5-5" {
+		t.Errorf("default model = %q", got)
+	}
+	t.Setenv("CLAUDE_VISION_MODEL", "claude-opus-5-5")
+	if got := claudeVisionModel(); got != "claude-opus-5-5" {
+		t.Errorf("override = %q", got)
+	}
+}
+
 func TestMergeClaudeResultMapsValidatesAndKeepsDash(t *testing.T) {
 	analysis := map[string]any{}
 	file := UploadedFile{Metadata: FileMetadata{Filename: "PENTACAM_OD.pdf", SHA256: "abc", Eye: "OD"}}

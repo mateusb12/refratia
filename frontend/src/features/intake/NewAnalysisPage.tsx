@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { Check, Database, UploadCloud } from 'lucide-react'
+import { Check, Database, ScanText, Sparkles, UploadCloud } from 'lucide-react'
 import { formatCaseSavedTime, type SavedCase } from '../../shared/cases'
 import { Eyebrow, PrimaryButton, StatusBadge } from '../../shared/ui'
 import ExamProtocolChecklist from './ExamProtocolChecklist'
@@ -119,8 +119,8 @@ export default function NewAnalysisPage({
   } = intake
   const claudeSelected = extractionEngine === 'claude'
   const engineLabel = claudeSelected
-    ? `Claude Vision — Demo${claudeStatus?.mode === 'fixture' ? ' (resposta gravada, sem chamada à API)' : claudeStatus?.model ? ` (${claudeStatus.model})` : ''}`
-    : 'OCR existente (Tesseract)'
+    ? `Claude Vision — Demonstração${claudeStatus?.mode === 'fixture' ? ' (resposta gravada, sem chamada à API)' : claudeStatus?.model ? ` (${claudeStatus.model})` : ''}`
+    : 'OCR atual (Tesseract)'
 
   return (
             <div className={visible ? undefined : 'hidden'}>
@@ -233,45 +233,19 @@ export default function NewAnalysisPage({
                         </PrimaryButton>}
                       </div>
                     </div>
-                    {workflowStep < 3 && <ExamProtocolChecklist files={intakeFiles} />}
-
-                    {workflowStep < 4 && !opticalBiometryComplete && (
-                      <p className="mb-0 mt-3 rounded-lg border border-danger/30 bg-danger-soft p-3 text-sm font-semibold text-danger" role="alert">
-                        A análise está bloqueada: a biometria óptica (EyeSuite) é obrigatória. Envie um arquivo AO ou os arquivos OD e OS para liberar a próxima etapa.
-                      </p>
-                    )}
-
-                    {workflowStep === 3 && <>
-                    <IntakeFileClassification
-                      files={intakeFiles}
-                      localPreviews={intakeLocalPreviews}
-                      onChange={setIntakeClassifications}
-                      onRemove={(file) => {
-                        void deleteDraft(intakePreview)
-                        setIntakeFiles((files) => files.filter((currentFile) => currentFile !== file))
-                        setIntakePreview(null)
-                      }}
-                      value={intakeClassifications}
-                    />
-
-                    {!intakeClassificationComplete && (
-                      <p className="mb-0 mt-3 text-xs text-warning">
-                        Confirme o tipo e o olho de todos os arquivos para liberar a verificação de processamento.
-                      </p>
-                    )}
-
+                    {workflowStep === 3 && (
                     <fieldset className="mt-4 rounded-xl border border-border bg-surface-muted/40 p-4" disabled={intakeBusy}>
                       <legend className="px-1 text-xs font-bold uppercase tracking-[0.12em] text-text-secondary">Motor de extração</legend>
-                      <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Motor de extração">
+                      <div className="flex flex-wrap gap-3" role="radiogroup" aria-label="Motor de extração">
                         {([
-                          ['ocr', 'Existing OCR', true],
-                          ['claude', 'Claude Vision — Demo', Boolean(claudeStatus?.available)],
-                        ] as const).map(([value, label, enabled]) => (
+                          ['ocr', 'OCR atual', ScanText, true],
+                          ['claude', 'Claude Vision — Demonstração', Sparkles, Boolean(claudeStatus?.available)],
+                        ] as const).map(([value, label, Icon, enabled]) => (
                           <button
                             aria-checked={extractionEngine === value}
                             className={clsx(
-                              'rounded-xl border px-4 py-2 text-sm font-bold',
-                              extractionEngine === value ? 'border-primary bg-primary text-white' : 'border-border bg-surface text-text-primary hover:border-primary',
+                              'flex h-32 w-40 flex-col items-center justify-center gap-3 rounded-xl border p-3 text-center text-xs font-bold',
+                              extractionEngine === value ? 'border-primary bg-primary-soft text-primary' : 'border-border bg-surface text-text-secondary hover:border-primary',
                               !enabled && 'cursor-not-allowed opacity-50',
                             )}
                             disabled={!enabled}
@@ -280,6 +254,8 @@ export default function NewAnalysisPage({
                             role="radio"
                             type="button"
                           >
+                            {/* ponytail: lucide placeholder; swap for an <img> when the pictures exist */}
+                            <Icon size={48} strokeWidth={1.5} />
                             {label}
                           </button>
                         ))}
@@ -320,6 +296,34 @@ export default function NewAnalysisPage({
                         </div>
                       )}
                     </fieldset>
+                    )}
+                    {workflowStep < 3 && <ExamProtocolChecklist files={intakeFiles} />}
+
+                    {workflowStep < 4 && !opticalBiometryComplete && (
+                      <p className="mb-0 mt-3 rounded-lg border border-danger/30 bg-danger-soft p-3 text-sm font-semibold text-danger" role="alert">
+                        A análise está bloqueada: a biometria óptica (EyeSuite) é obrigatória. Envie um arquivo AO ou os arquivos OD e OS para liberar a próxima etapa.
+                      </p>
+                    )}
+
+                    {workflowStep === 3 && <>
+                    <IntakeFileClassification
+                      files={intakeFiles}
+                      localPreviews={intakeLocalPreviews}
+                      onChange={setIntakeClassifications}
+                      onRemove={(file) => {
+                        void deleteDraft(intakePreview)
+                        setIntakeFiles((files) => files.filter((currentFile) => currentFile !== file))
+                        setIntakePreview(null)
+                      }}
+                      value={intakeClassifications}
+                    />
+
+                    {!intakeClassificationComplete && (
+                      <p className="mb-0 mt-3 text-xs text-warning">
+                        Confirme o tipo e o olho de todos os arquivos para liberar a verificação de processamento.
+                      </p>
+                    )}
+
 
                     {intakeClassificationComplete && !claudeSelected && (
                       <IntakeCheckpointPreflight

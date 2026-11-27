@@ -158,13 +158,27 @@ function windowReference(analysis: any): string | null {
   return (dates as string[]).sort().at(-1) ?? null
 }
 
-type WindowCheck = { ok: true; date: string } | { ok: false; reason: 'unread' | 'outside'; date: string | null }
+/** The Pentacam reference date plus the evaluation day: an exam dated after the evaluation day is impossible. */
+type WindowReference = { pentacam: string | null; today: string }
+type WindowCheck =
+  | { ok: true; date: string }
+  | { ok: false; reason: 'unread' | 'outside'; date: string | null }
+  | { ok: false; reason: 'future'; date: string; ofPentacam: boolean }
 
-function checkWindow(dates: (string | null)[], reference: string | null): WindowCheck {
+function checkWindow(dates: (string | null)[], reference: WindowReference): WindowCheck {
   const read = [...new Set(dates)]
-  if (read.length !== 1 || read[0] === null || reference === null) return { ok: false, reason: 'unread', date: null }
-  return outsideExamWindow(read[0], reference) ? { ok: false, reason: 'outside', date: read[0] } : { ok: true, date: read[0] }
+  const { pentacam, today } = reference
+  // an impossible future date is invalid, never "outside" and never inside the window (it cannot prove recency)
+  if (pentacam !== null && pentacam > today) return { ok: false, reason: 'future', date: pentacam, ofPentacam: true }
+  if (read.length === 1 && read[0] !== null && read[0] > today) return { ok: false, reason: 'future', date: read[0], ofPentacam: false }
+  if (read.length !== 1 || read[0] === null || pentacam === null) return { ok: false, reason: 'unread', date: null }
+  return outsideExamWindow(read[0], pentacam) ? { ok: false, reason: 'outside', date: read[0] } : { ok: true, date: read[0] }
 }
+
+const futureDateText = (exam: string, window: { date: string; ofPentacam: boolean }) =>
+  `${window.ofPentacam ? 'Pentacam' : exam} com data futura (${window.date}) — data inválida; janela de ${EXAM_WINDOW_MONTHS} meses não verificável`
+
+const localToday = () => new Date().toLocaleDateString('sv-SE') // YYYY-MM-DD, local calendar day
 
 const fmt = (v: number, digits = 2) => v.toLocaleString('pt-BR', { minimumFractionDigits: digits, maximumFractionDigits: digits })
 
@@ -173,7 +187,7 @@ function biometryEye(exam: any, eye: Eye) {
 }
 
 /** Flow C astigmatism checkpoint (§7, p.19): biometry only, never the Pentacam. */
-function astigmatismCriterion(analysis: any, eye: Eye, reference: string | null): Criterion {
+function astigmatismCriterion(analysis: any, eye: Eye, reference: WindowReference): Criterion {
   const exam = analysis?.exams?.iol_calculation
   const data = biometryEye(exam, eye)
   const source = sourcesOf(exam)[0] ?? null
@@ -182,6 +196,9 @@ function astigmatismCriterion(analysis: any, eye: Eye, reference: string | null)
   const window = checkWindow(examDates(analysis, exam, data, ['measurement_date', 'calculated_at']), reference)
   if (!window.ok && window.reason === 'outside') {
     return { value, status: 'pendente', text: `não avaliado — exame pendente (biometria de ${window.date}, mais de ${EXAM_WINDOW_MONTHS} meses do Pentacam)`, source, examDate: window.date }
+  }
+  if (!window.ok && window.reason === 'future') {
+    return { value, status: 'pendente', text: `não avaliado — exame pendente (${futureDateText('biometria', window)})`, source, examDate: null }
   }
   if (!window.ok) {
     return { value: null, status: 'ausente', text: `dado ausente — data da biometria não lida; janela de ${EXAM_WINDOW_MONTHS} meses não verificável`, source, examDate: null }
@@ -197,7 +214,7 @@ function astigmatismCriterion(analysis: any, eye: Eye, reference: string | null)
 }
 
 /** Flow C endothelium checkpoint (§7, p.19-20): absent / unread / outside window -> exame pendente. */
-function endotheliumCriterion(analysis: any, eye: Eye, reference: string | null): Criterion {
+function endotheliumCriterion(analysis: any, eye: Eye, reference: WindowReference): Criterion {
   const exam = analysis?.exams?.specular_microscopy
   const data = exam?.eyes?.[eye] ?? null
   const source = sourcesOf(exam)[0] ?? null
@@ -210,11 +227,13 @@ function endotheliumCriterion(analysis: any, eye: Eye, reference: string | null)
     return {
       value,
       status: 'pendente',
-      text: window.reason === 'outside'
+      text: window.reason === 'future'
+        ? `não avaliado — ${futureDateText('microscopia', window)}`
+        : window.reason === 'outside'
         ? `não avaliado — microscopia de ${window.date}, mais de ${EXAM_WINDOW_MONTHS} meses do Pentacam`
         : `não avaliado — data da microscopia não lida; janela de ${EXAM_WINDOW_MONTHS} meses não verificável`,
       source,
-      examDate: window.date,
+      examDate: window.reason === 'future' ? null : window.date,
     }
   }
   const below = value < ENDOTHELIAL_MIN_CELLS_MM2
@@ -229,7 +248,7 @@ function endotheliumCriterion(analysis: any, eye: Eye, reference: string | null)
 
 const ENDOTELIO_BAIXO = 'Contagem endotelial abaixo de 2.000 células/mm². A indicação de lente intraocular multifocal ou de foco estendido (EDOF) fica condicionada a avaliação criteriosa do endotélio corneano pelo médico especialista. Dois fatores justificam essa cautela: o risco de descompensação endotelial no pós-operatório, e o fato de que lentes multifocais e de foco estendido reduzem a sensibilidade ao contraste por desenho óptico — efeito que pode somar-se a uma eventual perda de transparência da córnea. A decisão de prosseguir com esse perfil de lente é do médico cirurgião.'
 
-function flowCEye(analysis: any, eye: Eye, reference: string | null): EyeDecision {
+function flowCEye(analysis: any, eye: Eye, reference: WindowReference): EyeDecision {
   const astigmatism = astigmatismCriterion(analysis, eye, reference)
   const endothelium = endotheliumCriterion(analysis, eye, reference)
   const missing: string[] = []
@@ -316,7 +335,7 @@ const signed = (v: number) => (v > 0 ? '+' : v < 0 ? '−' : '') + fmt(Math.abs(
 const join = (...options: string[]) => options.join(' ou ')
 
 /** Refraction of one eye in negative-cylinder notation (§3); cylinder absent = 0,00 D (§1 note). */
-function refractionOf(analysis: any, eye: Eye, reference: string | null) {
+function refractionOf(analysis: any, eye: Eye, reference: WindowReference) {
   const exam = analysis?.exams?.refractometry
   const data = exam?.eyes?.[eye] ?? exam?.eyes?.AO?.[eye] ?? null
   let sph = num(data?.sphere_d ?? data?.refraction?.sphere_d)
@@ -325,7 +344,7 @@ function refractionOf(analysis: any, eye: Eye, reference: string | null) {
   if (sph === null) return { ok: false as const, text: exam && sourcesOf(exam).length > 0 ? 'refração deste olho não lida' : 'refratometria não enviada' }
   const window = checkWindow(examDates(analysis, exam, data, ['exam_datetime']), reference)
   if (!window.ok) {
-    return { ok: false as const, text: window.reason === 'outside' ? `refratometria de ${window.date}, mais de ${EXAM_WINDOW_MONTHS} meses do Pentacam` : `data da refratometria não lida; janela de ${EXAM_WINDOW_MONTHS} meses não verificável` }
+    return { ok: false as const, text: window.reason === 'future' ? futureDateText('refratometria', window) : window.reason === 'outside' ? `refratometria de ${window.date}, mais de ${EXAM_WINDOW_MONTHS} meses do Pentacam` : `data da refratometria não lida; janela de ${EXAM_WINDOW_MONTHS} meses não verificável` }
   }
   if (cyl > 0) [sph, cyl] = [sph + cyl, -cyl]
   return { ok: true as const, sph, cyl, se: sph + cyl / 2, source }
@@ -410,7 +429,7 @@ function residualSupported(pachy: number, km: number, cyl: number) {
 }
 
 /** Etapa 6 (and Etapa 7 fallback) of Flow A. */
-function phakicStep(analysis: any, eye: Eye, reference: string | null, refr: { cyl: number }, steps: Step[], observations: Obs[]): EyeDecision {
+function phakicStep(analysis: any, eye: Eye, reference: WindowReference, refr: { cyl: number }, steps: Step[], observations: Obs[]): EyeDecision {
   const p = pentacamEye(analysis, eye)
   const acd = acdOf(p)
   const endo = endotheliumCriterion(analysis, eye, reference)
@@ -473,7 +492,7 @@ function laserObservations(sph: number, se: number, vias: Via[], kWidth: number,
   return obs
 }
 
-function flowAEye(analysis: any, eye: Eye, reference: string | null): EyeDecision {
+function flowAEye(analysis: any, eye: Eye, reference: WindowReference): EyeDecision {
   const steps: Step[] = []
   const p = pentacamEye(analysis, eye)
   const ectasia = ectasiaObservation(p)
@@ -535,7 +554,7 @@ function flowAEye(analysis: any, eye: Eye, reference: string | null): EyeDecisio
 
 const ENCAMINHAMENTO_PRESBIOPIA = 'A córnea não atende aos critérios deste protocolo para tratamento corneano de presbiopia (Presbyond ou Custom-Q/PresbyLASIK). O cirurgião pode considerar o implante de lente intraocular multifocal, que corrige a presbiopia, na avaliação presencial.'
 
-function flowBEye(analysis: any, eye: Eye, reference: string | null): EyeDecision {
+function flowBEye(analysis: any, eye: Eye, reference: WindowReference): EyeDecision {
   const steps: Step[] = []
   const p = pentacamEye(analysis, eye)
   const ectasia = ectasiaObservation(p)
@@ -572,7 +591,8 @@ function blankEye(conduta: string | null, tone: Tone, observations: { type: stri
  * Pure protocol evaluation of a saved analysis. Rule 2.1 (p.12) runs for every flow; then the cascade of the patient's
  * flow runs per eye: Flow A (§5, p.14-17), Flow B (§6, p.17-19) or Flow C (§7, p.19-20).
  */
-export function evaluateProtocol(analysis: unknown): ProtocolDecision {
+/** `today` (YYYY-MM-DD, default: local calendar day) only rejects exam dates that lie in the future. */
+export function evaluateProtocol(analysis: unknown, today: string = localToday()): ProtocolDecision {
   const a = analysis as any
   const { age, flow } = clinicalFlowForAnalysis(a)
   const tkc = keratoconusForAnalysis(a)
@@ -610,7 +630,7 @@ export function evaluateProtocol(analysis: unknown): ProtocolDecision {
   // Rule 2.1 is sovereign in any flow, so it fires even when the age (and so the flow) is unknown.
   if (flow === null) return result('no_flow', both(() => blankEye(null, 'yellow')))
   if (tkc.status === 'unknown') return result('screening_incomplete', both(() => blankEye(null, 'yellow')))
-  const reference = windowReference(a)
+  const reference: WindowReference = { pentacam: windowReference(a), today }
   const evalEye = flow === 'A' ? flowAEye : flow === 'B' ? flowBEye : flowCEye
   return result('evaluated', { OD: evalEye(a, 'OD', reference), OS: evalEye(a, 'OS', reference) })
 }

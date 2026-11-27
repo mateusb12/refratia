@@ -116,3 +116,40 @@ test('missing data never becomes a negative or positive: no surgery and no orien
   assert.equal(evaluateProtocol(B({ refr: both(r(-6, 0)), km: both(39), pachy: both(560) })).showOrientationSentence, false)
   assert.equal(evaluateProtocol(patient()).showOrientationSentence, true)
 })
+
+
+// Regression (Schiavini): a refraction date in the future (2028-08-17, a misparsed 2017-08-28 lensmeter slip) was reported
+// as "mais de 4 meses do Pentacam". A future exam date is impossible: flagged invalid, it never satisfies the 4-month window.
+const TODAY = '2026-11-25'
+const stepText = (d, eye) => d.eyes[eye].steps.map((s) => s.text).join(' | ')
+
+test('future refraction date is flagged invalid, not stale (Flow B -> Pendente)', () => {
+  const d = evaluateProtocol(B({ refr: both(r(1, -0.75)), refrDate: '2028-08-17 14:36' }), TODAY)
+  for (const eye of ['OD', 'OS']) {
+    assert.equal(d.eyes[eye].conduta, P)
+    assert.match(stepText(d, eye), /refratometria com data futura \(2028-08-17\) — data inválida/)
+    assert.doesNotMatch(stepText(d, eye), /mais de 4 meses/)
+  }
+})
+
+test('future refraction date inside the 4-month span cannot satisfy recency (Flow A -> Pendente)', () => {
+  const ok = evaluateProtocol(patient({ refrDate: '2026-11-25 10:00' }), TODAY)
+  assert.deepEqual([ok.eyes.OD.conduta, ok.eyes.OS.conduta], [LP, LP]) // same day is valid
+  const d = evaluateProtocol(patient({ refrDate: '2026-12-01 10:00' }), TODAY) // 13 days after the Pentacam, but tomorrow+
+  assert.deepEqual([d.eyes.OD.conduta, d.eyes.OS.conduta], [P, P])
+  assert.match(stepText(d, 'OD'), /data futura \(2026-12-01\)/)
+})
+
+test('future specular microscopy date is invalid for the endothelium checkpoint', () => {
+  const d = evaluateProtocol(patient({ refr: both(r(-13, 0)), specDate: '2027-01-10 09:00:00' }), TODAY)
+  assert.deepEqual([d.eyes.OD.conduta, d.eyes.OS.conduta], [P, P])
+  assert.match(JSON.stringify(d.eyes.OD), /microscopia com data futura \(2027-01-10\)/)
+})
+
+test('a future Pentacam reference date invalidates the window for every exam', () => {
+  const input = patient()
+  for (const e of input.verificacao_identidade) if (e.source.startsWith('p-')) e.timestamp_lido = '01/10/2027'
+  const d = evaluateProtocol(input, TODAY)
+  assert.deepEqual([d.eyes.OD.conduta, d.eyes.OS.conduta], [P, P])
+  assert.match(stepText(d, 'OD'), /Pentacam com data futura \(2027-01-10\)/)
+})
